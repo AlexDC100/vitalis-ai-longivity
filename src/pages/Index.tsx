@@ -76,8 +76,8 @@ function AppShell() {
     );
   }
 
-  if (!session && !isGuest) {
-    return <AuthPage onGuestLogin={handleGuestLogin} />;
+  if (!session) {
+    return <AuthPage onGuestLogin={() => {}} />;
   }
 
   const renderScreen = () => {
