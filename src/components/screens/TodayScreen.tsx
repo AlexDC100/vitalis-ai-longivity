@@ -213,30 +213,38 @@ export default function TodayScreen() {
   const topAction = actions[0];
 
   const streamAI = async (prompt: string, onChunk: (text: string) => void) => {
-    const { data, error } = await supabase.functions.invoke("chat", {
-      body: { messages: [{ role: "user", content: prompt }] }
+    const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+      },
+      body: JSON.stringify({ messages: [{ role: "user", content: prompt }] }),
     });
-    if (error) throw error;
-    if (data instanceof ReadableStream) {
-      const reader = data.getReader();
-      const decoder = new TextDecoder();
-      let text = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        for (const line of chunk.split("\n")) {
-          if (!line.startsWith("data: ") || line.includes("[DONE]")) continue;
-          try {
-            const parsed = JSON.parse(line.slice(6));
-            const content = parsed.choices?.[0]?.delta?.content;
-            if (content) { text += content; onChunk(text); }
-          } catch {}
-        }
+    if (!resp.ok || !resp.body) throw new Error("AI request failed");
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let text = "";
+    let buffer = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let newlineIdx: number;
+      while ((newlineIdx = buffer.indexOf("\n")) !== -1) {
+        let line = buffer.slice(0, newlineIdx);
+        buffer = buffer.slice(newlineIdx + 1);
+        if (line.endsWith("\r")) line = line.slice(0, -1);
+        if (!line.startsWith("data: ") || line.includes("[DONE]")) continue;
+        try {
+          const parsed = JSON.parse(line.slice(6));
+          const content = parsed.choices?.[0]?.delta?.content;
+          if (content) { text += content; onChunk(text); }
+        } catch {}
       }
-    } else if (typeof data === "string") {
-      onChunk(data);
     }
+    if (!text) onChunk("Unable to generate response.");
   };
 
   const handleHold = async (action: ActionItem) => {
