@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import ReactMarkdown from "react-markdown";
 import { useToast } from "@/hooks/use-toast";
+import { extractTextFromFile } from "@/lib/pdf-utils";
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
 
@@ -145,7 +146,7 @@ export default function AIAdvisor() {
         .select()
         .single();
 
-      const fileContent = await file.text();
+      const fileContent = await extractTextFromFile(file);
 
       // Parse document
       const { data: parseResult, error } = await supabase.functions.invoke("parse-document", {
