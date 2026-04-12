@@ -2,7 +2,7 @@ import { useHealth } from "@/lib/health-context";
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Upload, FileText, Heart, Brain, Wind, Droplets, Activity, ChevronRight, User, Dna } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 
 const FAMILY_CONDITIONS = [
   "Heart Disease", "Diabetes", "Cancer", "Alzheimer's", "Stroke",
