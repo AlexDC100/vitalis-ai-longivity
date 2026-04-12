@@ -143,6 +143,51 @@ export type Database = {
         }
         Relationships: []
       }
+      medical_documents: {
+        Row: {
+          created_at: string
+          document_type: string
+          extracted_data: Json | null
+          file_name: string
+          file_path: string
+          id: string
+          medicine_stack: Json | null
+          provider: string | null
+          recommendations: Json | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          document_type?: string
+          extracted_data?: Json | null
+          file_name: string
+          file_path: string
+          id?: string
+          medicine_stack?: Json | null
+          provider?: string | null
+          recommendations?: Json | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          document_type?: string
+          extracted_data?: Json | null
+          file_name?: string
+          file_path?: string
+          id?: string
+          medicine_stack?: Json | null
+          provider?: string | null
+          recommendations?: Json | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

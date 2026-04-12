@@ -1,10 +1,13 @@
 import { useState, useRef, useEffect } from "react";
 import { useHealth } from "@/lib/health-context";
 import { ChatMessage } from "@/lib/types";
-import { Send, Camera, Globe, Stethoscope } from "lucide-react";
+import { Send, Camera, Globe, Stethoscope, Upload, FileText, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import ReactMarkdown from "react-markdown";
+import { useToast } from "@/hooks/use-toast";
+
+const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
 
 const quickPrompts = [
   "Analyze my longevity score",
@@ -18,18 +21,21 @@ const quickPrompts = [
 ];
 
 export default function AIAdvisor() {
-  const { profile, longevityScore, biologicalAge, chronologicalAge } = useHealth();
+  const { profile, longevityScore, biologicalAge, chronologicalAge, userId, setProfile } = useHealth();
+  const { toast } = useToast();
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: "1",
       role: "assistant",
-      content: `I'm your personal Longevity AI — combining the expertise of preventive medicine physicians, cardiologists, and metabolic specialists. I have your complete health blueprint open.\n\n**Your current status:**\n- Longevity Score: **${longevityScore}/100**\n- Biological Age: **${biologicalAge}** (vs ${chronologicalAge} chronological)\n- Top risk: **Cardiovascular** (46/100)\n\nEvery answer is grounded in your biomarkers and history — not generic advice. You can also **send me a photo** of a skin concern, wound, or visible health issue for an initial AI assessment.\n\nWhat would you like to explore?`,
+      content: `I'm your personal Longevity AI — combining the expertise of preventive medicine physicians, cardiologists, and metabolic specialists. I have your complete health blueprint open.\n\n**Your current status:**\n- Longevity Score: **${longevityScore}/100**\n- Biological Age: **${biologicalAge}** (vs ${chronologicalAge} chronological)\n\nEvery answer is grounded in your biomarkers and history — not generic advice. You can also **upload a lab report** (PDF/text) and I'll extract your biomarkers automatically.\n\nWhat would you like to explore?`,
       timestamp: new Date(),
     },
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -50,39 +56,139 @@ export default function AIAdvisor() {
         { role: "user" as const, content: text },
       ];
 
-      const resp = await supabase.functions.invoke("chat", {
-        body: { messages: allMessages, systemPrompt },
+      const resp = await fetch(CHAT_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({ messages: allMessages, systemPrompt }),
       });
 
-      if (resp.error) throw resp.error;
+      if (!resp.ok || !resp.body) throw new Error("Failed to start stream");
 
-      // Handle streaming response
-      if (resp.data && typeof resp.data === "string") {
-        // Parse SSE
-        const lines = resp.data.split("\n");
-        let fullContent = "";
-        for (const line of lines) {
-          if (!line.startsWith("data: ") || line.includes("[DONE]")) continue;
+      // Stream SSE response
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let textBuffer = "";
+      let assistantContent = "";
+      let streamDone = false;
+
+      while (!streamDone) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        textBuffer += decoder.decode(value, { stream: true });
+
+        let newlineIndex: number;
+        while ((newlineIndex = textBuffer.indexOf("\n")) !== -1) {
+          let line = textBuffer.slice(0, newlineIndex);
+          textBuffer = textBuffer.slice(newlineIndex + 1);
+
+          if (line.endsWith("\r")) line = line.slice(0, -1);
+          if (line.startsWith(":") || line.trim() === "") continue;
+          if (!line.startsWith("data: ")) continue;
+
+          const jsonStr = line.slice(6).trim();
+          if (jsonStr === "[DONE]") { streamDone = true; break; }
+
           try {
-            const parsed = JSON.parse(line.slice(6));
-            const delta = parsed.choices?.[0]?.delta?.content;
-            if (delta) fullContent += delta;
-          } catch {}
+            const parsed = JSON.parse(jsonStr);
+            const content = parsed.choices?.[0]?.delta?.content;
+            if (content) {
+              assistantContent += content;
+              setMessages((prev) => {
+                const last = prev[prev.length - 1];
+                if (last?.role === "assistant" && last.id.startsWith("stream-")) {
+                  return prev.map((m, i) => i === prev.length - 1 ? { ...m, content: assistantContent } : m);
+                }
+                return [...prev, { id: "stream-" + Date.now(), role: "assistant", content: assistantContent, timestamp: new Date() }];
+              });
+            }
+          } catch {
+            textBuffer = line + "\n" + textBuffer;
+            break;
+          }
         }
-        setMessages((prev) => [...prev, { id: Date.now().toString(), role: "assistant", content: fullContent || "I apologize, I couldn't process that request. Please try again.", timestamp: new Date() }]);
-      } else if (resp.data?.content) {
-        setMessages((prev) => [...prev, { id: Date.now().toString(), role: "assistant", content: resp.data.content, timestamp: new Date() }]);
-      } else if (resp.data?.choices) {
-        const content = resp.data.choices[0]?.message?.content || "No response";
-        setMessages((prev) => [...prev, { id: Date.now().toString(), role: "assistant", content, timestamp: new Date() }]);
-      } else {
-        setMessages((prev) => [...prev, { id: Date.now().toString(), role: "assistant", content: "I'll analyze that based on your health profile. Please ensure the AI edge function is configured with your OpenAI API key.", timestamp: new Date() }]);
+      }
+
+      if (!assistantContent) {
+        setMessages((prev) => [...prev, { id: Date.now().toString(), role: "assistant", content: "I couldn't process that request. Please try again.", timestamp: new Date() }]);
       }
     } catch (err) {
       console.error("AI error:", err);
-      setMessages((prev) => [...prev, { id: Date.now().toString(), role: "assistant", content: "Connection error. Please ensure the chat edge function is deployed and your OpenAI API key is configured.", timestamp: new Date() }]);
+      setMessages((prev) => [...prev, { id: Date.now().toString(), role: "assistant", content: "Connection error. Please try again.", timestamp: new Date() }]);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !userId) {
+      if (!userId) toast({ title: "Sign in required", description: "Sign in to upload documents", variant: "destructive" });
+      return;
+    }
+
+    setIsUploading(true);
+    const uploadMsg: ChatMessage = { id: "upload-" + Date.now(), role: "user", content: `📄 Uploading: **${file.name}**`, timestamp: new Date() };
+    setMessages(prev => [...prev, uploadMsg]);
+
+    try {
+      // Upload to storage
+      const filePath = `${userId}/${Date.now()}_${file.name}`;
+      await supabase.storage.from("medical-documents").upload(filePath, file);
+
+      // Create document record
+      const { data: doc } = await supabase
+        .from("medical_documents")
+        .insert({ user_id: userId, file_name: file.name, file_path: filePath, status: "processing" })
+        .select()
+        .single();
+
+      const fileContent = await file.text();
+
+      // Parse document
+      const { data: parseResult, error } = await supabase.functions.invoke("parse-document", {
+        body: { documentId: doc?.id, fileContent, fileName: file.name },
+      });
+
+      if (error) throw error;
+
+      // Refresh profile
+      const { data: updatedProfile } = await supabase.from("health_profiles").select("*").eq("user_id", userId).single();
+      if (updatedProfile) setProfile(updatedProfile as any);
+
+      const bioCount = Object.keys(parseResult?.biomarkers || {}).length;
+      const recCount = parseResult?.recommendations?.length || 0;
+      const medCount = parseResult?.medicine_stack?.length || 0;
+
+      let summary = `✅ **Document processed: ${file.name}**\n\n`;
+      summary += `**Extracted ${bioCount} biomarkers** and updated your health profile.\n\n`;
+
+      if (recCount > 0) {
+        summary += `**📋 ${recCount} Recommendations:**\n`;
+        parseResult.recommendations.slice(0, 5).forEach((r: any) => {
+          summary += `- **${r.title}** (${r.priority}): ${r.description}\n`;
+        });
+        summary += "\n";
+      }
+
+      if (medCount > 0) {
+        summary += `**💊 ${medCount} Suggested Supplements:**\n`;
+        parseResult.medicine_stack.slice(0, 5).forEach((m: any) => {
+          summary += `- **${m.name}** ${m.dosage} ${m.frequency} — ${m.reason} (${m.evidence_level})\n`;
+        });
+      }
+
+      summary += "\n*Check Medical Vault for full details. Ask me anything about these results!*";
+
+      setMessages(prev => [...prev, { id: Date.now().toString(), role: "assistant", content: summary, timestamp: new Date() }]);
+    } catch (err: any) {
+      console.error("Upload error:", err);
+      setMessages(prev => [...prev, { id: Date.now().toString(), role: "assistant", content: `❌ Failed to process document: ${err.message}`, timestamp: new Date() }]);
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
@@ -95,12 +201,9 @@ export default function AIAdvisor() {
         </div>
         <div>
           <h1 className="text-xl font-bold text-foreground">Longevity Advisor</h1>
-          <p className="text-xs text-muted-foreground">AI + 6 Board-Certified Specialists</p>
+          <p className="text-xs text-muted-foreground">AI + Your Biomarkers · Upload docs for instant analysis</p>
         </div>
         <div className="ml-auto flex gap-2">
-          <Button variant="vitalis-outline" size="sm" className="text-xs">
-            <Stethoscope className="w-3.5 h-3.5 mr-1" /> Book Doctor
-          </Button>
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-secondary border border-border text-[11px] text-muted-foreground">
             <span className="text-primary">✦</span> Personalized to your biomarkers
           </div>
@@ -166,10 +269,17 @@ export default function AIAdvisor() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && sendMessage(input)}
-          placeholder="Ask about your health, risks, or send a photo for analysis..."
+          placeholder="Ask about your health, risks, or upload a report..."
           className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none px-2"
         />
-        <button className="p-2 text-muted-foreground hover:text-foreground"><Camera className="w-5 h-5" /></button>
+        <input ref={fileInputRef} type="file" accept=".txt,.csv,.pdf,.json,.html,.xml" onChange={handleFileUpload} className="hidden" />
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isUploading}
+          className="p-2 text-muted-foreground hover:text-foreground disabled:opacity-50"
+        >
+          {isUploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
+        </button>
         <button onClick={() => sendMessage(input)} disabled={isLoading} className="p-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/80 disabled:opacity-50">
           <Send className="w-4 h-4" />
         </button>
