@@ -48,6 +48,9 @@ export interface ChatMessage {
   timestamp: Date;
 }
 
+export type AppScreen = "today" | "body" | "future";
+
+// Keep old type for compatibility
 export type NavSection =
   | "command-center"
   | "ai-advisor"
@@ -99,23 +102,17 @@ export const defaultHealthProfile: HealthProfile = {
 
 export function calculateLongevityScore(p: HealthProfile): number {
   let score = 50;
-  // Cardiovascular
   if (p.bp_systolic <= 120) score += 5; else if (p.bp_systolic <= 130) score += 3; else score -= 2;
   if (p.hdl >= 60) score += 4; else if (p.hdl >= 50) score += 2;
   if (p.ldl <= 100) score += 4; else if (p.ldl <= 130) score += 2; else score -= 2;
   if (p.hscrp < 1) score += 4; else if (p.hscrp < 2) score += 2; else score -= 2;
-  // Metabolic
   if (p.fasting_glucose <= 90) score += 4; else if (p.fasting_glucose <= 100) score += 2; else score -= 3;
   if (p.hba1c <= 5.2) score += 4; else if (p.hba1c <= 5.6) score += 2; else score -= 3;
-  // Fitness
   if (p.vo2_max >= 50) score += 5; else if (p.vo2_max >= 40) score += 3; else score += 1;
   if (p.hrv_ms >= 60) score += 4; else if (p.hrv_ms >= 40) score += 2;
-  // Sleep
   if (p.avg_sleep_hours >= 7 && p.avg_sleep_hours <= 9) score += 3; else score -= 1;
   if (p.sleep_quality >= 80) score += 3; else if (p.sleep_quality >= 60) score += 1;
-  // Body comp
   if (p.body_fat_pct <= 15) score += 3; else if (p.body_fat_pct <= 20) score += 1; else score -= 1;
-
   return Math.max(0, Math.min(100, score));
 }
 
