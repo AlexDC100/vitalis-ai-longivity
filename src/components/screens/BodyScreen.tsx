@@ -211,6 +211,7 @@ Be direct, specific, and reference their actual values. Use markdown formatting.
     setChatLoading(false);
   }, [chatMessages, chatLoading, profile]);
 
+  const system = BODY_SYSTEMS.find(s => s.id === selectedSystem);
 
   const chronoAge = profile.date_of_birth ? new Date().getFullYear() - new Date(profile.date_of_birth).getFullYear() : 0;
 
