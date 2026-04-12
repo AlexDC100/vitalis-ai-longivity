@@ -20,11 +20,14 @@ export async function extractTextFromFile(file: File): Promise<ExtractedFileCont
 
 async function extractFromPDF(file: File): Promise<ExtractedFileContent> {
   const arrayBuffer = await file.arrayBuffer();
+  
+  // Copy the buffer before PDF.js consumes it (it detaches the original)
+  const bufferCopy = arrayBuffer.slice(0);
 
   // Try native text extraction first
   let text = "";
   try {
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    const pdf = await pdfjsLib.getDocument({ data: bufferCopy }).promise;
     const textParts: string[] = [];
     for (let i = 1; i <= pdf.numPages; i++) {
       const page = await pdf.getPage(i);
@@ -41,7 +44,7 @@ async function extractFromPDF(file: File): Promise<ExtractedFileContent> {
   const letterCount = (text.match(/[a-zA-Z]/g) || []).length;
   const isPoor = text.trim().length < 200 || letterCount < 100;
 
-  // Always convert to base64 for potential vision fallback
+  // Always convert to base64 using the original (non-detached) buffer
   const uint8 = new Uint8Array(arrayBuffer);
   let binary = "";
   const chunkSize = 8192;
