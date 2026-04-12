@@ -14,7 +14,135 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      health_profiles: {
+        Row: {
+          apob: number | null
+          avg_sleep_hours: number | null
+          body_fat_pct: number | null
+          bp_diastolic: number | null
+          bp_systolic: number | null
+          cortisol: number | null
+          created_at: string
+          date_of_birth: string | null
+          dhea_s: number | null
+          estradiol: number | null
+          fasting_glucose: number | null
+          fasting_insulin: number | null
+          fev1_pct: number | null
+          free_t: number | null
+          free_t3: number | null
+          free_t4: number | null
+          full_name: string | null
+          hba1c: number | null
+          hdl: number | null
+          height_cm: number | null
+          homocysteine: number | null
+          hrv_ms: number | null
+          hscrp: number | null
+          id: string
+          igf1: number | null
+          ldl: number | null
+          lpa: number | null
+          resting_hr: number | null
+          sex: string | null
+          sleep_quality: number | null
+          testosterone: number | null
+          total_cholesterol: number | null
+          triglycerides: number | null
+          tsh: number | null
+          updated_at: string
+          user_id: string
+          vitamin_d: number | null
+          vo2_max: number | null
+          waist_cm: number | null
+          weight_kg: number | null
+        }
+        Insert: {
+          apob?: number | null
+          avg_sleep_hours?: number | null
+          body_fat_pct?: number | null
+          bp_diastolic?: number | null
+          bp_systolic?: number | null
+          cortisol?: number | null
+          created_at?: string
+          date_of_birth?: string | null
+          dhea_s?: number | null
+          estradiol?: number | null
+          fasting_glucose?: number | null
+          fasting_insulin?: number | null
+          fev1_pct?: number | null
+          free_t?: number | null
+          free_t3?: number | null
+          free_t4?: number | null
+          full_name?: string | null
+          hba1c?: number | null
+          hdl?: number | null
+          height_cm?: number | null
+          homocysteine?: number | null
+          hrv_ms?: number | null
+          hscrp?: number | null
+          id?: string
+          igf1?: number | null
+          ldl?: number | null
+          lpa?: number | null
+          resting_hr?: number | null
+          sex?: string | null
+          sleep_quality?: number | null
+          testosterone?: number | null
+          total_cholesterol?: number | null
+          triglycerides?: number | null
+          tsh?: number | null
+          updated_at?: string
+          user_id: string
+          vitamin_d?: number | null
+          vo2_max?: number | null
+          waist_cm?: number | null
+          weight_kg?: number | null
+        }
+        Update: {
+          apob?: number | null
+          avg_sleep_hours?: number | null
+          body_fat_pct?: number | null
+          bp_diastolic?: number | null
+          bp_systolic?: number | null
+          cortisol?: number | null
+          created_at?: string
+          date_of_birth?: string | null
+          dhea_s?: number | null
+          estradiol?: number | null
+          fasting_glucose?: number | null
+          fasting_insulin?: number | null
+          fev1_pct?: number | null
+          free_t?: number | null
+          free_t3?: number | null
+          free_t4?: number | null
+          full_name?: string | null
+          hba1c?: number | null
+          hdl?: number | null
+          height_cm?: number | null
+          homocysteine?: number | null
+          hrv_ms?: number | null
+          hscrp?: number | null
+          id?: string
+          igf1?: number | null
+          ldl?: number | null
+          lpa?: number | null
+          resting_hr?: number | null
+          sex?: string | null
+          sleep_quality?: number | null
+          testosterone?: number | null
+          total_cholesterol?: number | null
+          triglycerides?: number | null
+          tsh?: number | null
+          updated_at?: string
+          user_id?: string
+          vitamin_d?: number | null
+          vo2_max?: number | null
+          waist_cm?: number | null
+          weight_kg?: number | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
