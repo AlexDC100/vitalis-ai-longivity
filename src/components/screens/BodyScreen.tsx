@@ -1,8 +1,9 @@
 import { useHealth } from "@/lib/health-context";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Upload, FileText, Heart, Brain, Wind, Droplets, Activity, ChevronRight, User, Dna } from "lucide-react";
+import { Upload, FileText, Heart, Brain, Wind, Droplets, Activity, ChevronRight, User, Dna, MessageCircle, Send, Bot, X } from "lucide-react";
 import { toast } from "sonner";
+import ReactMarkdown from "react-markdown";
 
 const FAMILY_CONDITIONS = [
   "Heart Disease", "Diabetes", "Cancer", "Alzheimer's", "Stroke",
