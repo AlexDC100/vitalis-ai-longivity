@@ -14,15 +14,15 @@ export default function ActionStack() {
   const { profile } = useHealth();
 
   const interventions: Intervention[] = [
-    { name: "Zone 2 Cardio Training", category: "Exercise", impact: 9.2, evidence: "Strong", status: "in-progress", description: "4x/week 45min sessions at 60-70% max HR to improve VO2 max" },
-    { name: "Statin or PCSK9 Evaluation", category: "Medication", impact: 8.8, evidence: "Strong", status: "not-started", description: "LDL is elevated at " + profile.ldl + " — discuss with doctor" },
-    { name: "Sleep Optimization Protocol", category: "Lifestyle", impact: 7.5, evidence: "Strong", status: "not-started", description: "Target 7.5-8.5h sleep, improve quality from " + profile.sleep_quality + "/100" },
-    { name: "Anti-inflammatory Diet", category: "Nutrition", impact: 7.2, evidence: "Moderate", status: "in-progress", description: "Reduce hsCRP from " + profile.hscrp + " to <1.0 mg/L" },
-    { name: "Omega-3 Supplementation", category: "Supplement", impact: 6.8, evidence: "Strong", status: "completed", description: "2g EPA+DHA daily for cardiovascular and inflammation" },
-    { name: "Vitamin D Optimization", category: "Supplement", impact: 6.2, evidence: "Moderate", status: "not-started", description: "Current: " + profile.vitamin_d + " ng/mL — target 40-60" },
-    { name: "Strength Training", category: "Exercise", impact: 8.0, evidence: "Strong", status: "in-progress", description: "3x/week resistance training for muscle mass and metabolic health" },
-    { name: "Continuous Glucose Monitor", category: "Monitoring", impact: 5.5, evidence: "Moderate", status: "not-started", description: "Track glucose responses with fasting glucose at " + profile.fasting_glucose },
-    { name: "Meditation / Stress Management", category: "Lifestyle", impact: 5.0, evidence: "Moderate", status: "not-started", description: "Improve HRV from " + profile.hrv_ms + "ms, reduce cortisol" },
+    { name: "Zone 2 Cardio Training", category: "Exercise", impact: 9.2, evidence: "Strong", status: "in-progress" as const, description: "4x/week 45min sessions at 60-70% max HR to improve VO2 max" },
+    { name: "Statin or PCSK9 Evaluation", category: "Medication", impact: 8.8, evidence: "Strong", status: "not-started" as const, description: "LDL is elevated at " + profile.ldl + " — discuss with doctor" },
+    { name: "Sleep Optimization Protocol", category: "Lifestyle", impact: 7.5, evidence: "Strong", status: "not-started" as const, description: "Target 7.5-8.5h sleep, improve quality from " + profile.sleep_quality + "/100" },
+    { name: "Anti-inflammatory Diet", category: "Nutrition", impact: 7.2, evidence: "Moderate", status: "in-progress" as const, description: "Reduce hsCRP from " + profile.hscrp + " to <1.0 mg/L" },
+    { name: "Omega-3 Supplementation", category: "Supplement", impact: 6.8, evidence: "Strong", status: "completed" as const, description: "2g EPA+DHA daily for cardiovascular and inflammation" },
+    { name: "Vitamin D Optimization", category: "Supplement", impact: 6.2, evidence: "Moderate", status: "not-started" as const, description: "Current: " + profile.vitamin_d + " ng/mL — target 40-60" },
+    { name: "Strength Training", category: "Exercise", impact: 8.0, evidence: "Strong", status: "in-progress" as const, description: "3x/week resistance training for muscle mass and metabolic health" },
+    { name: "Continuous Glucose Monitor", category: "Monitoring", impact: 5.5, evidence: "Moderate", status: "not-started" as const, description: "Track glucose responses with fasting glucose at " + profile.fasting_glucose },
+    { name: "Meditation / Stress Management", category: "Lifestyle", impact: 5.0, evidence: "Moderate", status: "not-started" as const, description: "Improve HRV from " + profile.hrv_ms + "ms, reduce cortisol" },
   ].sort((a, b) => b.impact - a.impact);
 
   const statusStyle = (s: string) =>
