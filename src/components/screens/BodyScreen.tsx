@@ -72,7 +72,7 @@ export default function BodyScreen() {
       const filePath = `${userId}/${Date.now()}_${file.name}`;
       const { error: uploadError } = await supabase.storage.from("medical-documents").upload(filePath, file);
       if (uploadError) {
-        toast({ title: "Upload failed", description: uploadError.message, variant: "destructive" });
+        toast.error("Upload failed: " + uploadError.message);
         continue;
       }
       const { data: doc } = await supabase
@@ -82,12 +82,28 @@ export default function BodyScreen() {
         .single();
       if (doc) {
         setDocuments(prev => [doc, ...prev]);
-        supabase.functions.invoke("parse-document", { body: { documentId: doc.id, filePath } }).catch(() => {});
-        toast({ title: "Document uploaded", description: "AI is analyzing your document..." });
+        toast.success("Document uploaded — AI is analyzing...");
+        
+        // Call parse-document and update UI when done
+        try {
+          const { data, error } = await supabase.functions.invoke("parse-document", { 
+            body: { documentId: doc.id, filePath } 
+          });
+          if (error) {
+            toast.error("Analysis failed: " + (error.message || "Unknown error"));
+            setDocuments(prev => prev.map(d => d.id === doc.id ? { ...d, status: "error" } : d));
+          } else {
+            toast.success("Analysis complete! Your health data has been updated.");
+            setDocuments(prev => prev.map(d => d.id === doc.id ? { ...d, status: "reviewed" } : d));
+          }
+        } catch (err) {
+          toast.error("Analysis failed. Please try again.");
+          setDocuments(prev => prev.map(d => d.id === doc.id ? { ...d, status: "error" } : d));
+        }
       }
     }
     setUploading(false);
-  }, [userId, toast]);
+  }, [userId]);
 
   const toggleFamilyCondition = (condition: string) => {
     setFamilyHistory(prev => {
