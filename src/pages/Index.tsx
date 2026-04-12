@@ -8,14 +8,16 @@ import DashboardScreen from "@/components/screens/DashboardScreen";
 import AICoachScreen from "@/components/screens/AICoachScreen";
 import BodyScreen from "@/components/screens/BodyScreen";
 import FutureScreen from "@/components/screens/FutureScreen";
+import OnboardingScreen from "@/components/screens/OnboardingScreen";
 import { Toaster } from "@/components/ui/toaster";
 import { Crosshair, Sparkles, User, TrendingUp, Activity } from "lucide-react";
 
 function AppShell() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const { isGuest, setIsGuest, setUserId } = useHealth();
+  const { isGuest, setIsGuest, setUserId, dataCompleteness } = useHealth();
   const [screen, setScreen] = useState<AppScreen>("focus");
+  const [onboarded, setOnboarded] = useState<boolean | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const startX = useRef(0);
@@ -66,8 +68,42 @@ function AppShell() {
     );
   }
 
+  // Check onboarding status after session is ready
+  useEffect(() => {
+    if (!session) return;
+    const key = `vitalis_onboarded_${session.user.id}`;
+    if (localStorage.getItem(key) === "true") {
+      setOnboarded(true);
+    } else {
+      // Wait a tick for profile to load, then check
+      const t = setTimeout(() => {
+        setOnboarded(dataCompleteness > 0 || localStorage.getItem(key) === "true");
+      }, 800);
+      return () => clearTimeout(t);
+    }
+  }, [session, dataCompleteness]);
+
   if (!session) {
     return <AuthPage onGuestLogin={() => {}} />;
+  }
+
+  if (onboarded === false) {
+    return (
+      <OnboardingScreen
+        onComplete={() => {
+          if (session) localStorage.setItem(`vitalis_onboarded_${session.user.id}`, "true");
+          setOnboarded(true);
+        }}
+      />
+    );
+  }
+
+  if (onboarded === null) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
   }
 
   const renderScreen = () => {
