@@ -120,16 +120,6 @@ export default function AuthPage({ onGuestLogin }: Props) {
             {loading ? "..." : isSignUp ? "Create Account" : "Sign In"}
           </Button>
         </div>
-
-        <div className="flex items-center gap-3">
-          <div className="flex-1 h-px bg-border" />
-          <span className="text-xs text-muted-foreground">or</span>
-          <div className="flex-1 h-px bg-border" />
-        </div>
-
-        <Button variant="vitalis-outline" className="w-full" onClick={onGuestLogin}>
-          Continue as Guest (Demo)
-        </Button>
       </div>
 
       {/* Stats */}
