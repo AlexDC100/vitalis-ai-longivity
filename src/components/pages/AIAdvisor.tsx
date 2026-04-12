@@ -146,11 +146,17 @@ export default function AIAdvisor() {
         .select()
         .single();
 
-      const fileContent = await extractTextFromFile(file);
+      const extracted = await extractTextFromFile(file);
 
       // Parse document
       const { data: parseResult, error } = await supabase.functions.invoke("parse-document", {
-        body: { documentId: doc?.id, fileContent, fileName: file.name },
+        body: {
+          documentId: doc?.id,
+          fileContent: extracted.text,
+          fileName: file.name,
+          fileBase64: extracted.base64,
+          mimeType: extracted.mimeType,
+        },
       });
 
       if (error) throw error;
