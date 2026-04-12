@@ -18,18 +18,26 @@ import { Toaster } from "@/components/ui/toaster";
 function AppContent() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const { isGuest, setIsGuest } = useHealth();
+  const { isGuest, setIsGuest, setUserId } = useHealth();
   const [activeSection, setActiveSection] = useState<NavSection>("command-center");
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      if (session) setIsGuest(false);
+      if (session) {
+        setIsGuest(false);
+        setUserId(session.user.id);
+      } else {
+        setUserId(null);
+      }
       setLoading(false);
     });
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      if (session) setIsGuest(false);
+      if (session) {
+        setIsGuest(false);
+        setUserId(session.user.id);
+      }
       setLoading(false);
     });
     return () => subscription.unsubscribe();
