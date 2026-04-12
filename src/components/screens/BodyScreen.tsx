@@ -44,7 +44,7 @@ export default function BodyScreen() {
   const [dragOver, setDragOver] = useState(false);
   const [familyHistory, setFamilyHistory] = useState<string[]>([]);
   const [showProfile, setShowProfile] = useState(true);
-  const { toast } = useToast();
+  
 
   // Load family history from localStorage
   useEffect(() => {
