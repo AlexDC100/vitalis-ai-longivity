@@ -1,348 +1,383 @@
 import { useHealth } from "@/lib/health-context";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import ScoreRing from "@/components/ScoreRing";
 import {
-  AlertTriangle, CheckCircle, TrendingUp, TrendingDown, Activity,
-  Heart, Droplets, Brain, Flame, Shield, FileText, ArrowRight, Minus
+  TrendingUp, TrendingDown, ChevronRight, Moon, Pill, Footprints,
+  Heart, Shield, AlertTriangle, Zap, Award, ArrowRight, X, Check
 } from "lucide-react";
 
-interface BiomarkerRange {
-  key: keyof typeof BIOMARKER_META;
-  label: string;
-  unit: string;
-  optimalLow: number;
-  optimalHigh: number;
-  category: string;
+// --- Action log utilities (shared with TodayScreen) ---
+function getActionLog(): Record<string, string[]> {
+  try { return JSON.parse(localStorage.getItem("vitalis_action_log") || "{}"); } catch { return {}; }
+}
+function logAction(actionId: string) {
+  const log = getActionLog();
+  const today = new Date().toISOString().slice(0, 10);
+  if (!log[today]) log[today] = [];
+  if (!log[today].includes(actionId)) log[today].push(actionId);
+  localStorage.setItem("vitalis_action_log", JSON.stringify(log));
+}
+function getTodayCompleted(): string[] {
+  const log = getActionLog();
+  return log[new Date().toISOString().slice(0, 10)] || [];
+}
+function getWeeklyProgress(): { daysActive: number; actionsCompleted: number } {
+  const log = getActionLog();
+  const now = new Date();
+  let daysActive = 0, actionsCompleted = 0;
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(now); d.setDate(d.getDate() - i);
+    const key = d.toISOString().slice(0, 10);
+    if (log[key]?.length) { daysActive++; actionsCompleted += log[key].length; }
+  }
+  return { daysActive, actionsCompleted };
+}
+
+interface ActionItem {
+  id: string;
+  title: string;
+  subtitle: string;
+  impact: string;
+  icon: React.ElementType;
+  color: string;
+}
+
+interface RiskItem {
+  title: string;
+  subtitle: string;
+  severity: number;
   icon: React.ElementType;
 }
 
-const BIOMARKER_META: Record<string, BiomarkerRange> = {
-  bp_systolic: { key: "bp_systolic", label: "Blood Pressure (Sys)", unit: "mmHg", optimalLow: 90, optimalHigh: 120, category: "Cardiovascular", icon: Heart },
-  bp_diastolic: { key: "bp_diastolic", label: "Blood Pressure (Dia)", unit: "mmHg", optimalLow: 60, optimalHigh: 80, category: "Cardiovascular", icon: Heart },
-  resting_hr: { key: "resting_hr", label: "Resting Heart Rate", unit: "bpm", optimalLow: 50, optimalHigh: 70, category: "Cardiovascular", icon: Heart },
-  hrv_ms: { key: "hrv_ms", label: "HRV", unit: "ms", optimalLow: 40, optimalHigh: 100, category: "Cardiovascular", icon: Activity },
-  vo2_max: { key: "vo2_max", label: "VO₂ Max", unit: "ml/kg/min", optimalLow: 40, optimalHigh: 60, category: "Fitness", icon: Activity },
-  fasting_glucose: { key: "fasting_glucose", label: "Fasting Glucose", unit: "mg/dL", optimalLow: 70, optimalHigh: 95, category: "Metabolic", icon: Droplets },
-  hba1c: { key: "hba1c", label: "HbA1c", unit: "%", optimalLow: 4.0, optimalHigh: 5.4, category: "Metabolic", icon: Droplets },
-  fasting_insulin: { key: "fasting_insulin", label: "Fasting Insulin", unit: "μIU/mL", optimalLow: 2, optimalHigh: 8, category: "Metabolic", icon: Droplets },
-  total_cholesterol: { key: "total_cholesterol", label: "Total Cholesterol", unit: "mg/dL", optimalLow: 150, optimalHigh: 200, category: "Lipids", icon: Shield },
-  ldl: { key: "ldl", label: "LDL", unit: "mg/dL", optimalLow: 50, optimalHigh: 100, category: "Lipids", icon: Shield },
-  hdl: { key: "hdl", label: "HDL", unit: "mg/dL", optimalLow: 50, optimalHigh: 90, category: "Lipids", icon: Shield },
-  triglycerides: { key: "triglycerides", label: "Triglycerides", unit: "mg/dL", optimalLow: 40, optimalHigh: 100, category: "Lipids", icon: Shield },
-  apob: { key: "apob", label: "ApoB", unit: "mg/dL", optimalLow: 40, optimalHigh: 80, category: "Lipids", icon: Shield },
-  hscrp: { key: "hscrp", label: "hs-CRP", unit: "mg/L", optimalLow: 0, optimalHigh: 1.0, category: "Inflammation", icon: Flame },
-  homocysteine: { key: "homocysteine", label: "Homocysteine", unit: "μmol/L", optimalLow: 5, optimalHigh: 9, category: "Inflammation", icon: Flame },
-  vitamin_d: { key: "vitamin_d", label: "Vitamin D", unit: "ng/mL", optimalLow: 40, optimalHigh: 80, category: "Hormones", icon: Brain },
-  testosterone: { key: "testosterone", label: "Testosterone", unit: "ng/dL", optimalLow: 500, optimalHigh: 900, category: "Hormones", icon: Brain },
-  tsh: { key: "tsh", label: "TSH", unit: "mIU/L", optimalLow: 0.5, optimalHigh: 2.5, category: "Hormones", icon: Brain },
-  cortisol: { key: "cortisol", label: "Cortisol", unit: "μg/dL", optimalLow: 6, optimalHigh: 18, category: "Hormones", icon: Brain },
-  avg_sleep_hours: { key: "avg_sleep_hours", label: "Sleep Duration", unit: "hrs", optimalLow: 7, optimalHigh: 9, category: "Lifestyle", icon: Activity },
-  sleep_quality: { key: "sleep_quality", label: "Sleep Quality", unit: "/100", optimalLow: 75, optimalHigh: 100, category: "Lifestyle", icon: Activity },
-  body_fat_pct: { key: "body_fat_pct", label: "Body Fat", unit: "%", optimalLow: 10, optimalHigh: 18, category: "Body Composition", icon: Activity },
-  waist_cm: { key: "waist_cm", label: "Waist", unit: "cm", optimalLow: 70, optimalHigh: 90, category: "Body Composition", icon: Activity },
-};
+function buildActions(profile: any): ActionItem[] {
+  const actions: ActionItem[] = [];
 
-type BiomarkerStatus = "optimal" | "borderline" | "high" | "low";
-
-function getStatus(value: number, meta: BiomarkerRange): BiomarkerStatus {
-  if (value === 0) return "optimal"; // no data
-  if (value >= meta.optimalLow && value <= meta.optimalHigh) return "optimal";
-  const rangeMid = (meta.optimalHigh - meta.optimalLow) / 2;
-  if (value < meta.optimalLow) {
-    return value < meta.optimalLow - rangeMid ? "low" : "borderline";
+  if (profile.avg_sleep_hours < 7) {
+    actions.push({ id: "sleep", title: "Fix sleep timing", subtitle: `${profile.avg_sleep_hours}h → 7-8h target`, impact: "+2.1 years", icon: Moon, color: "from-indigo-500/20 to-indigo-600/5" });
   }
-  return value > meta.optimalHigh + rangeMid ? "high" : "borderline";
+  if (profile.ldl > 100) {
+    actions.push({ id: "ldl", title: "Reduce LDL cholesterol", subtitle: `${profile.ldl} mg/dL → <100 target`, impact: "+1.8 years", icon: Shield, color: "from-rose-500/20 to-rose-600/5" });
+  }
+  if (profile.vo2_max < 45) {
+    actions.push({ id: "cardio", title: "Zone 2 cardio session", subtitle: `VO₂ Max ${profile.vo2_max} → 45+ target`, impact: "+1.5 years", icon: Heart, color: "from-emerald-500/20 to-emerald-600/5" });
+  }
+  if (profile.hrv_ms < 50) {
+    actions.push({ id: "hrv", title: "Improve HRV recovery", subtitle: `${profile.hrv_ms}ms → 60ms+ target`, impact: "+1.2 years", icon: Zap, color: "from-amber-500/20 to-amber-600/5" });
+  }
+  if (profile.vitamin_d < 40) {
+    actions.push({ id: "vitd", title: "Take Vitamin D", subtitle: `${profile.vitamin_d} ng/mL → 40-60 target`, impact: "+0.8 years", icon: Pill, color: "from-yellow-500/20 to-yellow-600/5" });
+  }
+  if (profile.body_fat_pct > 18) {
+    actions.push({ id: "steps", title: "Walk 8,000+ steps", subtitle: "Daily movement goal", impact: "+1.0 years", icon: Footprints, color: "from-cyan-500/20 to-cyan-600/5" });
+  }
+
+  // Default actions if none triggered
+  if (actions.length === 0) {
+    actions.push(
+      { id: "maintain", title: "Maintain routine", subtitle: "All markers on track", impact: "Sustain", icon: Award, color: "from-primary/20 to-primary/5" },
+    );
+  }
+
+  return actions.slice(0, 3);
 }
 
-const statusConfig = {
-  optimal: { color: "text-[hsl(var(--vitalis-success))]", bg: "bg-[hsl(var(--vitalis-success))]/10", border: "border-[hsl(var(--vitalis-success))]/20", icon: CheckCircle, label: "Optimal" },
-  borderline: { color: "text-[hsl(var(--vitalis-warning))]", bg: "bg-[hsl(var(--vitalis-warning))]/10", border: "border-[hsl(var(--vitalis-warning))]/20", icon: Minus, label: "Borderline" },
-  high: { color: "text-[hsl(var(--vitalis-danger))]", bg: "bg-[hsl(var(--vitalis-danger))]/10", border: "border-[hsl(var(--vitalis-danger))]/20", icon: TrendingUp, label: "High" },
-  low: { color: "text-[hsl(var(--vitalis-danger))]", bg: "bg-[hsl(var(--vitalis-danger))]/10", border: "border-[hsl(var(--vitalis-danger))]/20", icon: TrendingDown, label: "Low" },
-};
-
-interface DocumentResult {
-  id: string;
-  file_name: string;
-  created_at: string;
-  status: string;
-  extracted_data: any;
+function buildTopRisk(profile: any): RiskItem | null {
+  const risks: RiskItem[] = [];
+  if (profile.ldl > 100 || profile.bp_systolic > 130 || profile.apob > 80) {
+    const severity = Math.min(100, ((profile.ldl - 70) / 80) * 50 + ((profile.bp_systolic - 110) / 40) * 30 + ((profile.apob - 60) / 40) * 20);
+    risks.push({ title: "Cardiovascular risk elevated", subtitle: `LDL ${profile.ldl} · BP ${profile.bp_systolic}/${profile.bp_diastolic} · ApoB ${profile.apob}`, severity: Math.round(Math.max(20, severity)), icon: Heart });
+  }
+  if (profile.fasting_glucose > 95 || profile.hba1c > 5.4) {
+    risks.push({ title: "Metabolic health needs attention", subtitle: `Glucose ${profile.fasting_glucose} · HbA1c ${profile.hba1c}`, severity: 45, icon: Zap });
+  }
+  if (profile.hscrp > 1.5) {
+    risks.push({ title: "Inflammation elevated", subtitle: `hs-CRP ${profile.hscrp} mg/L`, severity: 55, icon: AlertTriangle });
+  }
+  return risks.sort((a, b) => b.severity - a.severity)[0] || null;
 }
 
+// --- Swipeable Action Card ---
+function ActionCard({ action, completed, onComplete }: { action: ActionItem; completed: boolean; onComplete: () => void }) {
+  const startX = useRef(0);
+  const [offsetX, setOffsetX] = useState(0);
+  const [swiped, setSwiped] = useState(false);
+  const Icon = action.icon;
+
+  const handleTouchStart = (e: React.TouchEvent) => { startX.current = e.touches[0].clientX; };
+  const handleTouchMove = (e: React.TouchEvent) => {
+    const dx = e.touches[0].clientX - startX.current;
+    if (dx < 0) setOffsetX(Math.max(-120, dx));
+  };
+  const handleTouchEnd = () => {
+    if (offsetX < -60 && !completed) {
+      setSwiped(true);
+      onComplete();
+    }
+    setOffsetX(0);
+  };
+
+  const isDone = completed || swiped;
+
+  return (
+    <div className="relative overflow-hidden rounded-2xl">
+      {/* Swipe reveal */}
+      <div className="absolute inset-0 flex items-center justify-end pr-6 bg-[hsl(var(--vitalis-success))]/20 rounded-2xl">
+        <Check className="w-6 h-6 text-[hsl(var(--vitalis-success))]" />
+      </div>
+      <div
+        className={`relative bg-gradient-to-r ${action.color} border border-border/50 rounded-2xl p-5 transition-all duration-300 ${isDone ? "opacity-50" : ""}`}
+        style={{ transform: `translateX(${offsetX}px)` }}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+      >
+        <div className="flex items-start gap-4">
+          <div className={`w-11 h-11 rounded-xl bg-background/40 backdrop-blur flex items-center justify-center shrink-0 ${isDone ? "bg-[hsl(var(--vitalis-success))]/20" : ""}`}>
+            {isDone ? <Check className="w-5 h-5 text-[hsl(var(--vitalis-success))]" /> : <Icon className="w-5 h-5 text-foreground" />}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className={`text-[15px] font-semibold text-foreground ${isDone ? "line-through opacity-60" : ""}`}>{action.title}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{action.subtitle}</p>
+          </div>
+          <div className="flex flex-col items-end shrink-0">
+            <span className="text-xs font-bold text-primary">{action.impact}</span>
+            {!isDone && <span className="text-[9px] text-muted-foreground mt-0.5">← swipe</span>}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// --- Main Dashboard ---
 export default function DashboardScreen() {
-  const { profile, longevityScore, biologicalAge, chronologicalAge, dataCompleteness } = useHealth();
-  const [documents, setDocuments] = useState<DocumentResult[]>([]);
-  const [filter, setFilter] = useState<"all" | "flagged">("all");
-  const [categoryFilter, setCategoryFilter] = useState<string>("All");
+  const { profile, longevityScore, biologicalAge, chronologicalAge } = useHealth();
+  const [completedActions, setCompletedActions] = useState<string[]>(getTodayCompleted());
+  const [riskExpanded, setRiskExpanded] = useState(false);
+  const [weeklyDelta, setWeeklyDelta] = useState<number | null>(null);
 
+  // Load weekly score delta from documents
   useEffect(() => {
     if (!profile.user_id) return;
     supabase
       .from("medical_documents")
-      .select("id, file_name, created_at, status, extracted_data")
+      .select("extracted_data")
       .eq("user_id", profile.user_id)
+      .eq("status", "reviewed")
       .order("created_at", { ascending: false })
-      .limit(10)
+      .limit(2)
       .then(({ data }) => {
-        if (data) setDocuments(data as DocumentResult[]);
+        if (data && data.length >= 2) {
+          const latest = (data[0] as any).extracted_data?.health_scores?.overall_longevity;
+          const prev = (data[1] as any).extracted_data?.health_scores?.overall_longevity;
+          if (latest != null && prev != null) setWeeklyDelta(latest - prev);
+        }
       });
   }, [profile.user_id]);
 
-  // Build historical biomarker map from reviewed documents (most recent first)
-  const reviewedDocs = documents.filter(d => d.status === "reviewed" && d.extracted_data?.biomarkers);
-  const latestBiomarkers: Record<string, number> = reviewedDocs[0]?.extracted_data?.biomarkers || {};
-  const previousBiomarkers: Record<string, number> = reviewedDocs[1]?.extracted_data?.biomarkers || {};
-
-  // Build biomarker list with statuses and trends
-  const biomarkers = Object.entries(BIOMARKER_META).map(([key, meta]) => {
-    const value = (profile as any)[key] as number;
-    const status = getStatus(value, meta);
-    const prevValue = previousBiomarkers[key];
-    const delta = prevValue != null && prevValue !== 0 ? value - prevValue : null;
-    // Determine if the change is "good" (moving toward optimal) or "bad"
-    let trendDirection: "improved" | "worsened" | "unchanged" | null = null;
-    if (delta !== null) {
-      if (Math.abs(delta) < 0.01) {
-        trendDirection = "unchanged";
-      } else {
-        const midOptimal = (meta.optimalLow + meta.optimalHigh) / 2;
-        const wasCloser = Math.abs(prevValue! - midOptimal);
-        const nowCloser = Math.abs(value - midOptimal);
-        trendDirection = nowCloser < wasCloser ? "improved" : nowCloser > wasCloser ? "worsened" : "unchanged";
-      }
-    }
-    return { ...meta, value, status, key, prevValue: prevValue ?? null, delta, trendDirection };
-  }).filter(b => b.value !== 0);
-
-  const categories = ["All", ...Array.from(new Set(biomarkers.map(b => b.category)))];
-
-  const filtered = biomarkers
-    .filter(b => filter === "all" || b.status !== "optimal")
-    .filter(b => categoryFilter === "All" || b.category === categoryFilter);
-
-  const optimalCount = biomarkers.filter(b => b.status === "optimal").length;
-  const flaggedCount = biomarkers.filter(b => b.status !== "optimal").length;
-
+  const actions = buildActions(profile);
+  const topRisk = buildTopRisk(profile);
+  const weekly = getWeeklyProgress();
   const ageDelta = chronologicalAge - biologicalAge;
+  const yearsGained = Math.max(0, ageDelta * 0.8).toFixed(1);
+
+  const handleComplete = useCallback((id: string) => {
+    logAction(id);
+    setCompletedActions(prev => [...prev, id]);
+  }, []);
+
+  // Score status
+  const scoreStatus = weeklyDelta != null
+    ? weeklyDelta > 0 ? "Improving" : weeklyDelta < 0 ? "Declining" : "Stable"
+    : weekly.daysActive >= 5 ? "Improving" : weekly.daysActive >= 3 ? "Stable" : "Needs focus";
+  const scoreStatusColor = scoreStatus === "Improving"
+    ? "text-[hsl(var(--vitalis-success))]"
+    : scoreStatus === "Declining" ? "text-[hsl(var(--vitalis-danger))]"
+    : "text-muted-foreground";
 
   return (
-    <div className="animate-fade-in space-y-5 pb-24">
-      {/* Header */}
-      <div>
-        <h1 className="text-xl font-bold text-foreground">Health Dashboard</h1>
-        <p className="text-xs text-muted-foreground">
-          {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
-        </p>
+    <div className="animate-fade-in space-y-8 pb-28 pt-2">
+
+      {/* 1. SCORE HERO */}
+      <div className="flex flex-col items-center pt-4">
+        {/* Large score ring */}
+        <div className="relative">
+          <svg width={180} height={180} className="-rotate-90">
+            <circle cx={90} cy={90} r={76} fill="none" stroke="hsl(var(--border))" strokeWidth={10} opacity={0.3} />
+            <circle
+              cx={90} cy={90} r={76} fill="none"
+              stroke="url(#scoreGrad)" strokeWidth={10}
+              strokeDasharray={2 * Math.PI * 76}
+              strokeDashoffset={2 * Math.PI * 76 * (1 - longevityScore / 100)}
+              strokeLinecap="round"
+              className="transition-all duration-1000 ease-out"
+              style={{ filter: "drop-shadow(0 0 12px hsl(174 72% 46% / 0.4))" }}
+            />
+            <defs>
+              <linearGradient id="scoreGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="hsl(174, 72%, 56%)" />
+                <stop offset="100%" stopColor="hsl(174, 72%, 36%)" />
+              </linearGradient>
+            </defs>
+          </svg>
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <span className="text-5xl font-extrabold text-foreground tracking-tight">{longevityScore}</span>
+            <span className="text-[11px] text-muted-foreground mt-1">Longevity Score</span>
+          </div>
+        </div>
+
+        {/* Status pills */}
+        <div className="flex items-center gap-3 mt-5">
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-card border border-border/50">
+            {weeklyDelta != null && weeklyDelta !== 0 ? (
+              weeklyDelta > 0
+                ? <TrendingUp className="w-3.5 h-3.5 text-[hsl(var(--vitalis-success))]" />
+                : <TrendingDown className="w-3.5 h-3.5 text-[hsl(var(--vitalis-danger))]" />
+            ) : null}
+            <span className={`text-xs font-medium ${scoreStatusColor}`}>
+              {weeklyDelta != null && weeklyDelta !== 0 ? `${weeklyDelta > 0 ? "+" : ""}${weeklyDelta} pts` : scoreStatus}
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-card border border-border/50">
+            <span className="text-xs text-muted-foreground">Bio Age</span>
+            <span className="text-xs font-bold text-foreground">{biologicalAge}</span>
+            {ageDelta > 0 && (
+              <span className="text-[10px] font-medium text-[hsl(var(--vitalis-success))]">-{ageDelta}y</span>
+            )}
+          </div>
+        </div>
       </div>
 
-      {/* Top Summary Cards */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="bg-card border border-border rounded-2xl p-4 flex flex-col items-center">
-          <ScoreRing score={longevityScore} size={80} />
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground mt-2">Longevity Score</p>
+      {/* 2. TODAY'S ACTIONS */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between px-1">
+          <h2 className="text-lg font-bold text-foreground">Today's Actions</h2>
+          <span className="text-xs text-muted-foreground">
+            {completedActions.length}/{actions.length} done
+          </span>
         </div>
+        {actions.map(action => (
+          <ActionCard
+            key={action.id}
+            action={action}
+            completed={completedActions.includes(action.id)}
+            onComplete={() => handleComplete(action.id)}
+          />
+        ))}
+      </div>
+
+      {/* 3. BIGGEST RISK */}
+      {topRisk && (
         <div className="space-y-2">
-          <div className="bg-card border border-border rounded-xl p-3">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Bio Age</p>
-            <div className="flex items-baseline gap-1">
-              <span className="text-2xl font-bold text-foreground">{biologicalAge}</span>
-              <span className={`text-xs font-medium ${ageDelta > 0 ? "text-[hsl(var(--vitalis-success))]" : "text-[hsl(var(--vitalis-danger))]"}`}>
-                {ageDelta > 0 ? `${ageDelta}y younger` : `${Math.abs(ageDelta)}y older`}
-              </span>
-            </div>
-          </div>
-          <div className="bg-card border border-border rounded-xl p-3">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Data Quality</p>
-            <div className="flex items-baseline gap-1">
-              <span className="text-2xl font-bold text-foreground">{dataCompleteness}%</span>
-            </div>
-            <div className="w-full h-1 bg-secondary rounded-full mt-1.5">
-              <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${dataCompleteness}%` }} />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Status Overview */}
-      <div className="flex gap-2">
-        <div className="flex-1 bg-[hsl(var(--vitalis-success))]/10 border border-[hsl(var(--vitalis-success))]/20 rounded-xl p-3 flex items-center gap-2">
-          <CheckCircle className="w-4 h-4 text-[hsl(var(--vitalis-success))]" />
-          <div>
-            <p className="text-lg font-bold text-foreground">{optimalCount}</p>
-            <p className="text-[10px] text-muted-foreground">Optimal</p>
-          </div>
-        </div>
-        <div className="flex-1 bg-[hsl(var(--vitalis-danger))]/10 border border-[hsl(var(--vitalis-danger))]/20 rounded-xl p-3 flex items-center gap-2">
-          <AlertTriangle className="w-4 h-4 text-[hsl(var(--vitalis-danger))]" />
-          <div>
-            <p className="text-lg font-bold text-foreground">{flaggedCount}</p>
-            <p className="text-[10px] text-muted-foreground">Flagged</p>
-          </div>
-        </div>
-        <div className="flex-1 bg-primary/10 border border-primary/20 rounded-xl p-3 flex items-center gap-2">
-          <FileText className="w-4 h-4 text-primary" />
-          <div>
-            <p className="text-lg font-bold text-foreground">{documents.length}</p>
-            <p className="text-[10px] text-muted-foreground">Reports</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Filter Tabs */}
-      <div className="space-y-2">
-        <div className="flex gap-2">
+          <h2 className="text-lg font-bold text-foreground px-1">Biggest Risk</h2>
           <button
-            onClick={() => setFilter("all")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filter === "all" ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground"}`}
+            onClick={() => setRiskExpanded(!riskExpanded)}
+            className="w-full text-left"
           >
-            All Biomarkers
-          </button>
-          <button
-            onClick={() => setFilter("flagged")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filter === "flagged" ? "bg-[hsl(var(--vitalis-danger))] text-foreground" : "bg-secondary text-muted-foreground"}`}
-          >
-            ⚠ Flagged ({flaggedCount})
-          </button>
-        </div>
-        <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-          {categories.map(c => (
-            <button
-              key={c}
-              onClick={() => setCategoryFilter(c)}
-              className={`whitespace-nowrap px-2.5 py-1 rounded-md text-[10px] font-medium transition-colors ${categoryFilter === c ? "bg-primary/20 text-primary" : "bg-secondary text-muted-foreground"}`}
-            >
-              {c}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Comparison header */}
-      {reviewedDocs.length >= 2 && (
-        <div className="flex items-center gap-2 px-1">
-          <Activity className="w-3.5 h-3.5 text-primary" />
-          <span className="text-[11px] text-muted-foreground">
-            Comparing to {new Date(reviewedDocs[1].created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })} report
-          </span>
-          <span className="text-[10px] text-primary ml-auto">
-            {biomarkers.filter(b => b.trendDirection === "improved").length} improved · {biomarkers.filter(b => b.trendDirection === "worsened").length} worsened
-          </span>
-        </div>
-      )}
-
-      {/* Biomarker List */}
-      <div className="space-y-2">
-        {filtered.length === 0 && (
-          <div className="text-center py-8 text-muted-foreground text-sm">
-            {filter === "flagged" ? "🎉 All biomarkers are in optimal range!" : "No biomarker data yet. Upload a lab report."}
-          </div>
-        )}
-        {filtered.map(b => {
-          const cfg = statusConfig[b.status];
-          const StatusIcon = cfg.icon;
-          const BioIcon = b.icon;
-          const rangeSpan = b.optimalHigh - b.optimalLow;
-          const barMin = b.optimalLow - rangeSpan * 0.5;
-          const barMax = b.optimalHigh + rangeSpan * 0.5;
-          const pct = Math.max(0, Math.min(100, ((b.value - barMin) / (barMax - barMin)) * 100));
-          const optStart = ((b.optimalLow - barMin) / (barMax - barMin)) * 100;
-          const optWidth = ((b.optimalHigh - b.optimalLow) / (barMax - barMin)) * 100;
-          // Previous value position on bar
-          const prevPct = b.prevValue != null ? Math.max(0, Math.min(100, ((b.prevValue - barMin) / (barMax - barMin)) * 100)) : null;
-
-          return (
-            <div key={b.key} className={`bg-card border ${b.status !== "optimal" ? cfg.border : "border-border"} rounded-xl p-3 animate-fade-in`}>
-              <div className="flex items-center justify-between mb-1">
-                <div className="flex items-center gap-2">
-                  <BioIcon className={`w-3.5 h-3.5 ${cfg.color}`} />
-                  <span className="text-sm font-medium text-foreground">{b.label}</span>
+            <div className={`bg-[hsl(var(--vitalis-danger))]/5 border border-[hsl(var(--vitalis-danger))]/15 rounded-2xl p-5 transition-all duration-300 ${riskExpanded ? "" : "hover:border-[hsl(var(--vitalis-danger))]/30"}`}>
+              <div className="flex items-center gap-4">
+                <div className="w-11 h-11 rounded-xl bg-[hsl(var(--vitalis-danger))]/10 flex items-center justify-center shrink-0">
+                  <topRisk.icon className="w-5 h-5 text-[hsl(var(--vitalis-danger))]" />
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-sm font-bold text-foreground">{b.value}</span>
-                  <span className="text-[10px] text-muted-foreground">{b.unit}</span>
-                  <StatusIcon className={`w-3.5 h-3.5 ${cfg.color}`} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[15px] font-semibold text-foreground">{topRisk.title}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{topRisk.subtitle}</p>
+                </div>
+                <ChevronRight className={`w-5 h-5 text-muted-foreground transition-transform duration-300 shrink-0 ${riskExpanded ? "rotate-90" : ""}`} />
+              </div>
+
+              {/* Risk severity bar */}
+              <div className="mt-4">
+                <div className="flex justify-between mb-1.5">
+                  <span className="text-[10px] text-muted-foreground">Risk Level</span>
+                  <span className="text-[10px] font-medium text-[hsl(var(--vitalis-danger))]">{topRisk.severity}%</span>
+                </div>
+                <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-[hsl(var(--vitalis-warning))] to-[hsl(var(--vitalis-danger))] transition-all duration-1000"
+                    style={{ width: `${topRisk.severity}%` }}
+                  />
                 </div>
               </div>
-              {/* Trend delta row */}
-              {b.delta !== null && (
-                <div className="flex items-center gap-1.5 mb-2">
-                  {b.trendDirection === "improved" ? (
-                    <span className="flex items-center gap-0.5 text-[10px] font-medium text-[hsl(var(--vitalis-success))]">
-                      <TrendingDown className="w-3 h-3" />
-                      {b.delta > 0 ? "+" : ""}{Number(b.delta.toFixed(1))} {b.unit}
-                    </span>
-                  ) : b.trendDirection === "worsened" ? (
-                    <span className="flex items-center gap-0.5 text-[10px] font-medium text-[hsl(var(--vitalis-danger))]">
-                      <TrendingUp className="w-3 h-3" />
-                      {b.delta > 0 ? "+" : ""}{Number(b.delta.toFixed(1))} {b.unit}
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-0.5 text-[10px] font-medium text-muted-foreground">
-                      <Minus className="w-3 h-3" /> No change
-                    </span>
+
+              {/* Expanded fix plan */}
+              {riskExpanded && (
+                <div className="mt-4 pt-4 border-t border-[hsl(var(--vitalis-danger))]/10 space-y-3 animate-fade-in">
+                  <p className="text-xs font-semibold text-foreground">Priority fix plan:</p>
+                  {profile.ldl > 100 && (
+                    <div className="flex items-start gap-2">
+                      <div className="w-5 h-5 rounded-full bg-[hsl(var(--vitalis-danger))]/10 flex items-center justify-center mt-0.5 shrink-0">
+                        <span className="text-[10px] font-bold text-[hsl(var(--vitalis-danger))]">1</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Escalate statin therapy — LDL {profile.ldl} mg/dL needs to reach &lt;70 mg/dL</p>
+                    </div>
                   )}
-                  {b.prevValue !== null && (
-                    <span className="text-[10px] text-muted-foreground ml-auto">
-                      prev: {b.prevValue} {b.unit}
-                    </span>
+                  {profile.bp_systolic > 120 && (
+                    <div className="flex items-start gap-2">
+                      <div className="w-5 h-5 rounded-full bg-[hsl(var(--vitalis-warning))]/10 flex items-center justify-center mt-0.5 shrink-0">
+                        <span className="text-[10px] font-bold text-[hsl(var(--vitalis-warning))]">2</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Optimize blood pressure — {profile.bp_systolic}/{profile.bp_diastolic} mmHg → target &lt;120/80</p>
+                    </div>
+                  )}
+                  {profile.apob > 80 && (
+                    <div className="flex items-start gap-2">
+                      <div className="w-5 h-5 rounded-full bg-[hsl(var(--vitalis-warning))]/10 flex items-center justify-center mt-0.5 shrink-0">
+                        <span className="text-[10px] font-bold text-[hsl(var(--vitalis-warning))]">3</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Reduce ApoB — {profile.apob} mg/dL → target &lt;80 mg/dL with diet + medication</p>
+                    </div>
                   )}
                 </div>
               )}
-              {/* Range bar */}
-              <div className="relative h-2 bg-secondary rounded-full overflow-visible">
-                <div
-                  className="absolute h-full bg-[hsl(var(--vitalis-success))]/30 rounded-full"
-                  style={{ left: `${optStart}%`, width: `${optWidth}%` }}
-                />
-                {/* Previous value ghost marker */}
-                {prevPct !== null && (
-                  <div
-                    className="absolute w-2 h-2 rounded-full bg-muted-foreground/30 border border-muted-foreground/50 top-1/2 -translate-y-1/2 -translate-x-1/2"
-                    style={{ left: `${prevPct}%` }}
-                    title={`Previous: ${b.prevValue}`}
-                  />
-                )}
-                <div
-                  className={`absolute w-2.5 h-2.5 rounded-full border-2 border-card top-1/2 -translate-y-1/2 -translate-x-1/2 ${b.status === "optimal" ? "bg-[hsl(var(--vitalis-success))]" : "bg-[hsl(var(--vitalis-danger))]"}`}
-                  style={{ left: `${pct}%` }}
-                />
-              </div>
-              <div className="flex justify-between mt-1">
-                <span className="text-[9px] text-muted-foreground">{b.optimalLow}</span>
-                <span className="text-[9px] text-muted-foreground">Optimal range</span>
-                <span className="text-[9px] text-muted-foreground">{b.optimalHigh}</span>
-              </div>
             </div>
-          );
-        })}
-      </div>
-
-      {/* Recent Test Uploads */}
-      {documents.length > 0 && (
-        <div className="space-y-2">
-          <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
-            <FileText className="w-4 h-4 text-primary" />
-            Recent Lab Reports
-          </h2>
-          {documents.slice(0, 5).map(doc => (
-            <div key={doc.id} className="bg-card border border-border rounded-xl p-3 flex items-center justify-between">
-              <div className="flex items-center gap-2 min-w-0">
-                <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-foreground truncate">{doc.file_name}</p>
-                  <p className="text-[10px] text-muted-foreground">
-                    {new Date(doc.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                  </p>
-                </div>
-              </div>
-              <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${doc.status === "reviewed" ? "bg-[hsl(var(--vitalis-success))]/10 text-[hsl(var(--vitalis-success))]" : "bg-[hsl(var(--vitalis-warning))]/10 text-[hsl(var(--vitalis-warning))]"}`}>
-                {doc.status}
-              </span>
-            </div>
-          ))}
+          </button>
         </div>
       )}
+
+      {/* 4. PROGRESS */}
+      <div className="space-y-3">
+        <h2 className="text-lg font-bold text-foreground px-1">Your Progress</h2>
+        <div className="grid grid-cols-3 gap-2.5">
+          <div className="bg-card border border-border/50 rounded-2xl p-4 flex flex-col items-center">
+            <span className="text-2xl font-extrabold text-primary">{yearsGained}</span>
+            <span className="text-[10px] text-muted-foreground mt-1 text-center">Years gained</span>
+          </div>
+          <div className="bg-card border border-border/50 rounded-2xl p-4 flex flex-col items-center">
+            <span className="text-2xl font-extrabold text-foreground">{weekly.daysActive}</span>
+            <span className="text-[10px] text-muted-foreground mt-1 text-center">Active days</span>
+          </div>
+          <div className="bg-card border border-border/50 rounded-2xl p-4 flex flex-col items-center">
+            <span className="text-2xl font-extrabold text-foreground">{weekly.actionsCompleted}</span>
+            <span className="text-[10px] text-muted-foreground mt-1 text-center">Actions done</span>
+          </div>
+        </div>
+
+        {/* Weekly streak bar */}
+        <div className="bg-card border border-border/50 rounded-2xl p-4">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-medium text-foreground">This week</span>
+            <span className="text-[10px] text-muted-foreground">{weekly.daysActive}/7 days</span>
+          </div>
+          <div className="flex gap-1.5">
+            {Array.from({ length: 7 }).map((_, i) => {
+              const d = new Date(); d.setDate(d.getDate() - (6 - i));
+              const key = d.toISOString().slice(0, 10);
+              const log = getActionLog();
+              const active = (log[key]?.length || 0) > 0;
+              const isToday = i === 6;
+              return (
+                <div key={i} className="flex-1 flex flex-col items-center gap-1.5">
+                  <div className={`w-full h-8 rounded-lg transition-all ${active ? "bg-primary/30 border border-primary/40" : "bg-secondary/50 border border-border/30"} ${isToday ? "ring-1 ring-primary/50" : ""}`} />
+                  <span className="text-[9px] text-muted-foreground">
+                    {d.toLocaleDateString("en-US", { weekday: "narrow" })}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
