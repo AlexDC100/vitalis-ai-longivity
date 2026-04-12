@@ -126,7 +126,92 @@ export default function BodyScreen() {
     });
   };
 
-  const system = BODY_SYSTEMS.find(s => s.id === selectedSystem);
+  const sendChat = useCallback(async (text: string) => {
+    if (!text.trim() || chatLoading) return;
+    const userMsg = { role: "user" as const, content: text.trim() };
+    const allMessages = [...chatMessages, userMsg];
+    setChatMessages(allMessages);
+    setChatInput("");
+    setChatLoading(true);
+    setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+
+    // Build system prompt with user's health context
+    const systemPrompt = `You are an elite longevity medicine AI advisor (combining expertise of Dr. Peter Attia, Dr. Andrew Huberman, Dr. David Sinclair). You have access to this patient's data:
+
+Patient: ${profile.full_name || "Unknown"}, ${profile.sex || "Unknown"}, Age ~${profile.date_of_birth ? new Date().getFullYear() - new Date(profile.date_of_birth).getFullYear() : "unknown"}
+Weight: ${profile.weight_kg}kg, Height: ${profile.height_cm}cm, Body Fat: ${profile.body_fat_pct}%, Waist: ${profile.waist_cm}cm
+BP: ${profile.bp_systolic}/${profile.bp_diastolic}, HR: ${profile.resting_hr}bpm, HRV: ${profile.hrv_ms}ms, VO2max: ${profile.vo2_max}
+Glucose: ${profile.fasting_glucose}mg/dL, HbA1c: ${profile.hba1c}%, Insulin: ${profile.fasting_insulin}
+Cholesterol: Total ${profile.total_cholesterol}, LDL ${profile.ldl}, HDL ${profile.hdl}, Trig ${profile.triglycerides}, ApoB ${profile.apob}, Lp(a) ${profile.lpa}
+Inflammation: hsCRP ${profile.hscrp}, Homocysteine ${profile.homocysteine}
+Hormones: Testosterone ${profile.testosterone}, Free T ${profile.free_t}, Cortisol ${profile.cortisol}, TSH ${profile.tsh}
+Sleep: ${profile.avg_sleep_hours}h, Quality: ${profile.sleep_quality}/100
+Vitamin D: ${profile.vitamin_d}
+
+Be direct, specific, and reference their actual values. Use markdown formatting. Keep responses concise but thorough. Flag anything suboptimal aggressively — this patient wants to live to 120+.`;
+
+    try {
+      const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
+      const resp = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({ messages: allMessages, systemPrompt }),
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ error: "Unknown error" }));
+        toast.error(err.error || "AI request failed");
+        setChatLoading(false);
+        return;
+      }
+
+      // Stream response
+      const reader = resp.body?.getReader();
+      if (!reader) throw new Error("No stream");
+      const decoder = new TextDecoder();
+      let assistantContent = "";
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        let newlineIdx: number;
+        while ((newlineIdx = buffer.indexOf("\n")) !== -1) {
+          let line = buffer.slice(0, newlineIdx);
+          buffer = buffer.slice(newlineIdx + 1);
+          if (line.endsWith("\r")) line = line.slice(0, -1);
+          if (!line.startsWith("data: ")) continue;
+          const jsonStr = line.slice(6).trim();
+          if (jsonStr === "[DONE]") break;
+          try {
+            const parsed = JSON.parse(jsonStr);
+            const content = parsed.choices?.[0]?.delta?.content;
+            if (content) {
+              assistantContent += content;
+              setChatMessages(prev => {
+                const last = prev[prev.length - 1];
+                if (last?.role === "assistant") {
+                  return prev.map((m, i) => i === prev.length - 1 ? { ...m, content: assistantContent } : m);
+                }
+                return [...prev, { role: "assistant", content: assistantContent }];
+              });
+              chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+            }
+          } catch {}
+        }
+      }
+    } catch (e) {
+      toast.error("Failed to reach AI advisor");
+    }
+    setChatLoading(false);
+  }, [chatMessages, chatLoading, profile]);
+
+
   const chronoAge = profile.date_of_birth ? new Date().getFullYear() - new Date(profile.date_of_birth).getFullYear() : 0;
 
   return (
