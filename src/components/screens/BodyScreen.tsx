@@ -1,8 +1,9 @@
 import { useHealth } from "@/lib/health-context";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Upload, FileText, Heart, Brain, Wind, Droplets, Activity, ChevronRight, User, Dna } from "lucide-react";
+import { Upload, FileText, Heart, Brain, Wind, Droplets, Activity, ChevronRight, User, Dna, MessageCircle, Send, Bot, X } from "lucide-react";
 import { toast } from "sonner";
+import ReactMarkdown from "react-markdown";
 
 const FAMILY_CONDITIONS = [
   "Heart Disease", "Diabetes", "Cancer", "Alzheimer's", "Stroke",
@@ -44,6 +45,14 @@ export default function BodyScreen() {
   const [dragOver, setDragOver] = useState(false);
   const [familyHistory, setFamilyHistory] = useState<string[]>([]);
   const [showProfile, setShowProfile] = useState(true);
+
+  // AI Chat state
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   
 
   // Load family history from localStorage
@@ -117,7 +126,93 @@ export default function BodyScreen() {
     });
   };
 
+  const sendChat = useCallback(async (text: string) => {
+    if (!text.trim() || chatLoading) return;
+    const userMsg = { role: "user" as const, content: text.trim() };
+    const allMessages = [...chatMessages, userMsg];
+    setChatMessages(allMessages);
+    setChatInput("");
+    setChatLoading(true);
+    setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+
+    // Build system prompt with user's health context
+    const systemPrompt = `You are an elite longevity medicine AI advisor (combining expertise of Dr. Peter Attia, Dr. Andrew Huberman, Dr. David Sinclair). You have access to this patient's data:
+
+Patient: ${profile.full_name || "Unknown"}, ${profile.sex || "Unknown"}, Age ~${profile.date_of_birth ? new Date().getFullYear() - new Date(profile.date_of_birth).getFullYear() : "unknown"}
+Weight: ${profile.weight_kg}kg, Height: ${profile.height_cm}cm, Body Fat: ${profile.body_fat_pct}%, Waist: ${profile.waist_cm}cm
+BP: ${profile.bp_systolic}/${profile.bp_diastolic}, HR: ${profile.resting_hr}bpm, HRV: ${profile.hrv_ms}ms, VO2max: ${profile.vo2_max}
+Glucose: ${profile.fasting_glucose}mg/dL, HbA1c: ${profile.hba1c}%, Insulin: ${profile.fasting_insulin}
+Cholesterol: Total ${profile.total_cholesterol}, LDL ${profile.ldl}, HDL ${profile.hdl}, Trig ${profile.triglycerides}, ApoB ${profile.apob}, Lp(a) ${profile.lpa}
+Inflammation: hsCRP ${profile.hscrp}, Homocysteine ${profile.homocysteine}
+Hormones: Testosterone ${profile.testosterone}, Free T ${profile.free_t}, Cortisol ${profile.cortisol}, TSH ${profile.tsh}
+Sleep: ${profile.avg_sleep_hours}h, Quality: ${profile.sleep_quality}/100
+Vitamin D: ${profile.vitamin_d}
+
+Be direct, specific, and reference their actual values. Use markdown formatting. Keep responses concise but thorough. Flag anything suboptimal aggressively — this patient wants to live to 120+.`;
+
+    try {
+      const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
+      const resp = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({ messages: allMessages, systemPrompt }),
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ error: "Unknown error" }));
+        toast.error(err.error || "AI request failed");
+        setChatLoading(false);
+        return;
+      }
+
+      // Stream response
+      const reader = resp.body?.getReader();
+      if (!reader) throw new Error("No stream");
+      const decoder = new TextDecoder();
+      let assistantContent = "";
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        let newlineIdx: number;
+        while ((newlineIdx = buffer.indexOf("\n")) !== -1) {
+          let line = buffer.slice(0, newlineIdx);
+          buffer = buffer.slice(newlineIdx + 1);
+          if (line.endsWith("\r")) line = line.slice(0, -1);
+          if (!line.startsWith("data: ")) continue;
+          const jsonStr = line.slice(6).trim();
+          if (jsonStr === "[DONE]") break;
+          try {
+            const parsed = JSON.parse(jsonStr);
+            const content = parsed.choices?.[0]?.delta?.content;
+            if (content) {
+              assistantContent += content;
+              setChatMessages(prev => {
+                const last = prev[prev.length - 1];
+                if (last?.role === "assistant") {
+                  return prev.map((m, i) => i === prev.length - 1 ? { ...m, content: assistantContent } : m);
+                }
+                return [...prev, { role: "assistant", content: assistantContent }];
+              });
+              chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+            }
+          } catch {}
+        }
+      }
+    } catch (e) {
+      toast.error("Failed to reach AI advisor");
+    }
+    setChatLoading(false);
+  }, [chatMessages, chatLoading, profile]);
+
   const system = BODY_SYSTEMS.find(s => s.id === selectedSystem);
+
   const chronoAge = profile.date_of_birth ? new Date().getFullYear() - new Date(profile.date_of_birth).getFullYear() : 0;
 
   return (
@@ -329,6 +424,96 @@ export default function BodyScreen() {
                 </span>
               </div>
             ))}
+          </div>
+        )}
+      </div>
+
+      {/* AI Medical Advisor Chat */}
+      <div>
+        <button
+          onClick={() => { setChatOpen(!chatOpen); setTimeout(() => inputRef.current?.focus(), 100); }}
+          className="w-full bg-gradient-to-r from-primary/10 to-primary/5 border border-primary/20 rounded-xl p-3 flex items-center gap-3 hover:border-primary/40 transition-all"
+        >
+          <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
+            <Bot className="w-4 h-4 text-primary" />
+          </div>
+          <div className="flex-1 text-left">
+            <p className="text-sm font-semibold text-foreground">AI Medical Advisor</p>
+            <p className="text-[10px] text-muted-foreground">Ask about your labs, risks, or health plan</p>
+          </div>
+          <MessageCircle className={`w-4 h-4 transition-transform ${chatOpen ? "text-primary" : "text-muted-foreground"}`} />
+        </button>
+
+        {chatOpen && (
+          <div className="mt-2 bg-card border border-border rounded-xl overflow-hidden animate-fade-in">
+            {/* Messages */}
+            <div className="h-72 overflow-y-auto p-3 space-y-3">
+              {chatMessages.length === 0 && (
+                <div className="text-center py-8">
+                  <Bot className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
+                  <p className="text-xs text-muted-foreground">Ask me anything about your health data</p>
+                  <div className="flex flex-wrap gap-1.5 justify-center mt-3">
+                    {["What are my biggest risks?", "Explain my LDL levels", "What supplements should I take?"].map(q => (
+                      <button
+                        key={q}
+                        onClick={() => { setChatInput(q); setTimeout(() => sendChat(q), 50); }}
+                        className="text-[10px] px-2 py-1 rounded-full bg-muted border border-border text-muted-foreground hover:border-primary/30 hover:text-primary transition-colors"
+                      >
+                        {q}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {chatMessages.map((msg, i) => (
+                <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                  <div className={`max-w-[85%] rounded-xl px-3 py-2 text-xs ${
+                    msg.role === "user"
+                      ? "bg-primary text-primary-foreground rounded-br-sm"
+                      : "bg-muted text-foreground rounded-bl-sm"
+                  }`}>
+                    {msg.role === "assistant" ? (
+                      <div className="prose prose-xs prose-invert max-w-none [&_p]:m-0 [&_ul]:my-1 [&_li]:my-0.5 [&_strong]:text-primary">
+                        <ReactMarkdown>{msg.content || "..."}</ReactMarkdown>
+                      </div>
+                    ) : msg.content}
+                  </div>
+                </div>
+              ))}
+              {chatLoading && chatMessages[chatMessages.length - 1]?.role !== "assistant" && (
+                <div className="flex justify-start">
+                  <div className="bg-muted rounded-xl px-3 py-2 rounded-bl-sm">
+                    <div className="flex gap-1">
+                      <div className="w-1.5 h-1.5 bg-muted-foreground/40 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                      <div className="w-1.5 h-1.5 bg-muted-foreground/40 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                      <div className="w-1.5 h-1.5 bg-muted-foreground/40 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div ref={chatEndRef} />
+            </div>
+
+            {/* Input */}
+            <div className="border-t border-border p-2 flex gap-2">
+              <input
+                ref={inputRef}
+                type="text"
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && chatInput.trim()) { e.preventDefault(); sendChat(chatInput); } }}
+                placeholder="Ask about your health..."
+                className="flex-1 text-xs bg-muted border border-border rounded-lg px-3 py-2 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary"
+                disabled={chatLoading}
+              />
+              <button
+                onClick={() => chatInput.trim() && sendChat(chatInput)}
+                disabled={chatLoading || !chatInput.trim()}
+                className="w-8 h-8 rounded-lg bg-primary text-primary-foreground flex items-center justify-center disabled:opacity-40 transition-opacity"
+              >
+                <Send className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
         )}
       </div>
