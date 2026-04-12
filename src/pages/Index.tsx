@@ -5,26 +5,18 @@ import { HealthProvider, useHealth } from "@/lib/health-context";
 import { AppScreen } from "@/lib/types";
 import AuthPage from "@/components/AuthPage";
 import DashboardScreen from "@/components/screens/DashboardScreen";
-import TodayScreen from "@/components/screens/TodayScreen";
+import AICoachScreen from "@/components/screens/AICoachScreen";
 import BodyScreen from "@/components/screens/BodyScreen";
 import FutureScreen from "@/components/screens/FutureScreen";
 import { Toaster } from "@/components/ui/toaster";
-import { LayoutDashboard, Activity, User, TrendingUp } from "lucide-react";
-
-const SCREENS: { id: AppScreen; label: string; icon: React.ElementType }[] = [
-  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { id: "today", label: "Today", icon: Activity },
-  { id: "body", label: "Body", icon: User },
-  { id: "future", label: "Future", icon: TrendingUp },
-];
+import { Crosshair, Sparkles, User, TrendingUp, Activity } from "lucide-react";
 
 function AppShell() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const { isGuest, setIsGuest, setUserId } = useHealth();
-  const [screen, setScreen] = useState<AppScreen>("dashboard");
+  const [screen, setScreen] = useState<AppScreen>("focus");
 
-  // Swipe navigation
   const containerRef = useRef<HTMLDivElement>(null);
   const startX = useRef(0);
   const swiping = useRef(false);
@@ -49,24 +41,20 @@ function AppShell() {
     setSession(null);
   };
 
-  const handleGuestLogin = () => {
-    setIsGuest(true);
-    setLoading(false);
-  };
-
-  // Swipe handlers
+  // Swipe between non-AI screens
   const handleTouchStart = (e: React.TouchEvent) => {
+    if (screen === "ai") return; // No swipe on AI screen
     startX.current = e.touches[0].clientX;
     swiping.current = true;
   };
-
   const handleTouchEnd = (e: React.TouchEvent) => {
-    if (!swiping.current) return;
+    if (!swiping.current || screen === "ai") return;
     const delta = e.changedTouches[0].clientX - startX.current;
-    const screenOrder: AppScreen[] = ["dashboard", "today", "body", "future"];
-    const idx = screenOrder.indexOf(screen);
-    if (delta < -60 && idx < 3) setScreen(screenOrder[idx + 1]);
-    if (delta > 60 && idx > 0) setScreen(screenOrder[idx - 1]);
+    const swipeScreens: AppScreen[] = ["focus", "body", "future"];
+    const idx = swipeScreens.indexOf(screen);
+    if (idx === -1) return;
+    if (delta < -60 && idx < 2) setScreen(swipeScreens[idx + 1]);
+    if (delta > 60 && idx > 0) setScreen(swipeScreens[idx - 1]);
     swiping.current = false;
   };
 
@@ -84,12 +72,18 @@ function AppShell() {
 
   const renderScreen = () => {
     switch (screen) {
-      case "dashboard": return <DashboardScreen />;
-      case "today": return <TodayScreen />;
+      case "focus": return <DashboardScreen />;
+      case "ai": return <AICoachScreen />;
       case "body": return <BodyScreen />;
       case "future": return <FutureScreen />;
     }
   };
+
+  const navItems: { id: AppScreen; label: string; icon: React.ElementType }[] = [
+    { id: "focus", label: "Focus", icon: Crosshair },
+    { id: "body", label: "Body", icon: User },
+    { id: "future", label: "Future", icon: TrendingUp },
+  ];
 
   return (
     <div className="min-h-screen bg-background flex flex-col max-w-lg mx-auto relative">
@@ -116,27 +110,65 @@ function AppShell() {
         {renderScreen()}
       </div>
 
-      {/* Bottom Navigation */}
+      {/* Bottom Navigation — AI-First */}
       <div className="fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur-md border-t border-border/50 z-40">
-        <div className="max-w-lg mx-auto flex items-center justify-around py-2">
-          {SCREENS.map(s => {
-            const Icon = s.icon;
-            const active = screen === s.id;
-            return (
-              <button
-                key={s.id}
-                onClick={() => setScreen(s.id)}
-                className={`flex flex-col items-center gap-0.5 px-6 py-1 rounded-lg transition-all ${active ? "text-primary" : "text-muted-foreground"}`}
-              >
-                <Icon className={`w-5 h-5 ${active ? "text-primary" : ""}`} />
-                <span className={`text-[10px] font-medium ${active ? "text-primary" : ""}`}>{s.label}</span>
-                {active && <div className="w-1 h-1 rounded-full bg-primary" />}
-              </button>
-            );
-          })}
+        <div className="max-w-lg mx-auto flex items-end justify-around px-4 pt-1 pb-2 relative">
+          {/* Left: Focus */}
+          <NavButton
+            icon={navItems[0].icon}
+            label={navItems[0].label}
+            active={screen === "focus"}
+            onClick={() => setScreen("focus")}
+          />
+
+          {/* Center: AI Button — elevated & glowing */}
+          <div className="flex flex-col items-center -mt-5">
+            <button
+              onClick={() => setScreen("ai")}
+              className={`relative w-14 h-14 rounded-2xl flex items-center justify-center transition-all duration-300 ${
+                screen === "ai"
+                  ? "bg-primary shadow-[0_0_24px_hsl(174,72%,46%,0.5)] scale-105"
+                  : "bg-gradient-to-br from-primary to-primary/70 shadow-[0_0_16px_hsl(174,72%,46%,0.3)] hover:scale-105"
+              }`}
+            >
+              {/* Glow ring */}
+              <div className="absolute inset-0 rounded-2xl animate-pulse-glow" />
+              <Sparkles className={`w-6 h-6 relative z-10 ${screen === "ai" ? "text-primary-foreground" : "text-primary-foreground"}`} />
+            </button>
+            <span className={`text-[10px] font-semibold mt-1 ${screen === "ai" ? "text-primary" : "text-muted-foreground"}`}>AI</span>
+          </div>
+
+          {/* Right side: Body & Future */}
+          <NavButton
+            icon={navItems[1].icon}
+            label={navItems[1].label}
+            active={screen === "body"}
+            onClick={() => setScreen("body")}
+          />
+          <NavButton
+            icon={navItems[2].icon}
+            label={navItems[2].label}
+            active={screen === "future"}
+            onClick={() => setScreen("future")}
+          />
         </div>
       </div>
     </div>
+  );
+}
+
+function NavButton({ icon: Icon, label, active, onClick }: {
+  icon: React.ElementType; label: string; active: boolean; onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex flex-col items-center gap-0.5 px-5 py-1 rounded-lg transition-all ${active ? "text-primary" : "text-muted-foreground"}`}
+    >
+      <Icon className={`w-5 h-5 ${active ? "text-primary" : ""}`} />
+      <span className={`text-[10px] font-medium ${active ? "text-primary" : ""}`}>{label}</span>
+      {active && <div className="w-1 h-1 rounded-full bg-primary" />}
+    </button>
   );
 }
 

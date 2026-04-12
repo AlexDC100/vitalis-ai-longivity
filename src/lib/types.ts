@@ -48,7 +48,7 @@ export interface ChatMessage {
   timestamp: Date;
 }
 
-export type AppScreen = "dashboard" | "today" | "body" | "future";
+export type AppScreen = "focus" | "ai" | "body" | "future";
 
 // Keep old type for compatibility
 export type NavSection =
