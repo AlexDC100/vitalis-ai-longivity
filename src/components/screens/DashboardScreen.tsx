@@ -89,12 +89,31 @@ export default function DashboardScreen() {
       });
   }, [profile.user_id]);
 
-  // Build biomarker list with statuses
+  // Build historical biomarker map from reviewed documents (most recent first)
+  const reviewedDocs = documents.filter(d => d.status === "reviewed" && d.extracted_data?.biomarkers);
+  const latestBiomarkers: Record<string, number> = reviewedDocs[0]?.extracted_data?.biomarkers || {};
+  const previousBiomarkers: Record<string, number> = reviewedDocs[1]?.extracted_data?.biomarkers || {};
+
+  // Build biomarker list with statuses and trends
   const biomarkers = Object.entries(BIOMARKER_META).map(([key, meta]) => {
     const value = (profile as any)[key] as number;
     const status = getStatus(value, meta);
-    return { ...meta, value, status, key };
-  }).filter(b => b.value !== 0); // hide empty
+    const prevValue = previousBiomarkers[key];
+    const delta = prevValue != null && prevValue !== 0 ? value - prevValue : null;
+    // Determine if the change is "good" (moving toward optimal) or "bad"
+    let trendDirection: "improved" | "worsened" | "unchanged" | null = null;
+    if (delta !== null) {
+      if (Math.abs(delta) < 0.01) {
+        trendDirection = "unchanged";
+      } else {
+        const midOptimal = (meta.optimalLow + meta.optimalHigh) / 2;
+        const wasCloser = Math.abs(prevValue! - midOptimal);
+        const nowCloser = Math.abs(value - midOptimal);
+        trendDirection = nowCloser < wasCloser ? "improved" : nowCloser > wasCloser ? "worsened" : "unchanged";
+      }
+    }
+    return { ...meta, value, status, key, prevValue: prevValue ?? null, delta, trendDirection };
+  }).filter(b => b.value !== 0);
 
   const categories = ["All", ...Array.from(new Set(biomarkers.map(b => b.category)))];
 
