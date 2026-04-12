@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useHealth } from "@/lib/health-context";
 import { useToast } from "@/hooks/use-toast";
+import { extractTextFromFile } from "@/lib/pdf-utils";
 
 interface MedicalDocument {
   id: string;
@@ -67,8 +68,8 @@ export default function MedicalVault() {
         .single();
       if (insertError) throw insertError;
 
-      // Read file content as text
-      const fileContent = await file.text();
+      // Read file content as text (handles PDFs too)
+      const fileContent = await extractTextFromFile(file);
 
       // Call parse-document edge function
       const { data: parseResult, error: parseError } = await supabase.functions.invoke("parse-document", {
