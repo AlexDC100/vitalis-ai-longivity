@@ -4,13 +4,15 @@ import { Session } from "@supabase/supabase-js";
 import { HealthProvider, useHealth } from "@/lib/health-context";
 import { AppScreen } from "@/lib/types";
 import AuthPage from "@/components/AuthPage";
+import DashboardScreen from "@/components/screens/DashboardScreen";
 import TodayScreen from "@/components/screens/TodayScreen";
 import BodyScreen from "@/components/screens/BodyScreen";
 import FutureScreen from "@/components/screens/FutureScreen";
 import { Toaster } from "@/components/ui/toaster";
-import { Activity, User, TrendingUp } from "lucide-react";
+import { LayoutDashboard, Activity, User, TrendingUp } from "lucide-react";
 
 const SCREENS: { id: AppScreen; label: string; icon: React.ElementType }[] = [
+  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { id: "today", label: "Today", icon: Activity },
   { id: "body", label: "Body", icon: User },
   { id: "future", label: "Future", icon: TrendingUp },
@@ -20,7 +22,7 @@ function AppShell() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const { isGuest, setIsGuest, setUserId } = useHealth();
-  const [screen, setScreen] = useState<AppScreen>("today");
+  const [screen, setScreen] = useState<AppScreen>("dashboard");
 
   // Swipe navigation
   const containerRef = useRef<HTMLDivElement>(null);
@@ -61,9 +63,9 @@ function AppShell() {
   const handleTouchEnd = (e: React.TouchEvent) => {
     if (!swiping.current) return;
     const delta = e.changedTouches[0].clientX - startX.current;
-    const screenOrder: AppScreen[] = ["today", "body", "future"];
+    const screenOrder: AppScreen[] = ["dashboard", "today", "body", "future"];
     const idx = screenOrder.indexOf(screen);
-    if (delta < -60 && idx < 2) setScreen(screenOrder[idx + 1]);
+    if (delta < -60 && idx < 3) setScreen(screenOrder[idx + 1]);
     if (delta > 60 && idx > 0) setScreen(screenOrder[idx - 1]);
     swiping.current = false;
   };
@@ -82,6 +84,7 @@ function AppShell() {
 
   const renderScreen = () => {
     switch (screen) {
+      case "dashboard": return <DashboardScreen />;
       case "today": return <TodayScreen />;
       case "body": return <BodyScreen />;
       case "future": return <FutureScreen />;
