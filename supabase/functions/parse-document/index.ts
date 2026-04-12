@@ -41,24 +41,25 @@ serve(async (req) => {
 
     const extractPrompt = `You are a medical document parser. Extract ALL biomarker values from this health/lab report.
 
-Return a JSON object with exactly these keys (only include keys where you find a value):
-${BIOMARKER_KEYS.join(", ")}
-
-Also return:
-- "recommendations": an array of objects with {title, description, priority, category} for health recommendations based on the results
-- "medicine_stack": an array of objects with {name, dosage, frequency, reason, evidence_level} for supplements/medications that could help based on the results
-- "provider": the lab/clinic name if found
+Return a JSON object with these exact keys:
+- "biomarkers": an object containing numeric values for any of these keys found in the document: ${BIOMARKER_KEYS.join(", ")}
+- "recommendations": an array of objects with {title, description, priority, category}
+- "medicine_stack": an array of objects with {name, dosage, frequency, reason, evidence_level}
+- "provider": the lab/clinic name if found (string)
 - "document_type": one of "Blood Work", "Hormones", "Imaging", "Fitness", "Genetics", "General"
 
 Rules:
-- Use numeric values only for biomarkers (no units)
+- Use numeric values only for biomarkers (no units in the value)
 - Convert units to match: glucose in mg/dL, cholesterol in mg/dL, vitamin_d in ng/mL
-- Priority: "high", "medium", "low"
-- evidence_level: "strong", "moderate", "emerging"
+- Priority must be: "high", "medium", or "low"
+- evidence_level must be: "strong", "moderate", or "emerging"
 - Be thorough with recommendations - explain WHY based on specific values
+- Return ONLY valid JSON, no markdown or other text
 
 Document content:
 ${fileContent}`;
+
+    console.log("Sending AI request for document:", fileName);
 
     const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -68,54 +69,11 @@ ${fileContent}`;
       },
       body: JSON.stringify({
         model: "google/gemini-2.5-flash",
-        messages: [{ role: "user", content: extractPrompt }],
-        tools: [{
-          type: "function",
-          function: {
-            name: "extract_health_data",
-            description: "Extract biomarkers, recommendations, and medicine stack from a health document",
-            parameters: {
-              type: "object",
-              properties: {
-                biomarkers: {
-                  type: "object",
-                  description: "Extracted biomarker values as numbers",
-                },
-                recommendations: {
-                  type: "array",
-                  items: {
-                    type: "object",
-                    properties: {
-                      title: { type: "string" },
-                      description: { type: "string" },
-                      priority: { type: "string", enum: ["high", "medium", "low"] },
-                      category: { type: "string" },
-                    },
-                    required: ["title", "description", "priority", "category"],
-                  },
-                },
-                medicine_stack: {
-                  type: "array",
-                  items: {
-                    type: "object",
-                    properties: {
-                      name: { type: "string" },
-                      dosage: { type: "string" },
-                      frequency: { type: "string" },
-                      reason: { type: "string" },
-                      evidence_level: { type: "string", enum: ["strong", "moderate", "emerging"] },
-                    },
-                    required: ["name", "dosage", "frequency", "reason", "evidence_level"],
-                  },
-                },
-                provider: { type: "string" },
-                document_type: { type: "string" },
-              },
-              required: ["biomarkers", "recommendations", "medicine_stack"],
-            },
-          },
-        }],
-        tool_choice: { type: "function", function: { name: "extract_health_data" } },
+        messages: [
+          { role: "system", content: "You are a medical document parser. Always respond with valid JSON only, no markdown fences." },
+          { role: "user", content: extractPrompt }
+        ],
+        response_format: { type: "json_object" },
       }),
     });
 
@@ -126,18 +84,30 @@ ${fileContent}`;
     }
 
     const aiData = await aiResp.json();
-    const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
-    if (!toolCall) throw new Error("No structured output from AI");
+    const rawContent = aiData.choices?.[0]?.message?.content;
+    console.log("AI raw response length:", rawContent?.length);
 
-    const parsed = JSON.parse(toolCall.function.arguments);
-    const { biomarkers, recommendations, medicine_stack, provider, document_type } = parsed;
+    if (!rawContent) throw new Error("No content from AI");
+
+    // Clean potential markdown fences
+    let jsonStr = rawContent.trim();
+    if (jsonStr.startsWith("```")) {
+      jsonStr = jsonStr.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
+    }
+
+    const parsed = JSON.parse(jsonStr);
+    const { biomarkers = {}, recommendations = [], medicine_stack = [], provider = "", document_type = "General" } = parsed;
+
+    console.log("Extracted biomarkers:", JSON.stringify(biomarkers));
+    console.log("Recommendations count:", recommendations.length);
+    console.log("Medicine stack count:", medicine_stack.length);
 
     // Update the medical_documents record
     if (documentId) {
       await supabase.from("medical_documents").update({
-        extracted_data: biomarkers || {},
-        recommendations: recommendations || [],
-        medicine_stack: medicine_stack || [],
+        extracted_data: biomarkers,
+        recommendations,
+        medicine_stack,
         provider: provider || "",
         document_type: document_type || "General",
         status: "reviewed",
@@ -153,6 +123,7 @@ ${fileContent}`;
         }
       }
       if (Object.keys(validBiomarkers).length > 0) {
+        console.log("Updating health profile with:", JSON.stringify(validBiomarkers));
         await supabase.from("health_profiles")
           .update(validBiomarkers)
           .eq("user_id", user.id);
