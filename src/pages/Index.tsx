@@ -4,13 +4,15 @@ import { Session } from "@supabase/supabase-js";
 import { HealthProvider, useHealth } from "@/lib/health-context";
 import { AppScreen } from "@/lib/types";
 import AuthPage from "@/components/AuthPage";
+import DashboardScreen from "@/components/screens/DashboardScreen";
 import TodayScreen from "@/components/screens/TodayScreen";
 import BodyScreen from "@/components/screens/BodyScreen";
 import FutureScreen from "@/components/screens/FutureScreen";
 import { Toaster } from "@/components/ui/toaster";
-import { Activity, User, TrendingUp } from "lucide-react";
+import { LayoutDashboard, Activity, User, TrendingUp } from "lucide-react";
 
 const SCREENS: { id: AppScreen; label: string; icon: React.ElementType }[] = [
+  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { id: "today", label: "Today", icon: Activity },
   { id: "body", label: "Body", icon: User },
   { id: "future", label: "Future", icon: TrendingUp },
