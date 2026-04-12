@@ -37,15 +37,28 @@ function AppShell() {
     return () => subscription.unsubscribe();
   }, []);
 
+  // Check onboarding status after session is ready
+  useEffect(() => {
+    if (!session) return;
+    const key = `vitalis_onboarded_${session.user.id}`;
+    if (localStorage.getItem(key) === "true") {
+      setOnboarded(true);
+    } else {
+      const t = setTimeout(() => {
+        setOnboarded(dataCompleteness > 0 || localStorage.getItem(key) === "true");
+      }, 800);
+      return () => clearTimeout(t);
+    }
+  }, [session, dataCompleteness]);
+
   const handleSignOut = async () => {
     if (!isGuest) await supabase.auth.signOut();
     setIsGuest(false);
     setSession(null);
   };
 
-  // Swipe between non-AI screens
   const handleTouchStart = (e: React.TouchEvent) => {
-    if (screen === "ai") return; // No swipe on AI screen
+    if (screen === "ai") return;
     startX.current = e.touches[0].clientX;
     swiping.current = true;
   };
@@ -67,21 +80,6 @@ function AppShell() {
       </div>
     );
   }
-
-  // Check onboarding status after session is ready
-  useEffect(() => {
-    if (!session) return;
-    const key = `vitalis_onboarded_${session.user.id}`;
-    if (localStorage.getItem(key) === "true") {
-      setOnboarded(true);
-    } else {
-      // Wait a tick for profile to load, then check
-      const t = setTimeout(() => {
-        setOnboarded(dataCompleteness > 0 || localStorage.getItem(key) === "true");
-      }, 800);
-      return () => clearTimeout(t);
-    }
-  }, [session, dataCompleteness]);
 
   if (!session) {
     return <AuthPage onGuestLogin={() => {}} />;
