@@ -115,17 +115,42 @@ Be concise, actionable, and evidence-based. Use markdown formatting. Prioritize 
     }
   }, [messages, isStreaming, systemPrompt]);
 
-  // Hold for voice (placeholder — shows visual feedback)
+  const recognitionRef = useRef<any>(null);
+
   const handleHoldStart = () => {
     holdTimer.current = setTimeout(() => {
       setIsHolding(true);
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) return;
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = "en-US";
+      let transcript = "";
+      recognition.onresult = (event: SpeechRecognitionEvent) => {
+        transcript = Array.from(event.results)
+          .map(r => r[0].transcript)
+          .join("");
+        setInput(transcript);
+      };
+      recognition.onerror = () => setIsHolding(false);
+      recognition.start();
+      recognitionRef.current = recognition;
     }, 300);
   };
+
   const handleHoldEnd = () => {
     if (holdTimer.current) clearTimeout(holdTimer.current);
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      recognitionRef.current = null;
+    }
     if (isHolding) {
       setIsHolding(false);
-      // Voice input would go here
+      // Auto-send if there's captured text
+      if (input.trim()) {
+        setTimeout(() => sendMessage(input), 100);
+      }
     }
   };
 
