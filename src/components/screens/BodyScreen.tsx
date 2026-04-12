@@ -45,6 +45,14 @@ export default function BodyScreen() {
   const [dragOver, setDragOver] = useState(false);
   const [familyHistory, setFamilyHistory] = useState<string[]>([]);
   const [showProfile, setShowProfile] = useState(true);
+
+  // AI Chat state
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   
 
   // Load family history from localStorage
