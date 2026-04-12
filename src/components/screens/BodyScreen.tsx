@@ -1,8 +1,13 @@
 import { useHealth } from "@/lib/health-context";
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Upload, FileText, Heart, Brain, Wind, Droplets, Activity, ChevronRight, X, Check } from "lucide-react";
+import { Upload, FileText, Heart, Brain, Wind, Droplets, Activity, ChevronRight, User, Dna } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+
+const FAMILY_CONDITIONS = [
+  "Heart Disease", "Diabetes", "Cancer", "Alzheimer's", "Stroke",
+  "High Blood Pressure", "Obesity", "Autoimmune", "None"
+];
 
 const BODY_SYSTEMS = [
   { id: "heart", label: "Heart", icon: Heart, fields: ["bp_systolic", "bp_diastolic", "resting_hr", "hrv_ms"], color: "text-red-400" },
@@ -37,7 +42,15 @@ export default function BodyScreen() {
   const [documents, setDocuments] = useState<any[]>([]);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [familyHistory, setFamilyHistory] = useState<string[]>([]);
+  const [showProfile, setShowProfile] = useState(true);
   const { toast } = useToast();
+
+  // Load family history from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem("vitalis_family_history");
+    if (saved) setFamilyHistory(JSON.parse(saved));
+  }, []);
 
   useEffect(() => {
     if (!userId) return;
@@ -67,10 +80,8 @@ export default function BodyScreen() {
         .insert({ user_id: userId, file_name: file.name, file_path: filePath, document_type: "lab_report", status: "new" })
         .select()
         .single();
-
       if (doc) {
         setDocuments(prev => [doc, ...prev]);
-        // Trigger parsing
         supabase.functions.invoke("parse-document", { body: { documentId: doc.id, filePath } }).catch(() => {});
         toast({ title: "Document uploaded", description: "AI is analyzing your document..." });
       }
@@ -78,7 +89,20 @@ export default function BodyScreen() {
     setUploading(false);
   }, [userId, toast]);
 
+  const toggleFamilyCondition = (condition: string) => {
+    setFamilyHistory(prev => {
+      const next = condition === "None"
+        ? ["None"]
+        : prev.includes(condition)
+          ? prev.filter(c => c !== condition)
+          : [...prev.filter(c => c !== "None"), condition];
+      localStorage.setItem("vitalis_family_history", JSON.stringify(next));
+      return next;
+    });
+  };
+
   const system = BODY_SYSTEMS.find(s => s.id === selectedSystem);
+  const chronoAge = profile.date_of_birth ? new Date().getFullYear() - new Date(profile.date_of_birth).getFullYear() : 0;
 
   return (
     <div className="space-y-5 pb-24 animate-fade-in">
@@ -87,27 +111,116 @@ export default function BodyScreen() {
         <p className="text-xs text-muted-foreground mt-0.5">Health data & medical vault</p>
       </div>
 
-      {/* Profile Summary */}
-      <div className="bg-card border border-border rounded-xl p-3 grid grid-cols-4 gap-2 text-center">
-        {[
-          { label: "Weight", value: `${profile.weight_kg}`, unit: "kg" },
-          { label: "Height", value: `${profile.height_cm}`, unit: "cm" },
-          { label: "Body Fat", value: `${profile.body_fat_pct}`, unit: "%" },
-          { label: "Waist", value: `${profile.waist_cm}`, unit: "cm" },
-        ].map(s => (
-          <div key={s.label}>
-            <p className="text-[9px] text-muted-foreground uppercase">{s.label}</p>
-            <p className="text-sm font-bold text-foreground">{s.value}<span className="text-[9px] text-muted-foreground ml-0.5">{s.unit}</span></p>
+      {/* Quick Profile Section */}
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
+        <button
+          onClick={() => setShowProfile(!showProfile)}
+          className="w-full flex items-center justify-between p-3"
+        >
+          <div className="flex items-center gap-2">
+            <User className="w-4 h-4 text-primary" />
+            <span className="text-xs font-semibold text-foreground uppercase tracking-wider">Quick Profile</span>
           </div>
-        ))}
+          <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform ${showProfile ? "rotate-90" : ""}`} />
+        </button>
+
+        {showProfile && (
+          <div className="px-3 pb-3 space-y-3 border-t border-border/50 pt-3 animate-fade-in">
+            {/* Basic Info Row */}
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[9px] text-muted-foreground uppercase tracking-wider">Age</label>
+                <div className="flex items-center gap-1 mt-0.5">
+                  <input
+                    type="number"
+                    value={chronoAge || ""}
+                    onChange={(e) => {
+                      const age = parseInt(e.target.value) || 30;
+                      const year = new Date().getFullYear() - age;
+                      updateField("date_of_birth", `${year}-01-01`);
+                    }}
+                    className="w-full text-sm font-mono bg-muted border border-border rounded-lg px-2 py-1.5 text-foreground focus:outline-none focus:border-primary"
+                    placeholder="33"
+                    min={1}
+                    max={120}
+                  />
+                  <span className="text-[10px] text-muted-foreground">yrs</span>
+                </div>
+              </div>
+              <div>
+                <label className="text-[9px] text-muted-foreground uppercase tracking-wider">Sex</label>
+                <select
+                  value={profile.sex || ""}
+                  onChange={(e) => updateField("sex", e.target.value)}
+                  className="w-full text-sm bg-muted border border-border rounded-lg px-2 py-1.5 text-foreground focus:outline-none focus:border-primary mt-0.5 appearance-none"
+                >
+                  <option value="">—</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Body Measurements */}
+            <div className="grid grid-cols-4 gap-1.5">
+              {[
+                { key: "weight_kg", label: "Weight", unit: "kg", placeholder: "84" },
+                { key: "height_cm", label: "Height", unit: "cm", placeholder: "180" },
+                { key: "body_fat_pct", label: "Body Fat", unit: "%", placeholder: "18" },
+                { key: "waist_cm", label: "Waist", unit: "cm", placeholder: "86" },
+              ].map(f => (
+                <div key={f.key}>
+                  <label className="text-[8px] text-muted-foreground uppercase">{f.label}</label>
+                  <input
+                    type="number"
+                    value={(profile as any)[f.key] || ""}
+                    onChange={(e) => updateField(f.key as any, parseFloat(e.target.value) || 0)}
+                    className="w-full text-xs font-mono bg-muted border border-border rounded-lg px-1.5 py-1 text-foreground focus:outline-none focus:border-primary mt-0.5"
+                    placeholder={f.placeholder}
+                  />
+                  <span className="text-[8px] text-muted-foreground">{f.unit}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Family History */}
+            <div>
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <Dna className="w-3 h-3 text-muted-foreground" />
+                <label className="text-[9px] text-muted-foreground uppercase tracking-wider">Family History</label>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {FAMILY_CONDITIONS.map(condition => (
+                  <button
+                    key={condition}
+                    onClick={() => toggleFamilyCondition(condition)}
+                    className={`text-[10px] px-2 py-0.5 rounded-full border transition-all ${
+                      familyHistory.includes(condition)
+                        ? "bg-primary/10 border-primary/30 text-primary font-medium"
+                        : "bg-muted border-border text-muted-foreground"
+                    }`}
+                  >
+                    {condition}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Data Completeness */}
-      <div className="flex items-center gap-3">
-        <div className="flex-1 h-1.5 rounded-full bg-muted">
+      {/* Data Gravity */}
+      <div className="bg-card border border-border rounded-xl p-3">
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Model Accuracy</span>
+          <span className="text-xs font-bold text-primary">{dataCompleteness}%</span>
+        </div>
+        <div className="w-full h-1.5 rounded-full bg-muted">
           <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${dataCompleteness}%` }} />
         </div>
-        <span className="text-xs font-semibold text-foreground">{dataCompleteness}%</span>
+        <p className="text-[9px] text-muted-foreground/60 mt-1">
+          {dataCompleteness < 50 ? "Add more data to improve predictions" : dataCompleteness < 80 ? "Upload labs to reach 90%+ accuracy" : "Your model is highly accurate"}
+        </p>
       </div>
 
       {/* Body Systems */}
@@ -165,7 +278,7 @@ export default function BodyScreen() {
         </div>
       )}
 
-      {/* Medical Vault - Drag & Drop */}
+      {/* Medical Vault */}
       <div>
         <h2 className="text-xs font-semibold text-foreground mb-2 uppercase tracking-wider">Medical Vault</h2>
         <div
@@ -186,7 +299,6 @@ export default function BodyScreen() {
           )}
         </div>
 
-        {/* Document List */}
         {documents.length > 0 && (
           <div className="mt-3 space-y-1.5">
             {documents.slice(0, 5).map(doc => (
