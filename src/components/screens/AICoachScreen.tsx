@@ -115,7 +115,7 @@ Be concise, actionable, and evidence-based. Use markdown formatting. Prioritize 
     }
   }, [messages, isStreaming, systemPrompt]);
 
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const recognitionRef = useRef<any>(null);
 
   const handleHoldStart = () => {
     holdTimer.current = setTimeout(() => {
