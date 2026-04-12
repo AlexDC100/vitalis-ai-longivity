@@ -63,9 +63,9 @@ function AppShell() {
   const handleTouchEnd = (e: React.TouchEvent) => {
     if (!swiping.current) return;
     const delta = e.changedTouches[0].clientX - startX.current;
-    const screenOrder: AppScreen[] = ["today", "body", "future"];
+    const screenOrder: AppScreen[] = ["dashboard", "today", "body", "future"];
     const idx = screenOrder.indexOf(screen);
-    if (delta < -60 && idx < 2) setScreen(screenOrder[idx + 1]);
+    if (delta < -60 && idx < 3) setScreen(screenOrder[idx + 1]);
     if (delta > 60 && idx > 0) setScreen(screenOrder[idx - 1]);
     swiping.current = false;
   };
@@ -84,6 +84,7 @@ function AppShell() {
 
   const renderScreen = () => {
     switch (screen) {
+      case "dashboard": return <DashboardScreen />;
       case "today": return <TodayScreen />;
       case "body": return <BodyScreen />;
       case "future": return <FutureScreen />;
