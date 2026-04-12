@@ -22,7 +22,7 @@ function AppShell() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const { isGuest, setIsGuest, setUserId } = useHealth();
-  const [screen, setScreen] = useState<AppScreen>("today");
+  const [screen, setScreen] = useState<AppScreen>("dashboard");
 
   // Swipe navigation
   const containerRef = useRef<HTMLDivElement>(null);
