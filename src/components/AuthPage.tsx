@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { lovable } from "@/integrations/lovable/index";
 import { Button } from "@/components/ui/button";
 import { TrendingUp, Mail, Lock, Eye, EyeOff, User } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -36,11 +37,12 @@ export default function AuthPage({ onGuestLogin }: Props) {
   };
 
   const handleSocial = async (provider: "google" | "apple") => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider,
-      options: { redirectTo: window.location.origin },
+    const result = await lovable.auth.signInWithOAuth(provider, {
+      redirect_uri: window.location.origin,
     });
-    if (error) toast({ title: "Error", description: error.message, variant: "destructive" });
+    if (result.error) {
+      toast({ title: "Error", description: result.error.message, variant: "destructive" });
+    }
   };
 
   return (
