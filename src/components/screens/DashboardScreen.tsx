@@ -218,6 +218,19 @@ export default function DashboardScreen() {
         </div>
       </div>
 
+      {/* Comparison header */}
+      {reviewedDocs.length >= 2 && (
+        <div className="flex items-center gap-2 px-1">
+          <Activity className="w-3.5 h-3.5 text-primary" />
+          <span className="text-[11px] text-muted-foreground">
+            Comparing to {new Date(reviewedDocs[1].created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })} report
+          </span>
+          <span className="text-[10px] text-primary ml-auto">
+            {biomarkers.filter(b => b.trendDirection === "improved").length} improved · {biomarkers.filter(b => b.trendDirection === "worsened").length} worsened
+          </span>
+        </div>
+      )}
+
       {/* Biomarker List */}
       <div className="space-y-2">
         {filtered.length === 0 && (
@@ -229,17 +242,18 @@ export default function DashboardScreen() {
           const cfg = statusConfig[b.status];
           const StatusIcon = cfg.icon;
           const BioIcon = b.icon;
-          // Position indicator on range bar
           const rangeSpan = b.optimalHigh - b.optimalLow;
           const barMin = b.optimalLow - rangeSpan * 0.5;
           const barMax = b.optimalHigh + rangeSpan * 0.5;
           const pct = Math.max(0, Math.min(100, ((b.value - barMin) / (barMax - barMin)) * 100));
           const optStart = ((b.optimalLow - barMin) / (barMax - barMin)) * 100;
           const optWidth = ((b.optimalHigh - b.optimalLow) / (barMax - barMin)) * 100;
+          // Previous value position on bar
+          const prevPct = b.prevValue != null ? Math.max(0, Math.min(100, ((b.prevValue - barMin) / (barMax - barMin)) * 100)) : null;
 
           return (
-            <div key={b.key} className={`bg-card border ${b.status !== "optimal" ? cfg.border : "border-border"} rounded-xl p-3`}>
-              <div className="flex items-center justify-between mb-2">
+            <div key={b.key} className={`bg-card border ${b.status !== "optimal" ? cfg.border : "border-border"} rounded-xl p-3 animate-fade-in`}>
+              <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-2">
                   <BioIcon className={`w-3.5 h-3.5 ${cfg.color}`} />
                   <span className="text-sm font-medium text-foreground">{b.label}</span>
@@ -250,12 +264,45 @@ export default function DashboardScreen() {
                   <StatusIcon className={`w-3.5 h-3.5 ${cfg.color}`} />
                 </div>
               </div>
+              {/* Trend delta row */}
+              {b.delta !== null && (
+                <div className="flex items-center gap-1.5 mb-2">
+                  {b.trendDirection === "improved" ? (
+                    <span className="flex items-center gap-0.5 text-[10px] font-medium text-[hsl(var(--vitalis-success))]">
+                      <TrendingDown className="w-3 h-3" />
+                      {b.delta > 0 ? "+" : ""}{Number(b.delta.toFixed(1))} {b.unit}
+                    </span>
+                  ) : b.trendDirection === "worsened" ? (
+                    <span className="flex items-center gap-0.5 text-[10px] font-medium text-[hsl(var(--vitalis-danger))]">
+                      <TrendingUp className="w-3 h-3" />
+                      {b.delta > 0 ? "+" : ""}{Number(b.delta.toFixed(1))} {b.unit}
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-0.5 text-[10px] font-medium text-muted-foreground">
+                      <Minus className="w-3 h-3" /> No change
+                    </span>
+                  )}
+                  {b.prevValue !== null && (
+                    <span className="text-[10px] text-muted-foreground ml-auto">
+                      prev: {b.prevValue} {b.unit}
+                    </span>
+                  )}
+                </div>
+              )}
               {/* Range bar */}
               <div className="relative h-2 bg-secondary rounded-full overflow-visible">
                 <div
                   className="absolute h-full bg-[hsl(var(--vitalis-success))]/30 rounded-full"
                   style={{ left: `${optStart}%`, width: `${optWidth}%` }}
                 />
+                {/* Previous value ghost marker */}
+                {prevPct !== null && (
+                  <div
+                    className="absolute w-2 h-2 rounded-full bg-muted-foreground/30 border border-muted-foreground/50 top-1/2 -translate-y-1/2 -translate-x-1/2"
+                    style={{ left: `${prevPct}%` }}
+                    title={`Previous: ${b.prevValue}`}
+                  />
+                )}
                 <div
                   className={`absolute w-2.5 h-2.5 rounded-full border-2 border-card top-1/2 -translate-y-1/2 -translate-x-1/2 ${b.status === "optimal" ? "bg-[hsl(var(--vitalis-success))]" : "bg-[hsl(var(--vitalis-danger))]"}`}
                   style={{ left: `${pct}%` }}
