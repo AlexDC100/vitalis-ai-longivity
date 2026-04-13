@@ -8,7 +8,7 @@ import {
 import {
   AlertTriangle, Zap, Clock, TrendingUp, Shield,
   Heart, Flame, Moon, Activity, ChevronRight,
-  ArrowUpRight, ArrowDownRight, Sparkles, Info,
+  ArrowUpRight, ArrowDownRight, Sparkles, Info, Check,
 } from "lucide-react";
 
 const SEVERITY_STYLES = {
