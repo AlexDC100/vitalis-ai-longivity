@@ -495,6 +495,69 @@ export default function TodayScreen() {
         </div>
       </div>
 
+      {/* Monthly Heatmap */}
+      <div className="bg-card border border-border rounded-xl p-3">
+        <h3 className="text-[10px] text-muted-foreground uppercase tracking-wider mb-2">Monthly Activity</h3>
+        {(() => {
+          const log = getActionLog();
+          const now = new Date();
+          const year = now.getFullYear();
+          const month = now.getMonth();
+          const daysInMonth = new Date(year, month + 1, 0).getDate();
+          const firstDow = new Date(year, month, 1).getDay(); // 0=Sun
+          const monthName = now.toLocaleDateString("en", { month: "long" });
+
+          // Build cells: blanks for offset + each day
+          const cells: { day: number; count: number }[] = [];
+          for (let i = 0; i < firstDow; i++) cells.push({ day: 0, count: 0 });
+          for (let d = 1; d <= daysInMonth; d++) {
+            const key = `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+            cells.push({ day: d, count: (log[key] || []).length });
+          }
+          const maxC = Math.max(...cells.map(c => c.count), 1);
+          const today = now.getDate();
+
+          return (
+            <>
+              <p className="text-[9px] text-muted-foreground mb-1.5">{monthName} {year}</p>
+              <div className="grid grid-cols-7 gap-[3px]">
+                {["S","M","T","W","T","F","S"].map((d, i) => (
+                  <span key={i} className="text-[7px] text-muted-foreground/50 text-center">{d}</span>
+                ))}
+                {cells.map((cell, i) => {
+                  if (cell.day === 0) return <div key={`b${i}`} />;
+                  const intensity = cell.count === 0 ? 0 : Math.ceil((cell.count / maxC) * 4);
+                  const bg = intensity === 0
+                    ? "bg-muted/50"
+                    : intensity === 1
+                    ? "bg-primary/20"
+                    : intensity === 2
+                    ? "bg-primary/40"
+                    : intensity === 3
+                    ? "bg-primary/60"
+                    : "bg-primary";
+                  const isToday = cell.day === today;
+                  return (
+                    <div
+                      key={cell.day}
+                      className={`aspect-square rounded-sm ${bg} ${isToday ? "ring-1 ring-primary" : ""}`}
+                      title={`${monthName} ${cell.day}: ${cell.count} actions`}
+                    />
+                  );
+                })}
+              </div>
+              <div className="flex items-center justify-end gap-1 mt-2">
+                <span className="text-[7px] text-muted-foreground">Less</span>
+                {["bg-muted/50", "bg-primary/20", "bg-primary/40", "bg-primary/60", "bg-primary"].map((c, i) => (
+                  <div key={i} className={`w-2.5 h-2.5 rounded-sm ${c}`} />
+                ))}
+                <span className="text-[7px] text-muted-foreground">More</span>
+              </div>
+            </>
+          );
+        })()}
+      </div>
+
       {/* Data Gravity */}
       <div className="bg-card border border-border rounded-xl p-3">
         <div className="flex items-center justify-between mb-1">
