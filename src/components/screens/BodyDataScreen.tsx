@@ -6,7 +6,8 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Heart, Droplets, Brain, Moon, Dumbbell, Plus, X,
   Upload, FileText, Loader2, ChevronDown, ChevronUp,
-  Pill, Syringe, FlaskConical, Activity, AlertCircle, Check
+  Pill, Syringe, FlaskConical, Activity, AlertCircle, Check,
+  Watch, Smartphone, Camera, Scale, Footprints, Wine, Dna
 } from "lucide-react";
 
 interface Section {
@@ -86,7 +87,22 @@ const CATEGORY_ICONS: Record<string, React.ElementType> = {
   medication: Pill, trt: Syringe, steroid: FlaskConical, glp1: Pill, supplement: Plus, other: Plus,
 };
 
-// Check if a value is outside optimal range
+const QUICK_INPUT_FIELDS = [
+  { key: "weight_kg", label: "Weight", unit: "kg", icon: Scale },
+  { key: "avg_sleep_hours", label: "Sleep", unit: "hours", icon: Moon },
+  { key: "resting_hr", label: "Resting HR", unit: "bpm", icon: Heart },
+  { key: "hrv_ms", label: "HRV", unit: "ms", icon: Activity },
+];
+
+const DEVICE_OPTIONS = [
+  { id: "apple_health", name: "Apple Health", icon: Smartphone, formats: ".csv, .xml", description: "Export from Health app → Share → Export All Health Data" },
+  { id: "whoop", name: "Whoop", icon: Watch, formats: ".csv", description: "Whoop app → Settings → Data Export → Download CSV" },
+  { id: "oura", name: "Oura Ring", icon: Watch, formats: ".csv, .json", description: "Oura app → Settings → Account → Download My Data" },
+  { id: "garmin", name: "Garmin", icon: Watch, formats: ".csv, .fit", description: "Garmin Connect → Export/Backup → Export to CSV" },
+  { id: "fitbit", name: "Fitbit", icon: Watch, formats: ".csv, .json", description: "Fitbit → Settings → Data Export → Request Data" },
+  { id: "screenshot", name: "Screenshot", icon: Camera, formats: ".jpg, .png", description: "Take a screenshot from any health app — AI will extract the data" },
+];
+
 function isOutOfRange(key: string, value: number, optimal?: string): boolean {
   if (!optimal || !value || value === 0) return false;
   const v = value;
@@ -103,12 +119,14 @@ export default function BodyDataScreen() {
   const { profile, updateField, userId } = useHealth();
   const { toast } = useToast();
   const [openSection, setOpenSection] = useState<string | null>("cardio");
-  const [tab, setTab] = useState<"data" | "substances" | "vault">("data");
+  const [tab, setTab] = useState<"quick" | "data" | "substances" | "vault" | "devices">("quick");
   const [substances, setSubstances] = useState<SubstanceEntry[]>([]);
   const [newSub, setNewSub] = useState({ name: "", category: "supplement" as SubstanceEntry["category"], dose: "" });
   const [uploading, setUploading] = useState(false);
   const [docs, setDocs] = useState<any[]>([]);
+  const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const deviceFileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const saved = localStorage.getItem("vitalis_substances");
@@ -174,25 +192,69 @@ export default function BodyDataScreen() {
     }
   }, [userId, updateField, toast]);
 
+  const handleDeviceUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !userId) return;
+    setUploading(true);
+
+    try {
+      const filePath = `${userId}/device_${Date.now()}_${file.name}`;
+      const { error: uploadErr } = await supabase.storage.from("medical-documents").upload(filePath, file);
+      if (uploadErr) throw uploadErr;
+
+      const { data: doc } = await supabase.from("medical_documents").insert({
+        user_id: userId,
+        file_name: file.name,
+        file_path: filePath,
+        status: "processing",
+        document_type: "device_export",
+      }).select().single();
+
+      if (doc) {
+        setDocs(prev => [doc, ...prev]);
+        const { data: result } = await supabase.functions.invoke("parse-document", {
+          body: { documentId: doc.id, filePath, documentType: "device_export", device: selectedDevice },
+        });
+
+        if (result?.biomarkers) {
+          Object.entries(result.biomarkers).forEach(([key, val]) => {
+            if (val && typeof val === "number" && val > 0) updateField(key as any, val);
+          });
+        }
+
+        const extracted = result?.biomarkers ? Object.keys(result.biomarkers).filter(k => result.biomarkers[k] > 0).length : 0;
+        toast({ title: "Device data imported", description: `${extracted} metrics extracted from ${selectedDevice || "device"} export.` });
+      }
+    } catch (err: any) {
+      toast({ title: "Import failed", description: err.message, variant: "destructive" });
+    } finally {
+      setUploading(false);
+      setSelectedDevice(null);
+      if (deviceFileRef.current) deviceFileRef.current.value = "";
+    }
+  }, [userId, updateField, toast, selectedDevice]);
+
   const tabs = [
+    { id: "quick" as const, label: "Quick Input" },
     { id: "data" as const, label: "Biomarkers" },
     { id: "substances" as const, label: "Substances" },
-    { id: "vault" as const, label: "Documents" },
+    { id: "devices" as const, label: "Devices" },
+    { id: "vault" as const, label: "Docs" },
   ];
 
   return (
     <div className="pb-24 space-y-5">
       <div className="pt-2">
         <h1 className="text-2xl font-bold text-foreground">Your Body</h1>
-        <p className="text-sm text-muted-foreground mt-1">Data, substances, and lab reports</p>
+        <p className="text-sm text-muted-foreground mt-1">Data, substances, devices, and lab reports</p>
       </div>
 
-      <div className="flex gap-1 bg-secondary/50 p-1 rounded-xl">
+      <div className="flex gap-1 bg-secondary/50 p-1 rounded-xl overflow-x-auto">
         {tabs.map(t => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all ${
+            className={`flex-1 py-2 text-[11px] font-semibold rounded-lg transition-all whitespace-nowrap px-2 ${
               tab === t.id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"
             }`}
           >
@@ -201,8 +263,99 @@ export default function BodyDataScreen() {
         ))}
       </div>
 
-      {tab === "data" && (
-        <div className="space-y-2">
+      {/* QUICK INPUT TAB */}
+      {tab === "quick" && (
+        <div className="space-y-4 animate-fade-in">
+          <p className="text-xs text-muted-foreground">
+            Log your daily metrics quickly. Data feeds into your diagnosis.
+          </p>
+
+          {/* Quick metrics */}
+          <div className="grid grid-cols-2 gap-3">
+            {QUICK_INPUT_FIELDS.map(field => {
+              const Icon = field.icon;
+              const val = (profile as any)[field.key];
+              const display = val === 0 ? "" : String(val || "");
+              return (
+                <div key={field.key} className="bg-card border border-border/50 rounded-2xl p-4 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Icon className="w-4 h-4 text-primary" />
+                    <span className="text-xs font-semibold text-foreground">{field.label}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={display}
+                      onChange={e => {
+                        const num = parseFloat(e.target.value);
+                        updateField(field.key as any, isNaN(num) ? 0 : num);
+                      }}
+                      placeholder="—"
+                      className="w-full text-2xl font-bold text-foreground bg-transparent outline-none"
+                    />
+                    <span className="text-xs text-muted-foreground shrink-0">{field.unit}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Quick lifestyle inputs */}
+          <div className="bg-card border border-border/50 rounded-2xl p-4 space-y-4">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Today's Log</span>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Footprints className="w-4 h-4 text-primary" />
+                  <span className="text-sm text-foreground">Steps</span>
+                </div>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="—"
+                  className="w-20 text-right text-sm font-mono bg-secondary/50 rounded-lg px-2 py-1.5 text-foreground outline-none focus:ring-1 focus:ring-primary/50"
+                />
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Dumbbell className="w-4 h-4 text-primary" />
+                  <span className="text-sm text-foreground">Training</span>
+                </div>
+                <div className="flex gap-1">
+                  {["None", "Light", "Moderate", "Intense"].map(level => (
+                    <button
+                      key={level}
+                      className="px-2 py-1 text-[10px] rounded-lg bg-secondary/50 text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors"
+                    >
+                      {level}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Wine className="w-4 h-4 text-primary" />
+                  <span className="text-sm text-foreground">Alcohol</span>
+                </div>
+                <div className="flex gap-1">
+                  {["None", "1-2", "3-4", "5+"].map(level => (
+                    <button
+                      key={level}
+                      className="px-2 py-1 text-[10px] rounded-lg bg-secondary/50 text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors"
+                    >
+                      {level}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Upload shortcut */}
           <button
             onClick={() => fileRef.current?.click()}
             disabled={uploading}
@@ -215,6 +368,23 @@ export default function BodyDataScreen() {
             </div>
           </button>
           <input ref={fileRef} type="file" className="hidden" onChange={handleUpload} accept=".pdf,.jpg,.png,.jpeg,.csv,.json" />
+        </div>
+      )}
+
+      {/* BIOMARKERS TAB */}
+      {tab === "data" && (
+        <div className="space-y-2 animate-fade-in">
+          <button
+            onClick={() => fileRef.current?.click()}
+            disabled={uploading}
+            className="w-full flex items-center gap-3 bg-primary/10 border border-primary/20 rounded-2xl p-4 hover:bg-primary/15 transition-colors"
+          >
+            {uploading ? <Loader2 className="w-5 h-5 text-primary animate-spin" /> : <Upload className="w-5 h-5 text-primary" />}
+            <div className="text-left">
+              <p className="text-sm font-semibold text-foreground">{uploading ? "Analyzing..." : "Upload lab report"}</p>
+              <p className="text-[11px] text-muted-foreground">AI auto-fills all biomarkers from your results</p>
+            </div>
+          </button>
 
           {SECTIONS.map(section => {
             const Icon = section.icon;
@@ -299,8 +469,9 @@ export default function BodyDataScreen() {
         </div>
       )}
 
+      {/* SUBSTANCES TAB */}
       {tab === "substances" && (
-        <div className="space-y-4">
+        <div className="space-y-4 animate-fade-in">
           <p className="text-xs text-muted-foreground">
             List everything you take. AI adjusts your diagnosis based on this.
           </p>
@@ -369,8 +540,76 @@ export default function BodyDataScreen() {
         </div>
       )}
 
+      {/* DEVICES TAB */}
+      {tab === "devices" && (
+        <div className="space-y-4 animate-fade-in">
+          <input ref={deviceFileRef} type="file" className="hidden" onChange={handleDeviceUpload} accept=".csv,.json,.xml,.fit,.jpg,.png,.jpeg" />
+          
+          <p className="text-xs text-muted-foreground">
+            Import data from your wearable or health app. Export the file from your device, then upload it here.
+          </p>
+
+          <div className="space-y-2">
+            {DEVICE_OPTIONS.map(device => {
+              const Icon = device.icon;
+              const isSelected = selectedDevice === device.id;
+              return (
+                <div key={device.id} className="bg-card border border-border/50 rounded-2xl overflow-hidden">
+                  <button
+                    onClick={() => setSelectedDevice(isSelected ? null : device.id)}
+                    className="w-full flex items-center gap-3 p-4 hover:bg-secondary/20 transition-colors"
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                      <Icon className="w-5 h-5 text-primary" />
+                    </div>
+                    <div className="flex-1 text-left">
+                      <p className="text-sm font-semibold text-foreground">{device.name}</p>
+                      <p className="text-[11px] text-muted-foreground">Accepts: {device.formats}</p>
+                    </div>
+                    <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${isSelected ? "rotate-180" : ""}`} />
+                  </button>
+
+                  {isSelected && (
+                    <div className="px-4 pb-4 space-y-3 border-t border-border/30 pt-3 animate-fade-in">
+                      <div className="bg-secondary/30 rounded-xl p-3">
+                        <p className="text-xs text-muted-foreground leading-relaxed">
+                          <span className="font-semibold text-foreground">How to export:</span><br />
+                          {device.description}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => deviceFileRef.current?.click()}
+                        disabled={uploading}
+                        className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-primary text-primary-foreground text-sm font-semibold disabled:opacity-30 transition-opacity"
+                      >
+                        {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                        {uploading ? "Importing..." : "Upload export file"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="bg-secondary/20 border border-border/30 rounded-2xl p-4">
+            <div className="flex items-start gap-3">
+              <Dna className="w-5 h-5 text-primary shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs font-semibold text-foreground">Future: Direct API Connections</p>
+                <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed">
+                  We're working on direct integrations with Apple Health, Whoop, Oura, and more. 
+                  For now, file imports work perfectly — your data is processed by AI and auto-fills your profile.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DOCUMENTS TAB */}
       {tab === "vault" && (
-        <div className="space-y-3">
+        <div className="space-y-3 animate-fade-in">
           <button
             onClick={() => fileRef.current?.click()}
             disabled={uploading}
@@ -386,25 +625,30 @@ export default function BodyDataScreen() {
           {docs.length === 0 ? (
             <div className="text-center py-8">
               <FileText className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-              <p className="text-sm text-muted-foreground">No documents uploaded</p>
+              <p className="text-sm text-muted-foreground">No documents yet</p>
+              <p className="text-xs text-muted-foreground mt-1">Upload a lab report to get started</p>
             </div>
           ) : (
-            docs.map(doc => (
-              <div key={doc.id} className="bg-card border border-border/50 rounded-2xl p-4">
-                <div className="flex items-center gap-3">
+            <div className="space-y-2">
+              {docs.map(doc => (
+                <div key={doc.id} className="flex items-center gap-3 bg-card border border-border/50 rounded-2xl p-3">
                   <FileText className="w-4 h-4 text-primary shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-foreground truncate">{doc.file_name}</p>
-                    <p className="text-[11px] text-muted-foreground">
-                      {new Date(doc.created_at).toLocaleDateString()} ·{" "}
-                      <span className={doc.status === "reviewed" ? "text-emerald-400" : doc.status === "processing" ? "text-amber-400" : "text-muted-foreground"}>
-                        {doc.status}
-                      </span>
+                    <p className="text-[10px] text-muted-foreground">
+                      {new Date(doc.created_at).toLocaleDateString()} · {doc.status}
                     </p>
                   </div>
+                  <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
+                    doc.status === "completed" ? "bg-emerald-500/10 text-emerald-400" :
+                    doc.status === "processing" ? "bg-amber-500/10 text-amber-400" :
+                    "bg-secondary text-muted-foreground"
+                  }`}>
+                    {doc.status}
+                  </span>
                 </div>
-              </div>
-            ))
+              ))}
+            </div>
           )}
         </div>
       )}
