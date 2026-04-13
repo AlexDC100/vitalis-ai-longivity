@@ -178,7 +178,7 @@ export default function BodyDataScreen() {
   const { profile, updateField, userId } = useHealth();
   const { toast } = useToast();
   const [openSection, setOpenSection] = useState<string | null>("cardio");
-  const [tab, setTab] = useState<"quick" | "data" | "substances" | "vault" | "devices">("quick");
+  const [tab, setTab] = useState<"quick" | "data" | "substances" | "devices">("quick");
   const [substances, setSubstances] = useState<SubstanceEntry[]>([]);
   const [newSub, setNewSub] = useState({ name: "", category: "supplement" as SubstanceEntry["category"], dose: "" });
   const [uploading, setUploading] = useState(false);
