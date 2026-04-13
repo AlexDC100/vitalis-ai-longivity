@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useHealth } from "@/lib/health-context";
 import {
   runDiagnosis, getOverallRisk, getAllSystemScores,
@@ -8,7 +8,7 @@ import {
 import {
   AlertTriangle, Zap, Clock, TrendingUp, Shield,
   Heart, Flame, Moon, Activity, ChevronRight,
-  ArrowUpRight, ArrowDownRight, Sparkles, Info,
+  ArrowUpRight, ArrowDownRight, Sparkles, Info, Check,
 } from "lucide-react";
 
 const SEVERITY_STYLES = {
@@ -37,6 +37,30 @@ export default function DiagnosisScreen() {
   const [substances, setSubstances] = useState<SubstanceEntry[]>([]);
   const [changes, setChanges] = useState<DiagnosisChange[]>([]);
   const prevDiagRef = useRef<Diagnosis | null>(null);
+  const [completedFixes, setCompletedFixes] = useState<string[]>([]);
+  const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
+
+  // Load today's completed actions
+  useEffect(() => {
+    try {
+      const log = JSON.parse(localStorage.getItem("vitalis_action_log") || "{}");
+      const today = new Date().toISOString().slice(0, 10);
+      setCompletedFixes(log[today] || []);
+    } catch {}
+  }, []);
+
+  const completeFix = useCallback((fixId: string, label: string) => {
+    try {
+      const log = JSON.parse(localStorage.getItem("vitalis_action_log") || "{}");
+      const today = new Date().toISOString().slice(0, 10);
+      if (!log[today]) log[today] = [];
+      if (!log[today].includes(fixId)) log[today].push(fixId);
+      localStorage.setItem("vitalis_action_log", JSON.stringify(log));
+      setCompletedFixes([...log[today]]);
+      setFeedbackMsg(`✓ ${label}`);
+      setTimeout(() => setFeedbackMsg(null), 2500);
+    } catch {}
+  }, []);
 
   useEffect(() => {
     try {
@@ -93,6 +117,14 @@ export default function DiagnosisScreen() {
               <span className="text-xs text-foreground">{c.description}</span>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Feedback Toast */}
+      {feedbackMsg && (
+        <div className="fixed top-14 left-1/2 -translate-x-1/2 z-50 bg-primary text-primary-foreground px-4 py-2 rounded-full text-xs font-semibold shadow-lg animate-fade-in flex items-center gap-1.5">
+          <TrendingUp className="w-3.5 h-3.5" />
+          {feedbackMsg}
         </div>
       )}
 
@@ -172,19 +204,30 @@ export default function DiagnosisScreen() {
           <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
             What to fix
           </h2>
-          {diagnosis.fixes.map((fix, i) => (
+          {diagnosis.fixes.map((fix, i) => {
+            const fixId = `fix-${i}-${fix.action.slice(0, 20).replace(/\s/g, '-')}`;
+            const isDone = completedFixes.includes(fixId);
+            return (
             <div
               key={i}
-              className="bg-card border border-border/50 rounded-2xl p-4 space-y-2"
+              className={`bg-card border border-border/50 rounded-2xl p-4 space-y-2 transition-opacity ${isDone ? "opacity-50" : ""}`}
             >
               <div className="flex items-start gap-3">
-                <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
-                  <Zap className="w-4 h-4 text-primary" />
+                <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${isDone ? "bg-primary/20" : "bg-primary/10"}`}>
+                  {isDone ? <Check className="w-4 h-4 text-primary" /> : <Zap className="w-4 h-4 text-primary" />}
                 </div>
                 <div className="flex-1">
-                  <p className="text-sm font-semibold text-foreground">{fix.action}</p>
+                  <p className={`text-sm font-semibold ${isDone ? "line-through text-muted-foreground" : "text-foreground"}`}>{fix.action}</p>
                   <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{fix.why}</p>
                 </div>
+                {!isDone && (
+                  <button
+                    onClick={() => completeFix(fixId, fix.action)}
+                    className="w-7 h-7 rounded-full border border-border flex items-center justify-center shrink-0 hover:bg-primary/10 hover:border-primary/30 transition-colors mt-0.5"
+                  >
+                    <Check className="w-3.5 h-3.5 text-muted-foreground" />
+                  </button>
+                )}
               </div>
               <div className="flex items-center justify-between pl-10">
                 <span className="text-xs font-medium text-primary">{fix.impact}</span>
@@ -194,7 +237,8 @@ export default function DiagnosisScreen() {
                 </span>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
