@@ -1,7 +1,10 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useHealth } from "@/lib/health-context";
 import { runDiagnosis, SubstanceEntry } from "@/lib/diagnosis-engine";
-import { Send, Mic, MicOff, Bot, User, Stethoscope } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { Send, Mic, Bot, User, Stethoscope, Upload, Loader2 } from "lucide-react";
+import { extractTextFromFile } from "@/lib/pdf-utils";
+import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from "react-markdown";
 
 interface ChatMsg {
@@ -13,17 +16,19 @@ interface ChatMsg {
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
 
 export default function AIDoctorScreen() {
-  const { profile, longevityScore, biologicalAge, chronologicalAge } = useHealth();
+  const { profile, updateField, longevityScore, biologicalAge, chronologicalAge, userId } = useHealth();
+  const { toast } = useToast();
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [isHolding, setIsHolding] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<any>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
-  // Load substances
   const [substances, setSubstances] = useState<SubstanceEntry[]>([]);
   useEffect(() => {
     const saved = localStorage.getItem("vitalis_substances");
@@ -35,7 +40,6 @@ export default function AIDoctorScreen() {
   }, [messages]);
 
   const diagnoses = runDiagnosis(profile, substances);
-  const topDiagnosis = diagnoses[0];
 
   const substanceList = substances.length > 0
     ? substances.map(s => `${s.name} (${s.category}${s.dose ? `, ${s.dose}` : ""})`).join(", ")
@@ -45,28 +49,61 @@ export default function AIDoctorScreen() {
     ? diagnoses.map(d => `- ${d.title} (${d.severity}, score ${d.riskScore}): ${d.explanation}`).join("\n")
     : "No significant issues detected.";
 
-  const systemPrompt = `You are Vitalis AI Doctor — a clinical-grade health diagnostic AI. You speak like a direct, no-BS longevity physician. Be concise, specific, and actionable. Always reference the user's actual numbers.
+  const systemPrompt = `You are Vitalis AI Doctor — an elite longevity medicine physician combining the expertise of Dr. Peter Attia, Dr. Andrew Huberman, and Dr. David Sinclair.
+
+PERSONALITY & STYLE:
+- Speak like a direct, no-BS longevity physician having a 1-on-1 consultation
+- Be conversational but clinically precise — like ChatGPT for health
+- Use the patient's actual numbers in every response
+- When comparing values, use markdown tables for clarity
+- Proactively identify patterns across biomarkers
+- Give specific protocols with dosages, timelines, and expected outcomes
 
 PATIENT DATA:
-- Age: ${chronologicalAge} | Biological Age: ${biologicalAge}
-- BP: ${profile.bp_systolic}/${profile.bp_diastolic} | HR: ${profile.resting_hr} | HRV: ${profile.hrv_ms} | VO2: ${profile.vo2_max}
-- LDL: ${profile.ldl} | HDL: ${profile.hdl} | ApoB: ${profile.apob} | TG: ${profile.triglycerides} | Lp(a): ${profile.lpa}
-- Glucose: ${profile.fasting_glucose} | HbA1c: ${profile.hba1c} | Insulin: ${profile.fasting_insulin}
-- hs-CRP: ${profile.hscrp} | Homocysteine: ${profile.homocysteine}
-- Testosterone: ${profile.testosterone} | Cortisol: ${profile.cortisol} | TSH: ${profile.tsh} | Vit D: ${profile.vitamin_d}
-- Sleep: ${profile.avg_sleep_hours}h (quality ${profile.sleep_quality}/100) | Body fat: ${profile.body_fat_pct}%
+- Name: ${profile.full_name || "Patient"} | Age: ${chronologicalAge} | Biological Age: ${biologicalAge} | Sex: ${profile.sex || "Unknown"}
+- Height: ${profile.height_cm}cm | Weight: ${profile.weight_kg}kg | Body Fat: ${profile.body_fat_pct}% | Waist: ${profile.waist_cm}cm
+
+CARDIOVASCULAR:
+- BP: ${profile.bp_systolic}/${profile.bp_diastolic} mmHg | Resting HR: ${profile.resting_hr} bpm | HRV: ${profile.hrv_ms} ms | VO2 Max: ${profile.vo2_max} ml/kg/min
+
+LIPIDS:
+- Total Cholesterol: ${profile.total_cholesterol} | LDL: ${profile.ldl} | HDL: ${profile.hdl} | Triglycerides: ${profile.triglycerides}
+- ApoB: ${profile.apob} mg/dL | Lp(a): ${profile.lpa} nmol/L
+
+METABOLIC:
+- Fasting Glucose: ${profile.fasting_glucose} mg/dL | HbA1c: ${profile.hba1c}% | Fasting Insulin: ${profile.fasting_insulin} μU/mL
+- hs-CRP: ${profile.hscrp} mg/L | Homocysteine: ${profile.homocysteine} μmol/L
+
+HORMONES:
+- Testosterone: ${profile.testosterone} ng/dL | Free T: ${profile.free_t} pg/mL | Estradiol: ${profile.estradiol} pg/mL
+- DHEA-S: ${profile.dhea_s} μg/dL | Cortisol: ${profile.cortisol} μg/dL
+- TSH: ${profile.tsh} mIU/L | Free T3: ${profile.free_t3} pg/mL | Free T4: ${profile.free_t4} ng/dL
+- IGF-1: ${profile.igf1} ng/mL | Vitamin D: ${profile.vitamin_d} ng/mL
+
+SLEEP & RECOVERY:
+- Avg Sleep: ${profile.avg_sleep_hours}h | Sleep Quality: ${profile.sleep_quality}/100 | FEV1: ${profile.fev1_pct}%
 
 SUBSTANCES: ${substanceList}
 
 CURRENT DIAGNOSES:
 ${diagnosisSummary}
 
-RULES:
-- Answer the specific question asked
-- Reference actual biomarker values
-- Give clinical reasoning, not generic advice
-- If substances interact with findings, flag it
-- Use markdown. Keep responses focused.`;
+RESPONSE FORMAT RULES:
+- Use **markdown tables** when comparing biomarkers (columns: Biomarker | Your Value | Optimal Range | Status | Action)
+- Use **headers** (##) to organize multi-topic responses
+- Use **bold** for critical findings and key numbers
+- Give numbered action steps with specific protocols
+- When asked about medications/supplements: include dosage, timing, expected effect, and monitoring plan
+- When interpreting results: explain what each value means clinically, its longevity implications, and the interaction with other markers
+- Always end substantive responses with a "Priority Actions" section
+- If the patient uploads lab results, create a comprehensive analysis table and interpretation
+
+CLINICAL APPROACH:
+- Cross-reference biomarkers — don't analyze in isolation (e.g., insulin + glucose + HbA1c together tell the metabolic story)
+- Flag drug-biomarker interactions when substances are present
+- Reference landmark trials and studies when making recommendations (SPRINT, REDUCE-IT, etc.)
+- Give specific supplement brands/formulations when relevant
+- Be aggressive about optimization — this patient wants to live to 120+ in peak condition`;
 
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || isStreaming) return;
@@ -92,7 +129,12 @@ RULES:
         }),
       });
 
-      if (!resp.ok || !resp.body) throw new Error("Failed to connect");
+      if (!resp.ok) {
+        const errData = await resp.json().catch(() => null);
+        throw new Error(errData?.error || `Error ${resp.status}`);
+      }
+      if (!resp.body) throw new Error("No response body");
+
       const reader = resp.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
@@ -120,12 +162,61 @@ RULES:
           } catch {}
         }
       }
-    } catch {
-      setMessages(prev => [...prev, { id: assistantId, role: "assistant", content: "Connection failed. Please try again." }]);
+    } catch (err: any) {
+      const errorMsg = err?.message || "Connection failed";
+      if (errorMsg.includes("Rate limit")) {
+        toast({ title: "Rate limited", description: "Please wait a moment and try again.", variant: "destructive" });
+      }
+      setMessages(prev => {
+        const last = prev[prev.length - 1];
+        if (last?.id === assistantId && !last.content) {
+          return prev.map(m => m.id === assistantId ? { ...m, content: `⚠️ ${errorMsg}. Please try again.` } : m);
+        }
+        return [...prev, { id: assistantId, role: "assistant", content: `⚠️ ${errorMsg}` }];
+      });
     } finally {
       setIsStreaming(false);
     }
   }, [messages, isStreaming, systemPrompt]);
+
+  const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !userId) return;
+    setIsUploading(true);
+
+    try {
+      const filePath = `${userId}/${Date.now()}_${file.name}`;
+      await supabase.storage.from("medical-documents").upload(filePath, file);
+
+      const { data: doc } = await supabase.from("medical_documents").insert({
+        user_id: userId, file_name: file.name, file_path: filePath, status: "processing",
+      }).select().single();
+
+      if (doc) {
+        const { data: result } = await supabase.functions.invoke("parse-document", {
+          body: { documentId: doc.id, filePath },
+        });
+
+        if (result?.biomarkers) {
+          Object.entries(result.biomarkers).forEach(([key, val]) => {
+            if (val && typeof val === "number" && val > 0) updateField(key as any, val);
+          });
+        }
+
+        // Build a summary for the chat
+        const extractedCount = result?.biomarkers ? Object.keys(result.biomarkers).filter(k => result.biomarkers[k] > 0).length : 0;
+        const summaryText = `I just uploaded "${file.name}". ${extractedCount} biomarkers were extracted and my profile has been updated. Please analyze the new results and tell me what changed, what's concerning, and what I should do next. Create a comparison table of my key biomarkers vs optimal ranges.`;
+        
+        await sendMessage(summaryText);
+        toast({ title: "Lab report analyzed", description: `${extractedCount} biomarkers extracted and profile updated.` });
+      }
+    } catch (err: any) {
+      toast({ title: "Upload failed", description: err.message, variant: "destructive" });
+    } finally {
+      setIsUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }, [userId, updateField, toast, sendMessage]);
 
   const handleHoldStart = () => {
     holdTimer.current = setTimeout(() => {
@@ -157,16 +248,20 @@ RULES:
   };
 
   const quickPrompts = [
-    "What's my #1 problem right now?",
-    "Am I on the right medications?",
-    "What labs should I retest?",
+    "What's my #1 health risk right now?",
+    "Compare all my biomarkers vs optimal",
     "Give me a 30-day protocol",
+    "Interpret my full blood panel",
+    "What labs should I retest and when?",
+    "Analyze drug interactions with my stack",
   ];
 
   return (
     <div className="flex flex-col h-full pb-20 -mx-4 -mt-3">
+      <input ref={fileRef} type="file" className="hidden" onChange={handleFileUpload} accept=".pdf,.jpg,.png,.jpeg" />
+
       {/* Header */}
-      <div className="px-5 pt-4 pb-3">
+      <div className="px-5 pt-4 pb-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center">
             <Stethoscope className="w-5 h-5 text-primary" />
@@ -176,19 +271,27 @@ RULES:
             <p className="text-[11px] text-muted-foreground">Clinical-grade health intelligence</p>
           </div>
         </div>
+        <button
+          onClick={() => fileRef.current?.click()}
+          disabled={isUploading}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors"
+        >
+          {isUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+          {isUploading ? "Analyzing..." : "Upload labs"}
+        </button>
       </div>
 
       {/* Messages */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 space-y-4">
         {messages.length === 0 && (
-          <div className="flex flex-col items-center justify-center pt-10 space-y-5">
+          <div className="flex flex-col items-center justify-center pt-8 space-y-5">
             <div className="w-16 h-16 rounded-3xl bg-primary/10 flex items-center justify-center">
               <Stethoscope className="w-8 h-8 text-primary" />
             </div>
             <div className="text-center space-y-1.5">
-              <p className="text-lg font-semibold text-foreground">Ask your AI Doctor</p>
-              <p className="text-xs text-muted-foreground max-w-[260px]">
-                I see your biomarkers, substances, and diagnoses. Ask me anything about your health.
+              <p className="text-lg font-semibold text-foreground">Your AI Doctor</p>
+              <p className="text-xs text-muted-foreground max-w-[280px]">
+                I see all your biomarkers, substances, and diagnoses. Ask me anything — I'll give you clinical-grade answers with specific protocols.
               </p>
             </div>
             <div className="grid grid-cols-2 gap-2 w-full max-w-sm">
@@ -216,7 +319,7 @@ RULES:
               msg.role === "user" ? "bg-primary text-primary-foreground" : "bg-card border border-border/50"
             }`}>
               {msg.role === "assistant" ? (
-                <div className="prose prose-sm prose-invert max-w-none text-[13px] leading-relaxed [&_p]:mb-2 [&_ul]:mb-2 [&_li]:mb-0.5 [&_strong]:text-foreground [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mb-1">
+                <div className="prose prose-sm prose-invert max-w-none text-[13px] leading-relaxed [&_p]:mb-2 [&_ul]:mb-2 [&_ol]:mb-2 [&_li]:mb-0.5 [&_strong]:text-foreground [&_h2]:text-base [&_h2]:font-bold [&_h2]:mb-2 [&_h2]:mt-3 [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mb-1 [&_table]:w-full [&_table]:text-[11px] [&_th]:bg-secondary/50 [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_th]:font-semibold [&_td]:px-2 [&_td]:py-1 [&_td]:border-t [&_td]:border-border/30 [&_code]:bg-secondary/50 [&_code]:px-1 [&_code]:rounded">
                   <ReactMarkdown>{msg.content || "..."}</ReactMarkdown>
                 </div>
               ) : (
@@ -250,7 +353,7 @@ RULES:
       {/* Voice overlay */}
       {isHolding && (
         <div className="absolute inset-0 bg-background/90 backdrop-blur-md flex flex-col items-center justify-center z-50 animate-fade-in">
-          <div className="w-24 h-24 rounded-full bg-primary/20 flex items-center justify-center animate-pulse-glow">
+          <div className="w-24 h-24 rounded-full bg-primary/20 flex items-center justify-center animate-pulse">
             <Mic className="w-10 h-10 text-primary" />
           </div>
           <p className="text-foreground font-semibold mt-4">Listening...</p>
