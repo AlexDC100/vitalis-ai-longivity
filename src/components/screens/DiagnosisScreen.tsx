@@ -36,12 +36,14 @@ export default function DiagnosisScreen() {
   const { profile } = useHealth();
   const [substances, setSubstances] = useState<SubstanceEntry[]>([]);
   const [changes, setChanges] = useState<DiagnosisChange[]>([]);
-  const prevDiagRef = useRef<Diagnosis | null>(() => {
+  const prevDiagRef = useRef<Diagnosis | null>(null);
+
+  useEffect(() => {
     try {
       const saved = localStorage.getItem("vitalis_prev_diagnosis");
-      return saved ? JSON.parse(saved) : null;
-    } catch { return null; }
-  });
+      if (saved) prevDiagRef.current = JSON.parse(saved);
+    } catch {}
+  }, []);
 
   useEffect(() => {
     const saved = localStorage.getItem("vitalis_substances");
