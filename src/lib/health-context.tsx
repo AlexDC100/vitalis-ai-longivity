@@ -79,13 +79,13 @@ export function HealthProvider({ children }: { children: React.ReactNode }) {
       setSaving(true);
       const { id, created_at, updated_at, ...allFields } = p as any;
       // Only send columns that exist in the DB schema
-      const fields: Record<string, any> = {};
+      const fields: any = {};
       for (const [key, val] of Object.entries(allFields)) {
         if (VALID_DB_COLUMNS.has(key)) fields[key] = val;
       }
       await supabase
         .from("health_profiles")
-        .update(fields)
+        .update(fields as any)
         .eq("user_id", userId);
       setSaving(false);
     }, 1000);
