@@ -60,16 +60,32 @@ export function HealthProvider({ children }: { children: React.ReactNode }) {
     return () => { cancelled = true; };
   }, [userId]);
 
+  // Valid DB columns for health_profiles (must match schema)
+  const VALID_DB_COLUMNS = new Set([
+    "user_id", "full_name", "date_of_birth", "sex", "height_cm", "weight_kg",
+    "body_fat_pct", "waist_cm", "bp_systolic", "bp_diastolic", "hrv_ms",
+    "resting_hr", "vo2_max", "avg_sleep_hours", "sleep_quality", "fev1_pct",
+    "fasting_glucose", "hba1c", "fasting_insulin", "total_cholesterol", "ldl",
+    "hdl", "triglycerides", "apob", "lpa", "hscrp", "homocysteine", "vitamin_d",
+    "testosterone", "free_t", "estradiol", "dhea_s", "cortisol", "tsh",
+    "free_t3", "free_t4", "igf1",
+  ]);
+
   // Debounced save to DB on profile change
   const saveToDb = useCallback((p: HealthProfile) => {
     if (!userId || !loadedRef.current) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
       setSaving(true);
-      const { id, created_at, updated_at, ...fields } = p as any;
+      const { id, created_at, updated_at, ...allFields } = p as any;
+      // Only send columns that exist in the DB schema
+      const fields: any = {};
+      for (const [key, val] of Object.entries(allFields)) {
+        if (VALID_DB_COLUMNS.has(key)) fields[key] = val;
+      }
       await supabase
         .from("health_profiles")
-        .update(fields)
+        .update(fields as any)
         .eq("user_id", userId);
       setSaving(false);
     }, 1000);

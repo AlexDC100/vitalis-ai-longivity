@@ -115,6 +115,65 @@ function isOutOfRange(key: string, value: number, optimal?: string): boolean {
   return false;
 }
 
+interface TodayLogEntry { steps: string; training: string; alcohol: string; }
+
+function TodayLog() {
+  const [log, setLog] = useState<TodayLogEntry>(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const saved = localStorage.getItem(`vitalis_today_${today}`);
+    return saved ? JSON.parse(saved) : { steps: "", training: "", alcohol: "" };
+  });
+  const saveLog = (updated: TodayLogEntry) => {
+    setLog(updated);
+    const today = new Date().toISOString().slice(0, 10);
+    localStorage.setItem(`vitalis_today_${today}`, JSON.stringify(updated));
+  };
+  return (
+    <div className="bg-card border border-border/50 rounded-2xl p-4 space-y-4">
+      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Today's Log</span>
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Footprints className="w-4 h-4 text-primary" />
+            <span className="text-sm text-foreground">Steps</span>
+          </div>
+          <input type="text" inputMode="numeric" value={log.steps}
+            onChange={e => saveLog({ ...log, steps: e.target.value })} placeholder="—"
+            className="w-20 text-right text-sm font-mono bg-secondary/50 rounded-lg px-2 py-1.5 text-foreground outline-none focus:ring-1 focus:ring-primary/50" />
+        </div>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Dumbbell className="w-4 h-4 text-primary" />
+            <span className="text-sm text-foreground">Training</span>
+          </div>
+          <div className="flex gap-1">
+            {["None", "Light", "Moderate", "Intense"].map(level => (
+              <button key={level} onClick={() => saveLog({ ...log, training: level })}
+                className={`px-2 py-1 text-[10px] rounded-lg transition-colors ${log.training === level ? "bg-primary/20 text-primary font-semibold" : "bg-secondary/50 text-muted-foreground hover:bg-primary/10 hover:text-primary"}`}>
+                {level}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Wine className="w-4 h-4 text-primary" />
+            <span className="text-sm text-foreground">Alcohol</span>
+          </div>
+          <div className="flex gap-1">
+            {["None", "1-2", "3-4", "5+"].map(level => (
+              <button key={level} onClick={() => saveLog({ ...log, alcohol: level })}
+                className={`px-2 py-1 text-[10px] rounded-lg transition-colors ${log.alcohol === level ? "bg-primary/20 text-primary font-semibold" : "bg-secondary/50 text-muted-foreground hover:bg-primary/10 hover:text-primary"}`}>
+                {level}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function BodyDataScreen() {
   const { profile, updateField, userId } = useHealth();
   const { toast } = useToast();
@@ -302,58 +361,7 @@ export default function BodyDataScreen() {
           </div>
 
           {/* Quick lifestyle inputs */}
-          <div className="bg-card border border-border/50 rounded-2xl p-4 space-y-4">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Today's Log</span>
-
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Footprints className="w-4 h-4 text-primary" />
-                  <span className="text-sm text-foreground">Steps</span>
-                </div>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="—"
-                  className="w-20 text-right text-sm font-mono bg-secondary/50 rounded-lg px-2 py-1.5 text-foreground outline-none focus:ring-1 focus:ring-primary/50"
-                />
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Dumbbell className="w-4 h-4 text-primary" />
-                  <span className="text-sm text-foreground">Training</span>
-                </div>
-                <div className="flex gap-1">
-                  {["None", "Light", "Moderate", "Intense"].map(level => (
-                    <button
-                      key={level}
-                      className="px-2 py-1 text-[10px] rounded-lg bg-secondary/50 text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors"
-                    >
-                      {level}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Wine className="w-4 h-4 text-primary" />
-                  <span className="text-sm text-foreground">Alcohol</span>
-                </div>
-                <div className="flex gap-1">
-                  {["None", "1-2", "3-4", "5+"].map(level => (
-                    <button
-                      key={level}
-                      className="px-2 py-1 text-[10px] rounded-lg bg-secondary/50 text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors"
-                    >
-                      {level}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
+          <TodayLog />
 
           {/* Upload shortcut */}
           <button
