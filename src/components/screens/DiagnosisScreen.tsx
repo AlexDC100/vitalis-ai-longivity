@@ -37,6 +37,30 @@ export default function DiagnosisScreen() {
   const [substances, setSubstances] = useState<SubstanceEntry[]>([]);
   const [changes, setChanges] = useState<DiagnosisChange[]>([]);
   const prevDiagRef = useRef<Diagnosis | null>(null);
+  const [completedFixes, setCompletedFixes] = useState<string[]>([]);
+  const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
+
+  // Load today's completed actions
+  useEffect(() => {
+    try {
+      const log = JSON.parse(localStorage.getItem("vitalis_action_log") || "{}");
+      const today = new Date().toISOString().slice(0, 10);
+      setCompletedFixes(log[today] || []);
+    } catch {}
+  }, []);
+
+  const completeFix = useCallback((fixId: string, label: string) => {
+    try {
+      const log = JSON.parse(localStorage.getItem("vitalis_action_log") || "{}");
+      const today = new Date().toISOString().slice(0, 10);
+      if (!log[today]) log[today] = [];
+      if (!log[today].includes(fixId)) log[today].push(fixId);
+      localStorage.setItem("vitalis_action_log", JSON.stringify(log));
+      setCompletedFixes([...log[today]]);
+      setFeedbackMsg(`✓ ${label}`);
+      setTimeout(() => setFeedbackMsg(null), 2500);
+    } catch {}
+  }, []);
 
   useEffect(() => {
     try {
