@@ -3,9 +3,9 @@ import { useHealth } from "@/lib/health-context";
 import { runDiagnosis, SubstanceEntry } from "@/lib/diagnosis-engine";
 import { supabase } from "@/integrations/supabase/client";
 import { Send, Mic, Bot, User, Stethoscope, Upload, Loader2 } from "lucide-react";
-import { extractTextFromFile } from "@/lib/pdf-utils";
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface ChatMsg {
   id: string;
@@ -39,24 +39,25 @@ export default function AIDoctorScreen() {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages]);
 
-  const diagnoses = runDiagnosis(profile, substances);
+  const diagnosis = runDiagnosis(profile, substances);
 
   const substanceList = substances.length > 0
     ? substances.map(s => `${s.name} (${s.category}${s.dose ? `, ${s.dose}` : ""})`).join(", ")
     : "None reported";
 
-  const diagnosisSummary = diagnoses.length > 0
-    ? diagnoses.map(d => `- ${d.title} (${d.severity}, score ${d.riskScore}): ${d.explanation}`).join("\n")
-    : "No significant issues detected.";
+  const diagnosisSummary = `Primary diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk score ${diagnosis.riskScore}/100)
+Explanation: ${diagnosis.explanation}
+Top fixes: ${diagnosis.fixes.map(f => f.action).join("; ")}
+Expected impact: ${diagnosis.lifeImpact}`;
 
   const systemPrompt = `You are Vitalis AI Doctor — an elite longevity medicine physician combining the expertise of Dr. Peter Attia, Dr. Andrew Huberman, and Dr. David Sinclair.
 
 PERSONALITY & STYLE:
-- Speak like a direct, no-BS longevity physician having a 1-on-1 consultation
-- Be conversational but clinically precise — like ChatGPT for health
+- Speak like a direct, no-BS longevity physician in a 1-on-1 consultation
+- Be conversational but clinically precise
 - Use the patient's actual numbers in every response
-- When comparing values, use markdown tables for clarity
-- Proactively identify patterns across biomarkers
+- When comparing values, ALWAYS use markdown tables
+- Proactively identify cross-system patterns
 - Give specific protocols with dosages, timelines, and expected outcomes
 
 PATIENT DATA:
@@ -85,7 +86,7 @@ SLEEP & RECOVERY:
 
 SUBSTANCES: ${substanceList}
 
-CURRENT DIAGNOSES:
+CURRENT DIAGNOSIS:
 ${diagnosisSummary}
 
 RESPONSE FORMAT RULES:
@@ -93,17 +94,9 @@ RESPONSE FORMAT RULES:
 - Use **headers** (##) to organize multi-topic responses
 - Use **bold** for critical findings and key numbers
 - Give numbered action steps with specific protocols
-- When asked about medications/supplements: include dosage, timing, expected effect, and monitoring plan
-- When interpreting results: explain what each value means clinically, its longevity implications, and the interaction with other markers
-- Always end substantive responses with a "Priority Actions" section
-- If the patient uploads lab results, create a comprehensive analysis table and interpretation
-
-CLINICAL APPROACH:
-- Cross-reference biomarkers — don't analyze in isolation (e.g., insulin + glucose + HbA1c together tell the metabolic story)
-- Flag drug-biomarker interactions when substances are present
-- Reference landmark trials and studies when making recommendations (SPRINT, REDUCE-IT, etc.)
-- Give specific supplement brands/formulations when relevant
-- Be aggressive about optimization — this patient wants to live to 120+ in peak condition`;
+- Always end substantive responses with a "## Priority Actions" section
+- Reference landmark trials (SPRINT, REDUCE-IT, etc.)
+- Cross-reference biomarkers — don't analyze in isolation`;
 
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || isStreaming) return;
@@ -131,6 +124,11 @@ CLINICAL APPROACH:
 
       if (!resp.ok) {
         const errData = await resp.json().catch(() => null);
+        if (resp.status === 429) {
+          toast({ title: "Rate limited", description: "Please wait a moment and try again.", variant: "destructive" });
+        } else if (resp.status === 402) {
+          toast({ title: "Credits exhausted", description: "Please add funds in Settings > Workspace > Usage.", variant: "destructive" });
+        }
         throw new Error(errData?.error || `Error ${resp.status}`);
       }
       if (!resp.body) throw new Error("No response body");
@@ -164,20 +162,17 @@ CLINICAL APPROACH:
       }
     } catch (err: any) {
       const errorMsg = err?.message || "Connection failed";
-      if (errorMsg.includes("Rate limit")) {
-        toast({ title: "Rate limited", description: "Please wait a moment and try again.", variant: "destructive" });
-      }
       setMessages(prev => {
         const last = prev[prev.length - 1];
         if (last?.id === assistantId && !last.content) {
-          return prev.map(m => m.id === assistantId ? { ...m, content: `⚠️ ${errorMsg}. Please try again.` } : m);
+          return prev.map(m => m.id === assistantId ? { ...m, content: `⚠️ ${errorMsg}` } : m);
         }
         return [...prev, { id: assistantId, role: "assistant", content: `⚠️ ${errorMsg}` }];
       });
     } finally {
       setIsStreaming(false);
     }
-  }, [messages, isStreaming, systemPrompt]);
+  }, [messages, isStreaming, systemPrompt, toast]);
 
   const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -203,10 +198,8 @@ CLINICAL APPROACH:
           });
         }
 
-        // Build a summary for the chat
         const extractedCount = result?.biomarkers ? Object.keys(result.biomarkers).filter(k => result.biomarkers[k] > 0).length : 0;
         const summaryText = `I just uploaded "${file.name}". ${extractedCount} biomarkers were extracted and my profile has been updated. Please analyze the new results and tell me what changed, what's concerning, and what I should do next. Create a comparison table of my key biomarkers vs optimal ranges.`;
-        
         await sendMessage(summaryText);
         toast({ title: "Lab report analyzed", description: `${extractedCount} biomarkers extracted and profile updated.` });
       }
@@ -221,15 +214,15 @@ CLINICAL APPROACH:
   const handleHoldStart = () => {
     holdTimer.current = setTimeout(() => {
       setIsHolding(true);
-      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       if (!SR) return;
       const rec = new SR();
       rec.continuous = true;
       rec.interimResults = true;
       rec.lang = "en-US";
       let transcript = "";
-      rec.onresult = (e: SpeechRecognitionEvent) => {
-        transcript = Array.from(e.results).map(r => r[0].transcript).join("");
+      rec.onresult = (e: any) => {
+        transcript = Array.from(e.results).map((r: any) => r[0].transcript).join("");
         setInput(transcript);
       };
       rec.onerror = () => setIsHolding(false);
@@ -319,8 +312,8 @@ CLINICAL APPROACH:
               msg.role === "user" ? "bg-primary text-primary-foreground" : "bg-card border border-border/50"
             }`}>
               {msg.role === "assistant" ? (
-                <div className="prose prose-sm prose-invert max-w-none text-[13px] leading-relaxed [&_p]:mb-2 [&_ul]:mb-2 [&_ol]:mb-2 [&_li]:mb-0.5 [&_strong]:text-foreground [&_h2]:text-base [&_h2]:font-bold [&_h2]:mb-2 [&_h2]:mt-3 [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mb-1 [&_table]:w-full [&_table]:text-[11px] [&_th]:bg-secondary/50 [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_th]:font-semibold [&_td]:px-2 [&_td]:py-1 [&_td]:border-t [&_td]:border-border/30 [&_code]:bg-secondary/50 [&_code]:px-1 [&_code]:rounded">
-                  <ReactMarkdown>{msg.content || "..."}</ReactMarkdown>
+                <div className="prose prose-sm prose-invert max-w-none text-[13px] leading-relaxed [&_p]:mb-2 [&_ul]:mb-2 [&_ol]:mb-2 [&_li]:mb-0.5 [&_strong]:text-foreground [&_h2]:text-base [&_h2]:font-bold [&_h2]:mb-2 [&_h2]:mt-3 [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mb-1 [&_table]:w-full [&_table]:text-[11px] [&_th]:bg-secondary/50 [&_th]:px-2 [&_th]:py-1.5 [&_th]:text-left [&_th]:font-semibold [&_th]:border-b [&_th]:border-border/50 [&_td]:px-2 [&_td]:py-1.5 [&_td]:border-t [&_td]:border-border/30 [&_code]:bg-secondary/50 [&_code]:px-1 [&_code]:rounded [&_table]:border [&_table]:border-border/30 [&_table]:rounded-lg [&_table]:overflow-hidden">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content || "..."}</ReactMarkdown>
                 </div>
               ) : (
                 <p className="text-[13px] leading-relaxed">{msg.content}</p>
@@ -385,9 +378,9 @@ CLINICAL APPROACH:
           <button
             onClick={() => sendMessage(input)}
             disabled={!input.trim() || isStreaming}
-            className="w-8 h-8 rounded-xl bg-primary flex items-center justify-center text-primary-foreground disabled:opacity-30 transition-all shrink-0"
+            className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center disabled:opacity-30 transition-opacity shrink-0"
           >
-            <Send className="w-4 h-4" />
+            <Send className="w-4 h-4 text-primary-foreground" />
           </button>
         </div>
       </div>

@@ -9,6 +9,7 @@ export interface Diagnosis {
   riskScore: number; // 0-100
   fixes: Fix[];
   lifeImpact: string;
+  systemScores: Record<string, number>;
 }
 
 export interface Fix {
@@ -36,215 +37,342 @@ const SUBSTANCE_CATEGORIES = [
 
 export { SUBSTANCE_CATEGORIES };
 
-export function runDiagnosis(profile: HealthProfile, substances: SubstanceEntry[]): Diagnosis[] {
-  const diagnoses: Diagnosis[] = [];
+// ─── Confidence scoring ───────────────────────────────────────────────
 
-  // Check cardiovascular risk
-  const cvRisk = assessCardiovascular(profile, substances);
-  if (cvRisk) diagnoses.push(cvRisk);
+const CONFIDENCE_KEYS: (keyof HealthProfile)[] = [
+  "bp_systolic", "bp_diastolic", "ldl", "hdl", "triglycerides", "apob",
+  "fasting_glucose", "hba1c", "fasting_insulin", "hscrp", "homocysteine",
+  "hrv_ms", "resting_hr", "vo2_max", "avg_sleep_hours", "sleep_quality",
+  "testosterone", "free_t", "tsh", "vitamin_d", "cortisol",
+  "body_fat_pct", "waist_cm", "weight_kg",
+];
 
-  // Check metabolic dysfunction
-  const metRisk = assessMetabolic(profile, substances);
-  if (metRisk) diagnoses.push(metRisk);
-
-  // Check inflammatory burden
-  const inflRisk = assessInflammation(profile, substances);
-  if (inflRisk) diagnoses.push(inflRisk);
-
-  // Check recovery failure
-  const recRisk = assessRecovery(profile);
-  if (recRisk) diagnoses.push(recRisk);
-
-  // Check hormonal imbalance
-  const hormRisk = assessHormonal(profile, substances);
-  if (hormRisk) diagnoses.push(hormRisk);
-
-  // Sort by severity score
-  diagnoses.sort((a, b) => b.riskScore - a.riskScore);
-  return diagnoses;
+export function calculateConfidence(profile: HealthProfile): number {
+  const filled = CONFIDENCE_KEYS.filter(k => {
+    const v = (profile as any)[k];
+    return v !== undefined && v !== null && v !== 0 && v !== "";
+  }).length;
+  return Math.round((filled / CONFIDENCE_KEYS.length) * 100);
 }
 
-function assessCardiovascular(p: HealthProfile, subs: SubstanceEntry[]): Diagnosis | null {
+// ─── System risk assessments (weighted, normalized) ───────────────────
+
+interface SystemResult {
+  id: string;
+  title: string;
+  category: string;
+  score: number;
+  factors: string[];
+  fixes: Fix[];
+  lifeImpact: string;
+}
+
+function assessCardiovascular(p: HealthProfile, subs: SubstanceEntry[]): SystemResult {
   let score = 0;
   const factors: string[] = [];
   const fixes: Fix[] = [];
 
-  if (p.bp_systolic > 130) { score += 25; factors.push(`systolic BP ${p.bp_systolic} mmHg (>130)`); }
-  else if (p.bp_systolic > 120) { score += 10; factors.push(`systolic BP ${p.bp_systolic} mmHg (elevated)`); }
+  // BP — strongest mortality signal
+  if (p.bp_systolic > 140) { score += 30; factors.push(`Systolic BP ${p.bp_systolic} mmHg — Stage 2 hypertension`); }
+  else if (p.bp_systolic > 130) { score += 20; factors.push(`Systolic BP ${p.bp_systolic} mmHg — Stage 1 hypertension`); }
+  else if (p.bp_systolic > 120) { score += 8; factors.push(`Systolic BP ${p.bp_systolic} mmHg — elevated`); }
 
-  if (p.ldl > 130) { score += 20; factors.push(`LDL ${p.ldl} mg/dL (>130)`); }
-  else if (p.ldl > 100) { score += 10; factors.push(`LDL ${p.ldl} mg/dL (suboptimal)`); }
+  if (p.bp_diastolic > 90) { score += 15; factors.push(`Diastolic BP ${p.bp_diastolic} mmHg — high`); }
+  else if (p.bp_diastolic > 80) { score += 8; factors.push(`Diastolic BP ${p.bp_diastolic} mmHg — elevated`); }
 
-  if (p.apob > 90) { score += 20; factors.push(`ApoB ${p.apob} mg/dL (>90)`); }
-  if (p.lpa > 50) { score += 15; factors.push(`Lp(a) ${p.lpa} nmol/L (elevated, genetic)`); }
-  if (p.triglycerides > 150) { score += 10; factors.push(`Triglycerides ${p.triglycerides} mg/dL (>150)`); }
-  if (p.hdl < 40) { score += 15; factors.push(`HDL ${p.hdl} mg/dL (low)`); }
+  // Lipids — cumulative ApoB-driven atherogenic burden
+  if (p.ldl > 160) { score += 25; factors.push(`LDL ${p.ldl} mg/dL — very high atherogenic load`); }
+  else if (p.ldl > 130) { score += 18; factors.push(`LDL ${p.ldl} mg/dL — elevated atherogenic risk`); }
+  else if (p.ldl > 100) { score += 8; factors.push(`LDL ${p.ldl} mg/dL — suboptimal for longevity`); }
+
+  if (p.apob > 120) { score += 20; factors.push(`ApoB ${p.apob} mg/dL — high particle count`); }
+  else if (p.apob > 90) { score += 12; factors.push(`ApoB ${p.apob} mg/dL — above optimal`); }
+
+  if (p.lpa > 75) { score += 18; factors.push(`Lp(a) ${p.lpa} nmol/L — high genetic risk (non-modifiable)`); }
+  else if (p.lpa > 50) { score += 10; factors.push(`Lp(a) ${p.lpa} nmol/L — elevated genetic risk`); }
+
+  if (p.hdl < 40) { score += 12; factors.push(`HDL ${p.hdl} mg/dL — critically low protective cholesterol`); }
   else if (p.hdl < 50) { score += 5; }
 
+  if (p.triglycerides > 200) { score += 12; factors.push(`Triglycerides ${p.triglycerides} mg/dL — high`); }
+  else if (p.triglycerides > 150) { score += 6; factors.push(`Triglycerides ${p.triglycerides} mg/dL — elevated`); }
+
+  // Substance adjustments
   const onSteroids = subs.some(s => s.category === "steroid" || s.category === "trt");
-  if (onSteroids) { score += 10; factors.push("anabolic/TRT use elevates cardiovascular strain"); }
+  if (onSteroids) { score += 12; factors.push("Exogenous androgens increase cardiovascular strain and hematocrit"); }
 
-  if (score < 15) return null;
-
-  if (p.ldl > 100) fixes.push({ action: "Target LDL below 100 mg/dL", why: "Each 38 mg/dL LDL reduction cuts CV events ~22%", impact: "-22% cardiovascular events", urgency: "this-week" });
-  if (p.bp_systolic > 120) fixes.push({ action: "Lower blood pressure to <120/80", why: "SPRINT trial showed 27% mortality reduction", impact: "-27% all-cause mortality", urgency: "now" });
-  if (p.triglycerides > 150) fixes.push({ action: "Reduce triglycerides through diet", why: "High triglycerides accelerate atherosclerosis", impact: "-15% CVD risk", urgency: "this-month" });
+  // Generate fixes ranked by impact
+  if (p.ldl > 100) fixes.push({ action: `Target LDL below ${p.ldl > 160 ? '70' : '100'} mg/dL`, why: "Each 38 mg/dL LDL reduction cuts cardiovascular events by ~22%. Cumulative LDL exposure drives plaque formation.", impact: "-22% cardiovascular events", urgency: "this-week" });
+  if (p.bp_systolic > 120) fixes.push({ action: "Lower blood pressure to <120/80", why: "SPRINT trial: intensive BP control reduced mortality 27%. Every 10 mmHg reduction in systolic cuts stroke risk 40%.", impact: "-27% all-cause mortality", urgency: "now" });
+  if (p.triglycerides > 150 || p.hdl < 40) fixes.push({ action: "Optimize lipid ratios with diet and exercise", why: "High TG/low HDL ratio is the strongest predictor of insulin-resistant atherogenic dyslipidemia.", impact: "-15-20% CVD risk", urgency: "this-month" });
+  if (p.apob > 90 && fixes.length < 3) fixes.push({ action: "Reduce ApoB particle count below 80 mg/dL", why: "ApoB is a better predictor of cardiovascular events than LDL-C. Each atherogenic particle damages the endothelium.", impact: "-30% plaque progression", urgency: "this-week" });
 
   return {
     id: "cardiovascular",
     title: "Cardiovascular Risk Elevated",
-    severity: score >= 40 ? "critical" : score >= 25 ? "high" : "moderate",
     category: "Heart & Vessels",
-    explanation: factors.join(". ") + ".",
-    riskScore: Math.min(score, 100),
+    score: Math.min(score, 100),
+    factors,
     fixes: fixes.slice(0, 3),
-    lifeImpact: score >= 40 ? "+5-8 years with intervention" : "+2-4 years with optimization",
+    lifeImpact: score >= 40 ? "+5-8 years with aggressive intervention" : score >= 20 ? "+3-5 years with optimization" : "+1-2 years with fine-tuning",
   };
 }
 
-function assessMetabolic(p: HealthProfile, subs: SubstanceEntry[]): Diagnosis | null {
+function assessMetabolic(p: HealthProfile, subs: SubstanceEntry[]): SystemResult {
   let score = 0;
   const factors: string[] = [];
   const fixes: Fix[] = [];
 
-  if (p.fasting_glucose > 100) { score += 25; factors.push(`fasting glucose ${p.fasting_glucose} mg/dL (pre-diabetic range)`); }
-  else if (p.fasting_glucose > 90) { score += 10; factors.push(`fasting glucose ${p.fasting_glucose} mg/dL (suboptimal)`); }
+  if (p.fasting_glucose > 125) { score += 35; factors.push(`Fasting glucose ${p.fasting_glucose} mg/dL — diabetic range`); }
+  else if (p.fasting_glucose > 100) { score += 22; factors.push(`Fasting glucose ${p.fasting_glucose} mg/dL — pre-diabetic`); }
+  else if (p.fasting_glucose > 90) { score += 8; factors.push(`Fasting glucose ${p.fasting_glucose} mg/dL — suboptimal`); }
+  else if (p.fasting_glucose > 0 && p.fasting_glucose < 65) { score += 12; factors.push(`Fasting glucose ${p.fasting_glucose} mg/dL — low, possible over-suppression`); }
 
-  if (p.hba1c > 5.7) { score += 30; factors.push(`HbA1c ${p.hba1c}% (pre-diabetic)`); }
-  else if (p.hba1c > 5.4) { score += 10; factors.push(`HbA1c ${p.hba1c}% (suboptimal)`); }
+  if (p.hba1c > 6.5) { score += 35; factors.push(`HbA1c ${p.hba1c}% — diabetic`); }
+  else if (p.hba1c > 5.7) { score += 22; factors.push(`HbA1c ${p.hba1c}% — pre-diabetic`); }
+  else if (p.hba1c > 5.4) { score += 8; factors.push(`HbA1c ${p.hba1c}% — trending high`); }
 
-  if (p.fasting_insulin > 10) { score += 20; factors.push(`fasting insulin ${p.fasting_insulin} μU/mL (insulin resistant)`); }
-  else if (p.fasting_insulin > 6) { score += 8; factors.push(`fasting insulin ${p.fasting_insulin} μU/mL (trending high)`); }
+  if (p.fasting_insulin > 15) { score += 25; factors.push(`Fasting insulin ${p.fasting_insulin} μU/mL — significant insulin resistance`); }
+  else if (p.fasting_insulin > 10) { score += 15; factors.push(`Fasting insulin ${p.fasting_insulin} μU/mL — early insulin resistance`); }
+  else if (p.fasting_insulin > 6) { score += 5; factors.push(`Fasting insulin ${p.fasting_insulin} μU/mL — trending high`); }
 
-  if (p.body_fat_pct > 25) { score += 15; factors.push(`body fat ${p.body_fat_pct}% (excess visceral fat likely)`); }
+  if (p.body_fat_pct > 30) { score += 18; factors.push(`Body fat ${p.body_fat_pct}% — metabolically obese`); }
+  else if (p.body_fat_pct > 25) { score += 12; factors.push(`Body fat ${p.body_fat_pct}% — excess visceral fat likely`); }
+  else if (p.body_fat_pct > 20) { score += 5; factors.push(`Body fat ${p.body_fat_pct}% — suboptimal`); }
+
+  if (p.waist_cm > 102) { score += 15; factors.push(`Waist ${p.waist_cm} cm — high visceral fat risk`); }
+  else if (p.waist_cm > 90) { score += 8; factors.push(`Waist ${p.waist_cm} cm — above optimal`); }
 
   const onGlp1 = subs.some(s => s.category === "glp1");
-  if (onGlp1 && score > 0) { score -= 10; factors.push("GLP-1 agonist in use — actively treating"); }
+  if (onGlp1 && score > 0) { score = Math.max(0, score - 12); factors.push("GLP-1 agonist in use — actively treating metabolic dysfunction"); }
 
-  if (score < 15) return null;
-
-  if (p.fasting_glucose > 90) fixes.push({ action: "Implement time-restricted eating", why: "Reduces fasting glucose by 5-15 mg/dL in 4 weeks", impact: "-40% diabetes risk", urgency: "now" });
-  if (p.fasting_insulin > 6) fixes.push({ action: "Add 30 min post-meal walks", why: "Reduces insulin spikes by 30-50%", impact: "-30% insulin resistance", urgency: "this-week" });
-  if (p.body_fat_pct > 20) fixes.push({ action: "Target 15% body fat", why: "Visceral fat drives insulin resistance", impact: "-50% metabolic syndrome risk", urgency: "this-month" });
+  if (p.fasting_glucose > 90 || p.hba1c > 5.4) fixes.push({ action: "Implement time-restricted eating (16:8)", why: "Reduces fasting glucose 5-15 mg/dL in 4 weeks. Activates AMPK and improves insulin sensitivity.", impact: "-40% diabetes progression risk", urgency: "now" });
+  if (p.fasting_insulin > 6) fixes.push({ action: "Add 30-min post-meal walks", why: "Reduces postprandial insulin spikes 30-50%. GLUT4 translocation clears glucose without insulin.", impact: "-30% insulin resistance", urgency: "this-week" });
+  if (p.body_fat_pct > 20 || p.waist_cm > 90) fixes.push({ action: `Target ${p.body_fat_pct > 25 ? '18' : '15'}% body fat`, why: "Visceral fat is an endocrine organ producing inflammatory cytokines that drive insulin resistance.", impact: "-50% metabolic syndrome risk", urgency: "this-month" });
 
   return {
     id: "metabolic",
     title: "Metabolic Dysfunction",
-    severity: score >= 40 ? "critical" : score >= 25 ? "high" : "moderate",
     category: "Metabolism",
-    explanation: factors.join(". ") + ".",
-    riskScore: Math.min(score, 100),
+    score: Math.min(score, 100),
+    factors,
     fixes: fixes.slice(0, 3),
-    lifeImpact: score >= 40 ? "+6-10 years with reversal" : "+2-5 years with optimization",
+    lifeImpact: score >= 40 ? "+6-10 years with metabolic reversal" : score >= 20 ? "+3-5 years with optimization" : "+1-2 years with fine-tuning",
   };
 }
 
-function assessInflammation(p: HealthProfile, subs: SubstanceEntry[]): Diagnosis | null {
+function assessInflammation(p: HealthProfile, subs: SubstanceEntry[]): SystemResult {
   let score = 0;
   const factors: string[] = [];
   const fixes: Fix[] = [];
 
-  if (p.hscrp > 3) { score += 30; factors.push(`hs-CRP ${p.hscrp} mg/L (high systemic inflammation)`); }
-  else if (p.hscrp > 1) { score += 15; factors.push(`hs-CRP ${p.hscrp} mg/L (elevated)`); }
+  if (p.hscrp > 5) { score += 35; factors.push(`hs-CRP ${p.hscrp} mg/L — severe systemic inflammation`); }
+  else if (p.hscrp > 3) { score += 25; factors.push(`hs-CRP ${p.hscrp} mg/L — high cardiovascular inflammatory risk`); }
+  else if (p.hscrp > 1) { score += 12; factors.push(`hs-CRP ${p.hscrp} mg/L — moderate inflammation`); }
 
-  if (p.homocysteine > 12) { score += 15; factors.push(`homocysteine ${p.homocysteine} μmol/L (>12)`); }
+  if (p.homocysteine > 15) { score += 18; factors.push(`Homocysteine ${p.homocysteine} μmol/L — high vascular inflammation`); }
+  else if (p.homocysteine > 12) { score += 10; factors.push(`Homocysteine ${p.homocysteine} μmol/L — elevated`); }
+  else if (p.homocysteine > 10) { score += 4; factors.push(`Homocysteine ${p.homocysteine} μmol/L — suboptimal`); }
 
   const onSteroids = subs.some(s => s.category === "steroid");
-  if (onSteroids) { score += 10; factors.push("anabolic steroids can elevate inflammatory markers"); }
+  if (onSteroids) { score += 8; factors.push("Anabolic steroids can elevate inflammatory markers via hepatic stress"); }
 
-  if (score < 15) return null;
-
-  if (p.hscrp > 1) fixes.push({ action: "Eliminate seed oils and processed foods", why: "Omega-6 excess drives chronic inflammation", impact: "-40% hs-CRP in 8 weeks", urgency: "now" });
-  if (p.homocysteine > 10) fixes.push({ action: "Start methylated B vitamins", why: "Reduces homocysteine, a vascular inflammation driver", impact: "-25% homocysteine levels", urgency: "this-week" });
-  fixes.push({ action: "Add 2g EPA/DHA daily", why: "Omega-3s directly inhibit inflammatory pathways", impact: "-30% systemic inflammation", urgency: "this-week" });
+  if (p.hscrp > 1) fixes.push({ action: "Eliminate processed seed oils and refined carbs", why: "Omega-6:3 imbalance drives NF-κB inflammatory cascade. Processed foods are the #1 source.", impact: "-40% hs-CRP in 8 weeks", urgency: "now" });
+  if (p.homocysteine > 10) fixes.push({ action: "Start methylated B-vitamins (B9, B12, B6)", why: "Homocysteine is a direct vascular toxin. Methylation support reduces levels 25-35%.", impact: "-25% homocysteine", urgency: "this-week" });
+  if (score > 0) fixes.push({ action: "Add 2g EPA/DHA daily (high-quality fish oil)", why: "EPA directly inhibits COX-2 and resolvin pathways, reducing systemic inflammation.", impact: "-30% inflammatory markers", urgency: "this-week" });
 
   return {
     id: "inflammation",
     title: "Chronic Inflammation",
-    severity: score >= 30 ? "high" : "moderate",
     category: "Inflammation",
-    explanation: factors.join(". ") + ".",
-    riskScore: Math.min(score, 100),
+    score: Math.min(score, 100),
+    factors,
     fixes: fixes.slice(0, 3),
-    lifeImpact: "+2-4 years with inflammation control",
+    lifeImpact: score >= 30 ? "+3-5 years with inflammation control" : "+1-3 years with optimization",
   };
 }
 
-function assessRecovery(p: HealthProfile): Diagnosis | null {
+function assessRecovery(p: HealthProfile): SystemResult {
   let score = 0;
   const factors: string[] = [];
   const fixes: Fix[] = [];
 
-  if (p.hrv_ms < 30) { score += 25; factors.push(`HRV ${p.hrv_ms} ms (critically low autonomic function)`); }
-  else if (p.hrv_ms < 50) { score += 10; factors.push(`HRV ${p.hrv_ms} ms (suboptimal recovery)`); }
+  if (p.hrv_ms > 0 && p.hrv_ms < 20) { score += 30; factors.push(`HRV ${p.hrv_ms} ms — critically low autonomic function, high mortality risk`); }
+  else if (p.hrv_ms < 30) { score += 20; factors.push(`HRV ${p.hrv_ms} ms — severely impaired recovery`); }
+  else if (p.hrv_ms < 50) { score += 10; factors.push(`HRV ${p.hrv_ms} ms — suboptimal autonomic regulation`); }
 
-  if (p.avg_sleep_hours < 6) { score += 25; factors.push(`${p.avg_sleep_hours}h avg sleep (severe deficit)`); }
-  else if (p.avg_sleep_hours < 7) { score += 10; factors.push(`${p.avg_sleep_hours}h avg sleep (insufficient)`); }
+  if (p.avg_sleep_hours > 0 && p.avg_sleep_hours < 5) { score += 30; factors.push(`${p.avg_sleep_hours}h avg sleep — severe deprivation, accelerated aging`); }
+  else if (p.avg_sleep_hours < 6) { score += 22; factors.push(`${p.avg_sleep_hours}h avg sleep — significant deficit`); }
+  else if (p.avg_sleep_hours < 7) { score += 10; factors.push(`${p.avg_sleep_hours}h avg sleep — insufficient for recovery`); }
 
-  if (p.sleep_quality < 50) { score += 15; factors.push(`sleep quality ${p.sleep_quality}/100 (poor)`); }
-  else if (p.sleep_quality < 70) { score += 5; }
+  if (p.sleep_quality > 0 && p.sleep_quality < 40) { score += 15; factors.push(`Sleep quality ${p.sleep_quality}/100 — poor architecture`); }
+  else if (p.sleep_quality < 60) { score += 8; factors.push(`Sleep quality ${p.sleep_quality}/100 — impaired`); }
 
-  if (p.cortisol > 20) { score += 15; factors.push(`cortisol ${p.cortisol} μg/dL (elevated stress)`); }
-  if (p.resting_hr > 75) { score += 10; factors.push(`resting HR ${p.resting_hr} bpm (elevated)`); }
+  if (p.cortisol > 25) { score += 18; factors.push(`Cortisol ${p.cortisol} μg/dL — chronically elevated stress`); }
+  else if (p.cortisol > 20) { score += 10; factors.push(`Cortisol ${p.cortisol} μg/dL — elevated stress response`); }
 
-  if (score < 15) return null;
+  if (p.resting_hr > 80) { score += 12; factors.push(`Resting HR ${p.resting_hr} bpm — elevated sympathetic tone`); }
+  else if (p.resting_hr > 70) { score += 5; factors.push(`Resting HR ${p.resting_hr} bpm — above optimal`); }
 
-  if (p.avg_sleep_hours < 7) fixes.push({ action: "Prioritize 7-8 hours of sleep", why: "Each hour below 7 increases mortality 13%", impact: "-13% mortality per hour gained", urgency: "now" });
-  if (p.hrv_ms < 50) fixes.push({ action: "Start daily HRV training (breathing)", why: "5 min coherence breathing raises HRV 15-20%", impact: "+20% recovery capacity", urgency: "this-week" });
-  if (p.cortisol > 18) fixes.push({ action: "Implement cortisol management", why: "Chronic cortisol accelerates aging across all systems", impact: "-3 years biological age", urgency: "this-month" });
+  if (p.vo2_max > 0 && p.vo2_max < 30) { score += 15; factors.push(`VO2 Max ${p.vo2_max} — poor cardiorespiratory fitness`); }
+  else if (p.vo2_max < 40) { score += 8; factors.push(`VO2 Max ${p.vo2_max} — below optimal`); }
+
+  if (p.avg_sleep_hours < 7) fixes.push({ action: "Prioritize 7-8 hours of sleep nightly", why: "Each hour below 7 increases all-cause mortality 13%. Sleep is when glymphatic clearance removes brain waste.", impact: "-13% mortality per hour gained", urgency: "now" });
+  if (p.hrv_ms > 0 && p.hrv_ms < 50) fixes.push({ action: "Daily HRV training — 5 min coherence breathing", why: "Vagal tone training increases HRV 15-25% in 8 weeks. Higher HRV = better stress resilience and longevity.", impact: "+20% recovery capacity", urgency: "this-week" });
+  if (p.vo2_max < 45) fixes.push({ action: "Add 150 min/week Zone 2 + 1-2 HIIT sessions", why: "VO2 Max is the single strongest predictor of all-cause mortality. Moving from bottom to top quartile = 5x mortality reduction.", impact: "+5-8 years lifespan", urgency: "this-month" });
+  if (p.cortisol > 20 && fixes.length < 3) fixes.push({ action: "Implement cortisol management protocol", why: "Chronic cortisol accelerates telomere shortening, impairs immune function, and drives visceral fat deposition.", impact: "-3 years biological age", urgency: "this-month" });
 
   return {
     id: "recovery",
     title: "Recovery Failure",
-    severity: score >= 35 ? "high" : "moderate",
     category: "Recovery & Sleep",
-    explanation: factors.join(". ") + ".",
-    riskScore: Math.min(score, 100),
+    score: Math.min(score, 100),
+    factors,
     fixes: fixes.slice(0, 3),
-    lifeImpact: "+2-5 years with recovery optimization",
+    lifeImpact: score >= 35 ? "+4-7 years with recovery optimization" : score >= 15 ? "+2-4 years with improvement" : "+1-2 years with fine-tuning",
   };
 }
 
-function assessHormonal(p: HealthProfile, subs: SubstanceEntry[]): Diagnosis | null {
+function assessHormonal(p: HealthProfile, subs: SubstanceEntry[]): SystemResult {
   let score = 0;
   const factors: string[] = [];
   const fixes: Fix[] = [];
-
   const onTRT = subs.some(s => s.category === "trt");
 
-  if (p.testosterone < 300 && !onTRT) { score += 20; factors.push(`testosterone ${p.testosterone} ng/dL (low)`); }
-  if (p.tsh > 4) { score += 15; factors.push(`TSH ${p.tsh} mIU/L (hypothyroid range)`); }
-  else if (p.tsh < 0.5) { score += 15; factors.push(`TSH ${p.tsh} mIU/L (hyperthyroid range)`); }
+  // Vitamin D — most impactful single marker
+  if (p.vitamin_d > 0 && p.vitamin_d < 20) { score += 22; factors.push(`Vitamin D ${p.vitamin_d} ng/mL — deficient, linked to 25% higher all-cause mortality`); }
+  else if (p.vitamin_d < 30) { score += 12; factors.push(`Vitamin D ${p.vitamin_d} ng/mL — insufficient for optimal immune and hormonal function`); }
 
-  if (p.vitamin_d < 30) { score += 15; factors.push(`vitamin D ${p.vitamin_d} ng/mL (deficient)`); }
-  if (p.dhea_s < 200) { score += 10; factors.push(`DHEA-S ${p.dhea_s} μg/dL (low for age)`); }
-  if (p.cortisol > 22) { score += 10; factors.push(`cortisol ${p.cortisol} μg/dL (excess)`); }
+  // Testosterone
+  if (!onTRT) {
+    if (p.testosterone > 0 && p.testosterone < 250) { score += 22; factors.push(`Testosterone ${p.testosterone} ng/dL — clinically low, sarcopenia and metabolic decline risk`); }
+    else if (p.testosterone < 400) { score += 12; factors.push(`Testosterone ${p.testosterone} ng/dL — suboptimal for longevity`); }
+  } else {
+    // On TRT — different interpretation
+    if (p.estradiol > 50) { score += 10; factors.push(`Estradiol ${p.estradiol} pg/mL — high aromatization on TRT, needs management`); }
+    factors.push("On TRT — monitor estradiol, hematocrit, PSA, and lipid impact");
+    score += 5;
+  }
 
-  if (onTRT) { factors.push("on TRT — monitor estradiol, hematocrit, and PSA"); score += 5; }
+  // Thyroid
+  if (p.tsh > 4.5) { score += 18; factors.push(`TSH ${p.tsh} mIU/L — hypothyroid range, metabolic slowdown`); }
+  else if (p.tsh > 3) { score += 8; factors.push(`TSH ${p.tsh} mIU/L — subclinical hypothyroid territory`); }
+  else if (p.tsh > 0 && p.tsh < 0.4) { score += 15; factors.push(`TSH ${p.tsh} mIU/L — hyperthyroid range`); }
 
-  if (score < 15) return null;
+  if (p.dhea_s > 0 && p.dhea_s < 150) { score += 12; factors.push(`DHEA-S ${p.dhea_s} μg/dL — low, accelerated aging marker`); }
+  else if (p.dhea_s < 250) { score += 5; factors.push(`DHEA-S ${p.dhea_s} μg/dL — below optimal`); }
 
-  if (p.vitamin_d < 30) fixes.push({ action: "Supplement Vitamin D3 5000 IU/day", why: "Low vitamin D linked to 25% higher mortality", impact: "-25% all-cause mortality risk", urgency: "now" });
-  if (p.testosterone < 400 && !onTRT) fixes.push({ action: "Optimize testosterone naturally", why: "Low T accelerates sarcopenia and metabolic decline", impact: "+3-5 years healthspan", urgency: "this-month" });
-  if (p.tsh > 3) fixes.push({ action: "Get full thyroid panel", why: "Subclinical hypothyroidism slows all metabolic processes", impact: "Identify treatable cause", urgency: "this-week" });
+  if (p.igf1 > 0 && p.igf1 < 100) { score += 8; factors.push(`IGF-1 ${p.igf1} ng/mL — low growth signaling`); }
+  if (p.cortisol > 22) { score += 8; factors.push(`Cortisol ${p.cortisol} μg/dL — excess cortisol suppresses DHEA and testosterone`); }
+
+  if (p.vitamin_d < 30) fixes.push({ action: "Supplement Vitamin D3 5000 IU/day + K2", why: "Low vitamin D is linked to 25% higher all-cause mortality and impairs 200+ gene expressions.", impact: "-25% mortality risk", urgency: "now" });
+  if (!onTRT && p.testosterone < 400 && p.testosterone > 0) fixes.push({ action: "Optimize testosterone naturally first", why: "Sleep, heavy resistance training, body fat reduction, and stress management can raise T 20-40%.", impact: "+3-5 years healthspan", urgency: "this-month" });
+  if (p.tsh > 3) fixes.push({ action: "Get comprehensive thyroid panel (FT3, FT4, antibodies)", why: "Subclinical hypothyroidism affects every metabolic process and accelerates aging.", impact: "Identify treatable cause", urgency: "this-week" });
+  if (p.dhea_s < 200 && fixes.length < 3) fixes.push({ action: "Consider DHEA supplementation 25-50mg/day", why: "DHEA-S declines 2-3% per year after 25. Low levels correlate with increased cardiovascular mortality.", impact: "+2 years healthspan", urgency: "this-month" });
 
   return {
     id: "hormonal",
     title: "Hormonal Imbalance",
-    severity: score >= 30 ? "high" : "moderate",
     category: "Hormones",
-    explanation: factors.join(". ") + ".",
-    riskScore: Math.min(score, 100),
+    score: Math.min(score, 100),
+    factors,
     fixes: fixes.slice(0, 3),
-    lifeImpact: "+2-4 years with hormonal optimization",
+    lifeImpact: score >= 30 ? "+3-5 years with hormonal optimization" : "+1-3 years with correction",
   };
 }
 
-export function getOverallRisk(diagnoses: Diagnosis[]): { score: number; label: string; color: string } {
-  if (diagnoses.length === 0) return { score: 0, label: "No issues detected", color: "text-vitalis-success" };
-  const top = diagnoses[0];
-  if (top.severity === "critical") return { score: top.riskScore, label: "Critical", color: "text-vitalis-danger" };
-  if (top.severity === "high") return { score: top.riskScore, label: "High Risk", color: "text-vitalis-warning" };
-  if (top.severity === "moderate") return { score: top.riskScore, label: "Moderate", color: "text-vitalis-warning" };
-  return { score: top.riskScore, label: "Low Risk", color: "text-vitalis-success" };
+// ─── Main diagnosis runner ─────────────────────────────────────────
+
+export function runDiagnosis(profile: HealthProfile, substances: SubstanceEntry[]): Diagnosis {
+  const systems = [
+    assessCardiovascular(profile, substances),
+    assessMetabolic(profile, substances),
+    assessInflammation(profile, substances),
+    assessRecovery(profile),
+    assessHormonal(profile, substances),
+  ];
+
+  // Build system scores map
+  const systemScores: Record<string, number> = {};
+  systems.forEach(s => { systemScores[s.category] = s.score; });
+
+  // Select ONLY the highest-risk system
+  systems.sort((a, b) => b.score - a.score);
+  const top = systems[0];
+
+  const severity: Diagnosis["severity"] =
+    top.score >= 45 ? "critical" :
+    top.score >= 25 ? "high" :
+    top.score >= 10 ? "moderate" : "low";
+
+  return {
+    id: top.id,
+    title: top.title,
+    severity,
+    category: top.category,
+    explanation: top.factors.length > 0
+      ? top.factors.join(". ") + "."
+      : "All markers in this system are within acceptable ranges.",
+    riskScore: top.score,
+    fixes: top.fixes,
+    lifeImpact: top.lifeImpact,
+    systemScores,
+  };
+}
+
+// Get all system scores for risk overview
+export function getAllSystemScores(profile: HealthProfile, substances: SubstanceEntry[]): SystemResult[] {
+  return [
+    assessCardiovascular(profile, substances),
+    assessMetabolic(profile, substances),
+    assessInflammation(profile, substances),
+    assessRecovery(profile),
+    assessHormonal(profile, substances),
+  ].sort((a, b) => b.score - a.score);
+}
+
+export function getOverallRisk(diagnosis: Diagnosis): { score: number; label: string; color: string } {
+  if (diagnosis.riskScore === 0) return { score: 0, label: "No issues detected", color: "text-vitalis-success" };
+  if (diagnosis.severity === "critical") return { score: diagnosis.riskScore, label: "Critical", color: "text-red-400" };
+  if (diagnosis.severity === "high") return { score: diagnosis.riskScore, label: "High Risk", color: "text-amber-400" };
+  if (diagnosis.severity === "moderate") return { score: diagnosis.riskScore, label: "Moderate", color: "text-yellow-400" };
+  return { score: diagnosis.riskScore, label: "Low Risk", color: "text-emerald-400" };
+}
+
+// ─── "What changed?" diff engine ──────────────────────────────────
+
+export interface DiagnosisChange {
+  type: "improved" | "worsened" | "new_problem" | "resolved";
+  description: string;
+}
+
+export function diffDiagnosis(prev: Diagnosis | null, next: Diagnosis): DiagnosisChange[] {
+  const changes: DiagnosisChange[] = [];
+
+  if (!prev) {
+    if (next.riskScore > 0) changes.push({ type: "new_problem", description: `Identified: ${next.title}` });
+    return changes;
+  }
+
+  // Problem changed entirely
+  if (prev.id !== next.id) {
+    changes.push({ type: "resolved", description: `${prev.title} is no longer your top risk` });
+    changes.push({ type: "new_problem", description: `New top risk: ${next.title}` });
+    return changes;
+  }
+
+  // Same problem, score changed
+  const delta = next.riskScore - prev.riskScore;
+  if (delta <= -10) changes.push({ type: "improved", description: `${next.title} risk dropped ${Math.abs(delta)} points` });
+  else if (delta >= 10) changes.push({ type: "worsened", description: `${next.title} risk increased ${delta} points` });
+
+  // Severity change
+  const sevOrder = { low: 0, moderate: 1, high: 2, critical: 3 };
+  if (sevOrder[next.severity] < sevOrder[prev.severity]) {
+    changes.push({ type: "improved", description: `Severity downgraded from ${prev.severity} to ${next.severity}` });
+  } else if (sevOrder[next.severity] > sevOrder[prev.severity]) {
+    changes.push({ type: "worsened", description: `Severity upgraded to ${next.severity}` });
+  }
+
+  return changes;
 }

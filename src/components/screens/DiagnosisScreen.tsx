@@ -1,9 +1,14 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useHealth } from "@/lib/health-context";
-import { runDiagnosis, getOverallRisk, SubstanceEntry, Diagnosis } from "@/lib/diagnosis-engine";
 import {
-  AlertTriangle, ChevronDown, ChevronUp, Zap, Clock,
-  Heart, Flame, Moon, Activity, TrendingUp, Shield
+  runDiagnosis, getOverallRisk, getAllSystemScores,
+  calculateConfidence, diffDiagnosis,
+  SubstanceEntry, Diagnosis, DiagnosisChange,
+} from "@/lib/diagnosis-engine";
+import {
+  AlertTriangle, Zap, Clock, TrendingUp, Shield,
+  Heart, Flame, Moon, Activity, ChevronRight,
+  ArrowUpRight, ArrowDownRight, Sparkles, Info,
 } from "lucide-react";
 
 const SEVERITY_STYLES = {
@@ -29,77 +34,148 @@ const URGENCY_LABELS = {
 
 export default function DiagnosisScreen() {
   const { profile } = useHealth();
-  const [expanded, setExpanded] = useState<string | null>(null);
   const [substances, setSubstances] = useState<SubstanceEntry[]>([]);
+  const [changes, setChanges] = useState<DiagnosisChange[]>([]);
+  const prevDiagRef = useRef<Diagnosis | null>(null);
 
   useEffect(() => {
     const saved = localStorage.getItem("vitalis_substances");
-    if (saved) {
-      try { setSubstances(JSON.parse(saved)); } catch {}
-    }
+    if (saved) try { setSubstances(JSON.parse(saved)); } catch {}
   }, []);
 
-  const diagnoses = runDiagnosis(profile, substances);
-  const overall = getOverallRisk(diagnoses);
-  const topDiagnosis = diagnoses[0] || null;
+  const diagnosis = runDiagnosis(profile, substances);
+  const overall = getOverallRisk(diagnosis);
+  const confidence = calculateConfidence(profile);
+  const systems = getAllSystemScores(profile, substances);
+  const styles = SEVERITY_STYLES[diagnosis.severity];
+
+  // Track changes
+  useEffect(() => {
+    if (prevDiagRef.current) {
+      const diff = diffDiagnosis(prevDiagRef.current, diagnosis);
+      if (diff.length > 0) setChanges(diff);
+    }
+    prevDiagRef.current = diagnosis;
+  }, [diagnosis.id, diagnosis.riskScore, diagnosis.severity]);
+
+  const hasProblem = diagnosis.riskScore > 0;
 
   return (
     <div className="pb-24 space-y-6">
-      <div className="pt-2">
-        {topDiagnosis ? (
+      {/* What Changed? Banner */}
+      {changes.length > 0 && (
+        <div className="bg-primary/5 border border-primary/20 rounded-2xl p-4 space-y-2 animate-fade-in">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-primary" />
+            <span className="text-xs font-semibold text-primary uppercase tracking-wider">What changed</span>
+            <button
+              onClick={() => setChanges([])}
+              className="ml-auto text-[10px] text-muted-foreground hover:text-foreground"
+            >
+              Dismiss
+            </button>
+          </div>
+          {changes.map((c, i) => (
+            <div key={i} className="flex items-center gap-2">
+              {c.type === "improved" || c.type === "resolved" ? (
+                <ArrowDownRight className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              ) : (
+                <ArrowUpRight className="w-3.5 h-3.5 text-red-400 shrink-0" />
+              )}
+              <span className="text-xs text-foreground">{c.description}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Main Diagnosis */}
+      <div className="pt-1">
+        {hasProblem ? (
           <div className="space-y-1">
             <div className="flex items-center gap-2 mb-3">
-              <div className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold uppercase tracking-wider ${SEVERITY_STYLES[topDiagnosis.severity].badge}`}>
-                {topDiagnosis.severity}
+              <div className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold uppercase tracking-wider ${styles.badge}`}>
+                {diagnosis.severity}
               </div>
-              <span className="text-[11px] text-muted-foreground">{topDiagnosis.category}</span>
+              <span className="text-[11px] text-muted-foreground">{diagnosis.category}</span>
             </div>
+
             <h1 className="text-[28px] font-bold text-foreground leading-tight tracking-tight">
-              {topDiagnosis.title}
+              {diagnosis.title}
             </h1>
+
             <p className="text-sm text-muted-foreground leading-relaxed mt-2">
-              {topDiagnosis.explanation}
+              {diagnosis.explanation}
             </p>
-            <div className="flex items-center gap-2 mt-3">
-              <TrendingUp className="w-4 h-4 text-primary" />
-              <span className="text-sm font-medium text-primary">{topDiagnosis.lifeImpact}</span>
+
+            <div className="flex items-center gap-4 mt-3">
+              <div className="flex items-center gap-1.5">
+                <TrendingUp className="w-4 h-4 text-primary" />
+                <span className="text-sm font-medium text-primary">{diagnosis.lifeImpact}</span>
+              </div>
             </div>
           </div>
         ) : (
           <div className="space-y-2">
             <div className="flex items-center gap-2 mb-3">
-              <Shield className="w-5 h-5 text-vitalis-success" />
-              <span className="text-sm font-medium text-vitalis-success">All Clear</span>
+              <Shield className="w-5 h-5 text-emerald-400" />
+              <span className="text-sm font-medium text-emerald-400">All Clear</span>
             </div>
             <h1 className="text-[28px] font-bold text-foreground leading-tight">
               No Issues Detected
             </h1>
             <p className="text-sm text-muted-foreground">
-              Your biomarkers are within optimal ranges. Keep monitoring.
+              Your biomarkers are within optimal ranges. Continue monitoring.
             </p>
           </div>
         )}
       </div>
 
-      {topDiagnosis && topDiagnosis.fixes.length > 0 && (
+      {/* Confidence Score */}
+      <div className="flex items-center gap-3 bg-card border border-border/50 rounded-2xl p-4">
+        <div className="flex-1">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Diagnosis Confidence</span>
+            <span className={`text-sm font-bold ${confidence >= 80 ? 'text-emerald-400' : confidence >= 50 ? 'text-amber-400' : 'text-red-400'}`}>
+              {confidence}%
+            </span>
+          </div>
+          <div className="h-2 bg-secondary rounded-full overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all duration-700 ${
+                confidence >= 80 ? 'bg-emerald-500' : confidence >= 50 ? 'bg-amber-500' : 'bg-red-500'
+              }`}
+              style={{ width: `${confidence}%` }}
+            />
+          </div>
+          {confidence < 70 && (
+            <div className="flex items-center gap-1.5 mt-2">
+              <Info className="w-3 h-3 text-muted-foreground" />
+              <span className="text-[11px] text-muted-foreground">
+                Upload labs to improve accuracy
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* What to Fix — max 3 actions */}
+      {hasProblem && diagnosis.fixes.length > 0 && (
         <div className="space-y-2.5">
           <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
             What to fix
           </h2>
-          {topDiagnosis.fixes.map((fix, i) => (
+          {diagnosis.fixes.map((fix, i) => (
             <div
               key={i}
               className="bg-card border border-border/50 rounded-2xl p-4 space-y-2"
             >
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-start gap-3">
-                  <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
-                    <Zap className="w-4 h-4 text-primary" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-foreground">{fix.action}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">{fix.why}</p>
-                  </div>
+              <div className="flex items-start gap-3">
+                <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                  <Zap className="w-4 h-4 text-primary" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-foreground">{fix.action}</p>
+                  <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{fix.why}</p>
                 </div>
               </div>
               <div className="flex items-center justify-between pl-10">
@@ -114,90 +190,37 @@ export default function DiagnosisScreen() {
         </div>
       )}
 
-      {diagnoses.length > 1 && (
+      {/* System Risk Overview */}
+      <div className="bg-card border border-border/50 rounded-2xl p-4">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">System Risk Map</span>
+          <span className={`text-sm font-bold ${overall.color}`}>{overall.label}</span>
+        </div>
         <div className="space-y-2.5">
-          <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-            Other issues found
-          </h2>
-          {diagnoses.slice(1).map((diag) => {
-            const isExpanded = expanded === diag.id;
-            const styles = SEVERITY_STYLES[diag.severity];
-            const Icon = CATEGORY_ICONS[diag.category] || AlertTriangle;
+          {systems.map((sys) => {
+            const Icon = CATEGORY_ICONS[sys.category] || AlertTriangle;
+            const isTop = sys.id === diagnosis.id;
+            const barColor =
+              sys.score >= 45 ? "bg-red-500" :
+              sys.score >= 25 ? "bg-amber-500" :
+              sys.score >= 10 ? "bg-yellow-500" : "bg-emerald-500";
 
             return (
-              <button
-                key={diag.id}
-                onClick={() => setExpanded(isExpanded ? null : diag.id)}
-                className={`w-full text-left bg-card border ${styles.border} rounded-2xl p-4 transition-all`}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-9 h-9 rounded-xl ${styles.bg} flex items-center justify-center`}>
-                      <Icon className={`w-4.5 h-4.5 ${styles.text}`} />
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-foreground">{diag.title}</p>
-                      <p className="text-[11px] text-muted-foreground">{diag.category}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-md ${styles.badge}`}>
-                      {diag.riskScore}
-                    </span>
-                    {isExpanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
-                  </div>
+              <div key={sys.id} className={`flex items-center gap-3 ${isTop ? 'opacity-100' : 'opacity-60'}`}>
+                <Icon className={`w-3.5 h-3.5 shrink-0 ${isTop ? 'text-primary' : 'text-muted-foreground'}`} />
+                <span className="text-[11px] text-muted-foreground w-24 shrink-0 truncate">{sys.category}</span>
+                <div className="flex-1 h-2 bg-secondary rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-700 ${barColor}`}
+                    style={{ width: `${Math.max(sys.score, 2)}%` }}
+                  />
                 </div>
-
-                {isExpanded && (
-                  <div className="mt-3 pt-3 border-t border-border/30 space-y-3 animate-fade-in">
-                    <p className="text-xs text-muted-foreground">{diag.explanation}</p>
-                    {diag.fixes.map((fix, i) => (
-                      <div key={i} className="flex items-start gap-2">
-                        <Zap className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
-                        <div>
-                          <p className="text-xs font-medium text-foreground">{fix.action}</p>
-                          <p className="text-[11px] text-primary">{fix.impact}</p>
-                        </div>
-                      </div>
-                    ))}
-                    <p className="text-xs font-medium text-primary flex items-center gap-1">
-                      <TrendingUp className="w-3 h-3" />
-                      {diag.lifeImpact}
-                    </p>
-                  </div>
-                )}
-              </button>
+                <span className="text-[11px] font-mono text-muted-foreground w-6 text-right">{sys.score}</span>
+              </div>
             );
           })}
         </div>
-      )}
-
-      {diagnoses.length > 0 && (
-        <div className="bg-card border border-border/50 rounded-2xl p-4">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Risk Overview</span>
-            <span className={`text-sm font-bold ${overall.color}`}>{overall.label}</span>
-          </div>
-          <div className="space-y-2">
-            {diagnoses.map((d) => (
-              <div key={d.id} className="flex items-center gap-3">
-                <span className="text-[11px] text-muted-foreground w-24 shrink-0 truncate">{d.category}</span>
-                <div className="flex-1 h-2 bg-secondary rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all duration-700 ${
-                      d.severity === "critical" ? "bg-red-500" :
-                      d.severity === "high" ? "bg-amber-500" :
-                      d.severity === "moderate" ? "bg-yellow-500" : "bg-emerald-500"
-                    }`}
-                    style={{ width: `${d.riskScore}%` }}
-                  />
-                </div>
-                <span className="text-[11px] font-mono text-muted-foreground w-8 text-right">{d.riskScore}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      </div>
     </div>
   );
 }
