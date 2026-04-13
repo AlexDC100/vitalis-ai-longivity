@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Session } from "@supabase/supabase-js";
 import { HealthProvider, useHealth } from "@/lib/health-context";
@@ -17,7 +17,11 @@ function AppShell() {
   const [loading, setLoading] = useState(true);
   const { setIsGuest, setUserId, dataCompleteness } = useHealth();
   const [screen, setScreen] = useState<Screen>("diagnosis");
+  const [slideDir, setSlideDir] = useState<"left" | "right">("left");
   const [onboarded, setOnboarded] = useState<boolean | null>(null);
+  const prevScreenRef = useRef<Screen>("diagnosis");
+
+  const screenOrder: Screen[] = ["diagnosis", "body", "doctor"];
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
@@ -46,6 +50,14 @@ function AppShell() {
     }
   }, [session, dataCompleteness]);
 
+  const switchScreen = (next: Screen) => {
+    const prevIdx = screenOrder.indexOf(prevScreenRef.current);
+    const nextIdx = screenOrder.indexOf(next);
+    setSlideDir(nextIdx >= prevIdx ? "left" : "right");
+    prevScreenRef.current = next;
+    setScreen(next);
+  };
+
   if (loading || onboarded === null && session) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -73,6 +85,8 @@ function AppShell() {
     { id: "doctor", label: "AI Doctor", icon: Stethoscope },
   ];
 
+  const animClass = slideDir === "left" ? "animate-slide-left" : "animate-slide-right";
+
   return (
     <div className="min-h-screen bg-background flex flex-col max-w-lg mx-auto relative">
       {/* Top Bar */}
@@ -88,9 +102,11 @@ function AppShell() {
 
       {/* Screen */}
       <div className="flex-1 overflow-y-auto px-4 pt-4">
-        {screen === "diagnosis" && <DiagnosisScreen />}
-        {screen === "body" && <BodyDataScreen />}
-        {screen === "doctor" && <AIDoctorScreen />}
+        <div key={screen} className={animClass}>
+          {screen === "diagnosis" && <DiagnosisScreen />}
+          {screen === "body" && <BodyDataScreen />}
+          {screen === "doctor" && <AIDoctorScreen />}
+        </div>
       </div>
 
       {/* Bottom Nav */}
@@ -101,7 +117,7 @@ function AppShell() {
             return (
               <button
                 key={item.id}
-                onClick={() => setScreen(item.id)}
+                onClick={() => switchScreen(item.id)}
                 className={`flex flex-col items-center gap-1 px-6 py-1.5 rounded-xl transition-all ${
                   active ? "text-primary" : "text-muted-foreground"
                 }`}

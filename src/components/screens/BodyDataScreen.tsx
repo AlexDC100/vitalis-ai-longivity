@@ -2,66 +2,65 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useHealth } from "@/lib/health-context";
 import { SubstanceEntry, SUBSTANCE_CATEGORIES } from "@/lib/diagnosis-engine";
 import { supabase } from "@/integrations/supabase/client";
-import { extractTextFromFile } from "@/lib/pdf-utils";
 import { useToast } from "@/hooks/use-toast";
 import {
   Heart, Droplets, Brain, Moon, Dumbbell, Plus, X,
-  Upload, FileText, Check, Loader2, ChevronDown, ChevronUp,
-  Pill, Syringe, FlaskConical, Activity
+  Upload, FileText, Loader2, ChevronDown, ChevronUp,
+  Pill, Syringe, FlaskConical, Activity, AlertCircle, Check
 } from "lucide-react";
 
 interface Section {
   id: string;
   label: string;
   icon: React.ElementType;
-  fields: { key: string; label: string; unit: string }[];
+  fields: { key: string; label: string; unit: string; optimal?: string }[];
 }
 
 const SECTIONS: Section[] = [
   {
     id: "cardio", label: "Cardiovascular", icon: Heart,
     fields: [
-      { key: "bp_systolic", label: "BP Systolic", unit: "mmHg" },
-      { key: "bp_diastolic", label: "BP Diastolic", unit: "mmHg" },
-      { key: "resting_hr", label: "Resting HR", unit: "bpm" },
-      { key: "hrv_ms", label: "HRV", unit: "ms" },
-      { key: "vo2_max", label: "VO2 Max", unit: "ml/kg/min" },
+      { key: "bp_systolic", label: "BP Systolic", unit: "mmHg", optimal: "< 120" },
+      { key: "bp_diastolic", label: "BP Diastolic", unit: "mmHg", optimal: "< 80" },
+      { key: "resting_hr", label: "Resting HR", unit: "bpm", optimal: "50-65" },
+      { key: "hrv_ms", label: "HRV", unit: "ms", optimal: "> 50" },
+      { key: "vo2_max", label: "VO2 Max", unit: "ml/kg/min", optimal: "> 45" },
     ],
   },
   {
     id: "lipids", label: "Lipids", icon: Droplets,
     fields: [
-      { key: "total_cholesterol", label: "Total Cholesterol", unit: "mg/dL" },
-      { key: "ldl", label: "LDL", unit: "mg/dL" },
-      { key: "hdl", label: "HDL", unit: "mg/dL" },
-      { key: "triglycerides", label: "Triglycerides", unit: "mg/dL" },
-      { key: "apob", label: "ApoB", unit: "mg/dL" },
-      { key: "lpa", label: "Lp(a)", unit: "nmol/L" },
+      { key: "total_cholesterol", label: "Total Cholesterol", unit: "mg/dL", optimal: "< 200" },
+      { key: "ldl", label: "LDL", unit: "mg/dL", optimal: "< 100" },
+      { key: "hdl", label: "HDL", unit: "mg/dL", optimal: "> 50" },
+      { key: "triglycerides", label: "Triglycerides", unit: "mg/dL", optimal: "< 100" },
+      { key: "apob", label: "ApoB", unit: "mg/dL", optimal: "< 90" },
+      { key: "lpa", label: "Lp(a)", unit: "nmol/L", optimal: "< 50" },
     ],
   },
   {
     id: "metabolic", label: "Metabolic", icon: Brain,
     fields: [
-      { key: "fasting_glucose", label: "Fasting Glucose", unit: "mg/dL" },
-      { key: "hba1c", label: "HbA1c", unit: "%" },
-      { key: "fasting_insulin", label: "Fasting Insulin", unit: "μU/mL" },
-      { key: "hscrp", label: "hs-CRP", unit: "mg/L" },
-      { key: "homocysteine", label: "Homocysteine", unit: "μmol/L" },
+      { key: "fasting_glucose", label: "Fasting Glucose", unit: "mg/dL", optimal: "72-85" },
+      { key: "hba1c", label: "HbA1c", unit: "%", optimal: "< 5.4" },
+      { key: "fasting_insulin", label: "Fasting Insulin", unit: "μU/mL", optimal: "2-6" },
+      { key: "hscrp", label: "hs-CRP", unit: "mg/L", optimal: "< 0.5" },
+      { key: "homocysteine", label: "Homocysteine", unit: "μmol/L", optimal: "< 10" },
     ],
   },
   {
     id: "hormones", label: "Hormones", icon: Activity,
     fields: [
-      { key: "testosterone", label: "Testosterone", unit: "ng/dL" },
-      { key: "free_t", label: "Free T", unit: "pg/mL" },
-      { key: "estradiol", label: "Estradiol", unit: "pg/mL" },
-      { key: "dhea_s", label: "DHEA-S", unit: "μg/dL" },
-      { key: "cortisol", label: "Cortisol", unit: "μg/dL" },
-      { key: "tsh", label: "TSH", unit: "mIU/L" },
-      { key: "free_t3", label: "Free T3", unit: "pg/mL" },
-      { key: "free_t4", label: "Free T4", unit: "ng/dL" },
-      { key: "igf1", label: "IGF-1", unit: "ng/mL" },
-      { key: "vitamin_d", label: "Vitamin D", unit: "ng/mL" },
+      { key: "testosterone", label: "Testosterone", unit: "ng/dL", optimal: "500-900" },
+      { key: "free_t", label: "Free T", unit: "pg/mL", optimal: "15-25" },
+      { key: "estradiol", label: "Estradiol", unit: "pg/mL", optimal: "20-40" },
+      { key: "dhea_s", label: "DHEA-S", unit: "μg/dL", optimal: "300-500" },
+      { key: "cortisol", label: "Cortisol", unit: "μg/dL", optimal: "6-18" },
+      { key: "tsh", label: "TSH", unit: "mIU/L", optimal: "1-2" },
+      { key: "free_t3", label: "Free T3", unit: "pg/mL", optimal: "3-4" },
+      { key: "free_t4", label: "Free T4", unit: "ng/dL", optimal: "1.0-1.5" },
+      { key: "igf1", label: "IGF-1", unit: "ng/mL", optimal: "150-250" },
+      { key: "vitamin_d", label: "Vitamin D", unit: "ng/mL", optimal: "50-80" },
     ],
   },
   {
@@ -69,28 +68,36 @@ const SECTIONS: Section[] = [
     fields: [
       { key: "height_cm", label: "Height", unit: "cm" },
       { key: "weight_kg", label: "Weight", unit: "kg" },
-      { key: "body_fat_pct", label: "Body Fat", unit: "%" },
-      { key: "waist_cm", label: "Waist", unit: "cm" },
+      { key: "body_fat_pct", label: "Body Fat", unit: "%", optimal: "10-18" },
+      { key: "waist_cm", label: "Waist", unit: "cm", optimal: "< 85" },
     ],
   },
   {
     id: "sleep", label: "Sleep & Recovery", icon: Moon,
     fields: [
-      { key: "avg_sleep_hours", label: "Avg Sleep", unit: "hours" },
-      { key: "sleep_quality", label: "Sleep Quality", unit: "/100" },
-      { key: "fev1_pct", label: "FEV1", unit: "%" },
+      { key: "avg_sleep_hours", label: "Avg Sleep", unit: "hours", optimal: "7-9" },
+      { key: "sleep_quality", label: "Sleep Quality", unit: "/100", optimal: "> 80" },
+      { key: "fev1_pct", label: "FEV1", unit: "%", optimal: "> 95" },
     ],
   },
 ];
 
 const CATEGORY_ICONS: Record<string, React.ElementType> = {
-  medication: Pill,
-  trt: Syringe,
-  steroid: FlaskConical,
-  glp1: Pill,
-  supplement: Plus,
-  other: Plus,
+  medication: Pill, trt: Syringe, steroid: FlaskConical, glp1: Pill, supplement: Plus, other: Plus,
 };
+
+// Check if a value is outside optimal range
+function isOutOfRange(key: string, value: number, optimal?: string): boolean {
+  if (!optimal || !value || value === 0) return false;
+  const v = value;
+  if (optimal.startsWith("< ")) return v >= parseFloat(optimal.slice(2));
+  if (optimal.startsWith("> ")) return v <= parseFloat(optimal.slice(2));
+  if (optimal.includes("-")) {
+    const [min, max] = optimal.split("-").map(Number);
+    return v < min || v > max;
+  }
+  return false;
+}
 
 export default function BodyDataScreen() {
   const { profile, updateField, userId } = useHealth();
@@ -125,9 +132,7 @@ export default function BodyDataScreen() {
     setNewSub({ name: "", category: "supplement", dose: "" });
   };
 
-  const removeSubstance = (i: number) => {
-    saveSubstances(substances.filter((_, idx) => idx !== i));
-  };
+  const removeSubstance = (i: number) => saveSubstances(substances.filter((_, idx) => idx !== i));
 
   const handleUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -155,11 +160,11 @@ export default function BodyDataScreen() {
           });
         }
 
-        // Reload docs
         const { data: refreshed } = await supabase.from("medical_documents").select("*").eq("user_id", userId).order("created_at", { ascending: false }).limit(10);
         if (refreshed) setDocs(refreshed);
 
-        toast({ title: "Lab report analyzed", description: "Your biomarkers have been updated." });
+        const extracted = result?.biomarkers ? Object.keys(result.biomarkers).filter(k => result.biomarkers[k] > 0).length : 0;
+        toast({ title: "Lab report analyzed", description: `${extracted} biomarkers auto-filled from your report.` });
       }
     } catch (err: any) {
       toast({ title: "Upload failed", description: err.message, variant: "destructive" });
@@ -177,13 +182,11 @@ export default function BodyDataScreen() {
 
   return (
     <div className="pb-24 space-y-5">
-      {/* Header */}
       <div className="pt-2">
         <h1 className="text-2xl font-bold text-foreground">Your Body</h1>
         <p className="text-sm text-muted-foreground mt-1">Data, substances, and lab reports</p>
       </div>
 
-      {/* Tabs */}
       <div className="flex gap-1 bg-secondary/50 p-1 rounded-xl">
         {tabs.map(t => (
           <button
@@ -198,10 +201,8 @@ export default function BodyDataScreen() {
         ))}
       </div>
 
-      {/* BIOMARKERS TAB */}
       {tab === "data" && (
         <div className="space-y-2">
-          {/* Upload CTA */}
           <button
             onClick={() => fileRef.current?.click()}
             disabled={uploading}
@@ -210,10 +211,10 @@ export default function BodyDataScreen() {
             {uploading ? <Loader2 className="w-5 h-5 text-primary animate-spin" /> : <Upload className="w-5 h-5 text-primary" />}
             <div className="text-left">
               <p className="text-sm font-semibold text-foreground">{uploading ? "Analyzing..." : "Upload lab report"}</p>
-              <p className="text-[11px] text-muted-foreground">AI extracts and fills your biomarkers</p>
+              <p className="text-[11px] text-muted-foreground">AI auto-fills all biomarkers from your results</p>
             </div>
           </button>
-          <input ref={fileRef} type="file" className="hidden" onChange={handleUpload} accept=".pdf,.jpg,.png,.jpeg" />
+          <input ref={fileRef} type="file" className="hidden" onChange={handleUpload} accept=".pdf,.jpg,.png,.jpeg,.csv,.json" />
 
           {SECTIONS.map(section => {
             const Icon = section.icon;
@@ -221,6 +222,10 @@ export default function BodyDataScreen() {
             const filledCount = section.fields.filter(f => {
               const v = (profile as any)[f.key];
               return v && v !== 0;
+            }).length;
+            const outOfRangeCount = section.fields.filter(f => {
+              const v = (profile as any)[f.key];
+              return v && v !== 0 && isOutOfRange(f.key, v, f.optimal);
             }).length;
 
             return (
@@ -233,6 +238,11 @@ export default function BodyDataScreen() {
                     <Icon className="w-4 h-4 text-primary" />
                     <span className="text-sm font-semibold text-foreground">{section.label}</span>
                     <span className="text-[11px] text-muted-foreground">{filledCount}/{section.fields.length}</span>
+                    {outOfRangeCount > 0 && (
+                      <span className="flex items-center gap-0.5 text-[10px] font-medium text-red-400">
+                        <AlertCircle className="w-3 h-3" /> {outOfRangeCount}
+                      </span>
+                    )}
                   </div>
                   {isOpen ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
                 </button>
@@ -242,9 +252,22 @@ export default function BodyDataScreen() {
                     {section.fields.map(f => {
                       const val = (profile as any)[f.key];
                       const display = val === 0 ? "" : String(val || "");
+                      const filled = val && val !== 0;
+                      const outRange = filled && isOutOfRange(f.key, val, f.optimal);
+                      const inRange = filled && !outRange && f.optimal;
+
                       return (
-                        <div key={f.key} className="flex items-center justify-between gap-3">
-                          <label className="text-xs text-muted-foreground flex-1">{f.label}</label>
+                        <div key={f.key} className="flex items-center justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <label className="text-xs text-muted-foreground flex items-center gap-1">
+                              {f.label}
+                              {outRange && <AlertCircle className="w-3 h-3 text-red-400 shrink-0" />}
+                              {inRange && <Check className="w-3 h-3 text-emerald-400 shrink-0" />}
+                            </label>
+                            {f.optimal && (
+                              <span className="text-[9px] text-muted-foreground/60">{f.optimal}</span>
+                            )}
+                          </div>
                           <div className="flex items-center gap-1">
                             <input
                               type="text"
@@ -255,7 +278,13 @@ export default function BodyDataScreen() {
                                 updateField(f.key as any, isNaN(num) ? 0 : num);
                               }}
                               placeholder="—"
-                              className="w-20 text-right text-sm font-mono bg-secondary/50 rounded-lg px-2 py-1.5 text-foreground outline-none focus:ring-1 focus:ring-primary/50"
+                              className={`w-20 text-right text-sm font-mono rounded-lg px-2 py-1.5 outline-none focus:ring-1 focus:ring-primary/50 ${
+                                outRange
+                                  ? "bg-red-500/10 border border-red-500/30 text-red-400"
+                                  : inRange
+                                  ? "bg-emerald-500/10 text-emerald-400"
+                                  : "bg-secondary/50 text-foreground"
+                              }`}
                             />
                             <span className="text-[10px] text-muted-foreground w-12 text-right">{f.unit}</span>
                           </div>
@@ -270,14 +299,11 @@ export default function BodyDataScreen() {
         </div>
       )}
 
-      {/* SUBSTANCES TAB */}
       {tab === "substances" && (
         <div className="space-y-4">
           <p className="text-xs text-muted-foreground">
             List everything you take. AI adjusts your diagnosis based on this.
           </p>
-
-          {/* Add new */}
           <div className="bg-card border border-border/50 rounded-2xl p-4 space-y-3">
             <input
               value={newSub.name}
@@ -311,7 +337,6 @@ export default function BodyDataScreen() {
             </button>
           </div>
 
-          {/* List */}
           {substances.length === 0 ? (
             <div className="text-center py-8">
               <Pill className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
@@ -344,7 +369,6 @@ export default function BodyDataScreen() {
         </div>
       )}
 
-      {/* DOCUMENTS TAB */}
       {tab === "vault" && (
         <div className="space-y-3">
           <button
@@ -355,7 +379,7 @@ export default function BodyDataScreen() {
             {uploading ? <Loader2 className="w-5 h-5 text-primary animate-spin" /> : <Upload className="w-5 h-5 text-primary" />}
             <div className="text-left">
               <p className="text-sm font-semibold text-foreground">{uploading ? "Processing..." : "Upload document"}</p>
-              <p className="text-[11px] text-muted-foreground">PDF, image — AI analyzes automatically</p>
+              <p className="text-[11px] text-muted-foreground">PDF, image — AI auto-fills all fields</p>
             </div>
           </button>
 
@@ -373,7 +397,7 @@ export default function BodyDataScreen() {
                     <p className="text-sm font-medium text-foreground truncate">{doc.file_name}</p>
                     <p className="text-[11px] text-muted-foreground">
                       {new Date(doc.created_at).toLocaleDateString()} ·{" "}
-                      <span className={doc.status === "reviewed" ? "text-vitalis-success" : doc.status === "processing" ? "text-vitalis-warning" : "text-muted-foreground"}>
+                      <span className={doc.status === "reviewed" ? "text-emerald-400" : doc.status === "processing" ? "text-amber-400" : "text-muted-foreground"}>
                         {doc.status}
                       </span>
                     </p>
