@@ -39,6 +39,13 @@ export default function DiagnosisScreen() {
   const prevDiagRef = useRef<Diagnosis | null>(null);
 
   useEffect(() => {
+    try {
+      const saved = localStorage.getItem("vitalis_prev_diagnosis");
+      if (saved) prevDiagRef.current = JSON.parse(saved);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
     const saved = localStorage.getItem("vitalis_substances");
     if (saved) try { setSubstances(JSON.parse(saved)); } catch {}
   }, []);
@@ -56,6 +63,7 @@ export default function DiagnosisScreen() {
       if (diff.length > 0) setChanges(diff);
     }
     prevDiagRef.current = diagnosis;
+    localStorage.setItem("vitalis_prev_diagnosis", JSON.stringify(diagnosis));
   }, [diagnosis.id, diagnosis.riskScore, diagnosis.severity]);
 
   const hasProblem = diagnosis.riskScore > 0;
