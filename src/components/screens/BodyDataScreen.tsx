@@ -302,11 +302,7 @@ export default function BodyDataScreen() {
           </div>
 
           {/* Quick lifestyle inputs */}
-          <div className="bg-card border border-border/50 rounded-2xl p-4 space-y-4">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Today's Log</span>
-
-            <TodayLog />
-          </div>
+          <TodayLog />
 
           {/* Upload shortcut */}
           <button
