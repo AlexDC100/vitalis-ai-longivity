@@ -120,6 +120,14 @@ export default function DiagnosisScreen() {
         </div>
       )}
 
+      {/* Feedback Toast */}
+      {feedbackMsg && (
+        <div className="fixed top-14 left-1/2 -translate-x-1/2 z-50 bg-primary text-primary-foreground px-4 py-2 rounded-full text-xs font-semibold shadow-lg animate-fade-in flex items-center gap-1.5">
+          <TrendingUp className="w-3.5 h-3.5" />
+          {feedbackMsg}
+        </div>
+      )}
+
       {/* Main Diagnosis */}
       <div className="pt-1">
         {hasProblem ? (
