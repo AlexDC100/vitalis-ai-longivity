@@ -178,7 +178,7 @@ export default function BodyDataScreen() {
   const { profile, updateField, userId } = useHealth();
   const { toast } = useToast();
   const [openSection, setOpenSection] = useState<string | null>("cardio");
-  const [tab, setTab] = useState<"quick" | "data" | "substances" | "vault" | "devices">("quick");
+  const [tab, setTab] = useState<"quick" | "data" | "substances" | "devices">("quick");
   const [substances, setSubstances] = useState<SubstanceEntry[]>([]);
   const [newSub, setNewSub] = useState({ name: "", category: "supplement" as SubstanceEntry["category"], dose: "" });
   const [uploading, setUploading] = useState(false);
@@ -298,7 +298,6 @@ export default function BodyDataScreen() {
     { id: "data" as const, label: "Biomarkers" },
     { id: "substances" as const, label: "Substances" },
     { id: "devices" as const, label: "Devices" },
-    { id: "vault" as const, label: "Docs" },
   ];
 
   return (
@@ -363,18 +362,6 @@ export default function BodyDataScreen() {
           {/* Quick lifestyle inputs */}
           <TodayLog />
 
-          {/* Upload shortcut */}
-          <button
-            onClick={() => fileRef.current?.click()}
-            disabled={uploading}
-            className="w-full flex items-center gap-3 bg-primary/10 border border-primary/20 rounded-2xl p-4 hover:bg-primary/15 transition-colors"
-          >
-            {uploading ? <Loader2 className="w-5 h-5 text-primary animate-spin" /> : <Upload className="w-5 h-5 text-primary" />}
-            <div className="text-left">
-              <p className="text-sm font-semibold text-foreground">{uploading ? "Analyzing..." : "Upload lab report"}</p>
-              <p className="text-[11px] text-muted-foreground">AI auto-fills all biomarkers from your results</p>
-            </div>
-          </button>
           <input ref={fileRef} type="file" className="hidden" onChange={handleUpload} accept=".pdf,.jpg,.png,.jpeg,.csv,.json" />
         </div>
       )}
@@ -382,18 +369,6 @@ export default function BodyDataScreen() {
       {/* BIOMARKERS TAB */}
       {tab === "data" && (
         <div className="space-y-2 animate-fade-in">
-          <button
-            onClick={() => fileRef.current?.click()}
-            disabled={uploading}
-            className="w-full flex items-center gap-3 bg-primary/10 border border-primary/20 rounded-2xl p-4 hover:bg-primary/15 transition-colors"
-          >
-            {uploading ? <Loader2 className="w-5 h-5 text-primary animate-spin" /> : <Upload className="w-5 h-5 text-primary" />}
-            <div className="text-left">
-              <p className="text-sm font-semibold text-foreground">{uploading ? "Analyzing..." : "Upload lab report"}</p>
-              <p className="text-[11px] text-muted-foreground">AI auto-fills all biomarkers from your results</p>
-            </div>
-          </button>
-
           {SECTIONS.map(section => {
             const Icon = section.icon;
             const isOpen = openSection === section.id;
@@ -615,51 +590,6 @@ export default function BodyDataScreen() {
         </div>
       )}
 
-      {/* DOCUMENTS TAB */}
-      {tab === "vault" && (
-        <div className="space-y-3 animate-fade-in">
-          <button
-            onClick={() => fileRef.current?.click()}
-            disabled={uploading}
-            className="w-full flex items-center gap-3 bg-primary/10 border border-primary/20 rounded-2xl p-4"
-          >
-            {uploading ? <Loader2 className="w-5 h-5 text-primary animate-spin" /> : <Upload className="w-5 h-5 text-primary" />}
-            <div className="text-left">
-              <p className="text-sm font-semibold text-foreground">{uploading ? "Processing..." : "Upload document"}</p>
-              <p className="text-[11px] text-muted-foreground">PDF, image — AI auto-fills all fields</p>
-            </div>
-          </button>
-
-          {docs.length === 0 ? (
-            <div className="text-center py-8">
-              <FileText className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-              <p className="text-sm text-muted-foreground">No documents yet</p>
-              <p className="text-xs text-muted-foreground mt-1">Upload a lab report to get started</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {docs.map(doc => (
-                <div key={doc.id} className="flex items-center gap-3 bg-card border border-border/50 rounded-2xl p-3">
-                  <FileText className="w-4 h-4 text-primary shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">{doc.file_name}</p>
-                    <p className="text-[10px] text-muted-foreground">
-                      {new Date(doc.created_at).toLocaleDateString()} · {doc.status}
-                    </p>
-                  </div>
-                  <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
-                    doc.status === "completed" ? "bg-emerald-500/10 text-emerald-400" :
-                    doc.status === "processing" ? "bg-amber-500/10 text-amber-400" :
-                    "bg-secondary text-muted-foreground"
-                  }`}>
-                    {doc.status}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }
