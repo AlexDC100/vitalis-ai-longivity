@@ -2,39 +2,30 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { useHealth } from "@/lib/health-context";
 import { runDiagnosis, SubstanceEntry } from "@/lib/diagnosis-engine";
 import { supabase } from "@/integrations/supabase/client";
-import { Send, Mic, Bot, User, Stethoscope, Upload, Loader2, Calendar, ExternalLink, MapPin } from "lucide-react";
+import { Send, Mic, Bot, User, Stethoscope, Upload, Loader2, Calendar, ExternalLink, MapPin, Paperclip } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 interface ChatMsg {
   id: string;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "action";
   content: string;
-}
-
-interface HospitalBooking {
-  name: string;
-  specialty: string;
-  url: string;
-  phone: string;
-  reason: string;
+  actionType?: "booking" | "upload-success";
+  actionData?: any;
 }
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
 
-const ROMANIAN_HOSPITALS: { name: string; url: string; phone: string; specialties: Record<string, string> }[] = [
+const ROMANIAN_HOSPITALS = [
   {
     name: "Regina Maria",
     url: "https://www.reginamaria.ro/programari",
     phone: "+40 21 9268",
     specialties: {
-      cardiovascular: "Cardiologie",
-      metabolic: "Endocrinologie & Diabet",
-      hormonal: "Endocrinologie",
-      inflammation: "Medicină Internă",
-      recovery: "Neurologie / Somnologie",
-      general: "Medicină Internă",
+      cardiovascular: "Cardiologie", metabolic: "Endocrinologie & Diabet",
+      hormonal: "Endocrinologie", inflammation: "Medicină Internă",
+      recovery: "Neurologie / Somnologie", general: "Medicină Internă",
     },
   },
   {
@@ -42,12 +33,9 @@ const ROMANIAN_HOSPITALS: { name: string; url: string; phone: string; specialtie
     url: "https://www.sanador.ro/programari-online",
     phone: "+40 21 9699",
     specialties: {
-      cardiovascular: "Cardiologie",
-      metabolic: "Endocrinologie",
-      hormonal: "Endocrinologie",
-      inflammation: "Medicină Internă",
-      recovery: "Neurologie",
-      general: "Medicină Internă",
+      cardiovascular: "Cardiologie", metabolic: "Endocrinologie",
+      hormonal: "Endocrinologie", inflammation: "Medicină Internă",
+      recovery: "Neurologie", general: "Medicină Internă",
     },
   },
   {
@@ -55,33 +43,20 @@ const ROMANIAN_HOSPITALS: { name: string; url: string; phone: string; specialtie
     url: "https://www.medlife.ro/programare",
     phone: "+40 21 9646",
     specialties: {
-      cardiovascular: "Cardiologie",
-      metabolic: "Diabet & Nutriție",
-      hormonal: "Endocrinologie",
-      inflammation: "Medicină Internă",
-      recovery: "Neurologie",
-      general: "Medicină Internă",
+      cardiovascular: "Cardiologie", metabolic: "Diabet & Nutriție",
+      hormonal: "Endocrinologie", inflammation: "Medicină Internă",
+      recovery: "Neurologie", general: "Medicină Internă",
     },
   },
 ];
 
-function getBookingSuggestions(diagnosisId: string, severity: string): HospitalBooking[] {
-  if (severity !== "critical" && severity !== "high") return [];
-
-  const systemKey = diagnosisId.includes("cardio") ? "cardiovascular"
-    : diagnosisId.includes("metabol") ? "metabolic"
-    : diagnosisId.includes("inflam") ? "inflammation"
-    : diagnosisId.includes("hormon") ? "hormonal"
-    : diagnosisId.includes("recov") ? "recovery"
-    : "general";
-
-  return ROMANIAN_HOSPITALS.map(h => ({
-    name: h.name,
-    specialty: h.specialties[systemKey] || h.specialties.general,
-    url: h.url,
-    phone: h.phone,
-    reason: `${severity === "critical" ? "Urgent" : "Recommended"} consultation for ${systemKey} concerns`,
-  }));
+function getSystemKey(diagnosisId: string) {
+  if (diagnosisId.includes("cardio")) return "cardiovascular";
+  if (diagnosisId.includes("metabol")) return "metabolic";
+  if (diagnosisId.includes("inflam")) return "inflammation";
+  if (diagnosisId.includes("hormon")) return "hormonal";
+  if (diagnosisId.includes("recov")) return "recovery";
+  return "general";
 }
 
 export default function AIDoctorScreen() {
@@ -92,7 +67,6 @@ export default function AIDoctorScreen() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [isHolding, setIsHolding] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [showBookings, setShowBookings] = useState(false);
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -110,7 +84,8 @@ export default function AIDoctorScreen() {
   }, [messages]);
 
   const diagnosis = runDiagnosis(profile, substances);
-  const bookingSuggestions = getBookingSuggestions(diagnosis.id, diagnosis.severity);
+  const systemKey = getSystemKey(diagnosis.id);
+  const isHighRisk = diagnosis.severity === "critical" || diagnosis.severity === "high";
 
   const substanceList = substances.length > 0
     ? substances.map(s => `${s.name} (${s.category}${s.dose ? `, ${s.dose}` : ""})`).join(", ")
@@ -176,8 +151,8 @@ RESPONSE FORMAT RULES:
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || isStreaming) return;
     const userMsg: ChatMsg = { id: Date.now().toString(), role: "user", content: text.trim() };
-    const allMessages = [...messages, userMsg];
-    setMessages(allMessages);
+    const allMessages = [...messages.filter(m => m.role !== "action"), userMsg];
+    setMessages(prev => [...prev, userMsg]);
     setInput("");
     setIsStreaming(true);
 
@@ -199,11 +174,8 @@ RESPONSE FORMAT RULES:
 
       if (!resp.ok) {
         const errData = await resp.json().catch(() => null);
-        if (resp.status === 429) {
-          toast({ title: "Rate limited", description: "Please wait a moment and try again.", variant: "destructive" });
-        } else if (resp.status === 402) {
-          toast({ title: "Credits exhausted", description: "Please add funds in Settings > Workspace > Usage.", variant: "destructive" });
-        }
+        if (resp.status === 429) toast({ title: "Rate limited", description: "Please wait a moment and try again.", variant: "destructive" });
+        else if (resp.status === 402) toast({ title: "Credits exhausted", description: "Please add funds in Settings > Workspace > Usage.", variant: "destructive" });
         throw new Error(errData?.error || `Error ${resp.status}`);
       }
       if (!resp.body) throw new Error("No response body");
@@ -235,6 +207,22 @@ RESPONSE FORMAT RULES:
           } catch {}
         }
       }
+
+      // After AI response, if it mentions booking/specialist and risk is high, inject booking action
+      if (isHighRisk && assistantContent.toLowerCase().match(/cardiolog|specialist|appointment|book|schedule|consult/)) {
+        const bookingAction: ChatMsg = {
+          id: `booking-${Date.now()}`,
+          role: "action",
+          content: "",
+          actionType: "booking",
+          actionData: {
+            specialty: ROMANIAN_HOSPITALS[0].specialties[systemKey] || "Medicină Internă",
+            severity: diagnosis.severity,
+            category: diagnosis.category,
+          },
+        };
+        setMessages(prev => [...prev, bookingAction]);
+      }
     } catch (err: any) {
       const errorMsg = err?.message || "Connection failed";
       setMessages(prev => {
@@ -247,12 +235,21 @@ RESPONSE FORMAT RULES:
     } finally {
       setIsStreaming(false);
     }
-  }, [messages, isStreaming, systemPrompt, toast]);
+  }, [messages, isStreaming, systemPrompt, toast, isHighRisk, systemKey, diagnosis]);
 
   const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !userId) return;
     setIsUploading(true);
+
+    // Show upload message in chat
+    const uploadingMsg: ChatMsg = {
+      id: `uploading-${Date.now()}`,
+      role: "action",
+      content: `Analyzing **${file.name}**...`,
+      actionType: "upload-success",
+    };
+    setMessages(prev => [...prev, uploadingMsg]);
 
     try {
       const filePath = `${userId}/${Date.now()}_${file.name}`;
@@ -274,11 +271,22 @@ RESPONSE FORMAT RULES:
         }
 
         const extractedCount = result?.biomarkers ? Object.keys(result.biomarkers).filter(k => result.biomarkers[k] > 0).length : 0;
+
+        // Replace uploading message with success
+        setMessages(prev => prev.map(m => m.id === uploadingMsg.id ? {
+          ...m,
+          content: `✅ **${file.name}** analyzed — ${extractedCount} biomarkers extracted and profile updated.`,
+        } : m));
+
+        // Auto-ask AI to analyze
         const summaryText = `I just uploaded "${file.name}". ${extractedCount} biomarkers were extracted and my profile has been updated. Please analyze the new results and tell me what changed, what's concerning, and what I should do next. Create a comparison table of my key biomarkers vs optimal ranges.`;
         await sendMessage(summaryText);
-        toast({ title: "Lab report analyzed", description: `${extractedCount} biomarkers extracted and profile updated.` });
+        toast({ title: "Lab report analyzed", description: `${extractedCount} biomarkers extracted.` });
       }
     } catch (err: any) {
+      setMessages(prev => prev.map(m => m.id === uploadingMsg.id ? {
+        ...m, content: `❌ Failed to process **${file?.name}**: ${err.message}`,
+      } : m));
       toast({ title: "Upload failed", description: err.message, variant: "destructive" });
     } finally {
       setIsUploading(false);
@@ -315,94 +323,86 @@ RESPONSE FORMAT RULES:
     }
   };
 
+  const handleBookSpecialist = () => {
+    sendMessage("What specialist should I see for my current health risks? Please recommend specific hospitals in Romania and tell me exactly what to ask the doctor.");
+  };
+
   const quickPrompts = [
     "What's my #1 health risk right now?",
     "Compare all my biomarkers vs optimal",
     "Give me a 30-day protocol",
-    "Interpret my full blood panel",
     "What labs should I retest and when?",
-    "Analyze drug interactions with my stack",
   ];
+
+  // Render inline booking card
+  const renderBookingCard = (msg: ChatMsg) => {
+    const data = msg.actionData;
+    const specialty = data?.specialty || "Medicină Internă";
+    return (
+      <div className="flex gap-2.5 animate-fade-in">
+        <div className="w-7 h-7 rounded-lg bg-red-500/10 flex items-center justify-center shrink-0 mt-1">
+          <Calendar className="w-4 h-4 text-red-400" />
+        </div>
+        <div className="max-w-[85%] space-y-2">
+          <div className="bg-card border border-red-500/20 rounded-2xl px-4 py-3">
+            <p className="text-xs font-semibold text-red-400 mb-1">
+              ⚕️ Specialist Recommended — {specialty}
+            </p>
+            <p className="text-[11px] text-muted-foreground mb-3">
+              Based on your {data?.severity} {data?.category} findings:
+            </p>
+            <div className="space-y-1.5">
+              {ROMANIAN_HOSPITALS.map((h, i) => (
+                <a
+                  key={i}
+                  href={h.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2.5 p-2 bg-secondary/30 border border-border/30 rounded-xl hover:bg-secondary/50 hover:border-primary/30 transition-all group"
+                >
+                  <MapPin className="w-3.5 h-3.5 text-primary shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-foreground group-hover:text-primary transition-colors">{h.name}</p>
+                    <p className="text-[10px] text-muted-foreground">{h.specialties[systemKey] || specialty} · {h.phone}</p>
+                  </div>
+                  <ExternalLink className="w-3 h-3 text-muted-foreground group-hover:text-primary shrink-0" />
+                </a>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Render upload status in chat
+  const renderUploadAction = (msg: ChatMsg) => (
+    <div className="flex gap-2.5 animate-fade-in">
+      <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-1">
+        {isUploading ? <Loader2 className="w-4 h-4 text-primary animate-spin" /> : <Upload className="w-4 h-4 text-primary" />}
+      </div>
+      <div className="max-w-[85%] bg-card border border-primary/20 rounded-2xl px-4 py-3">
+        <div className="prose prose-sm prose-invert max-w-none text-[13px] leading-relaxed [&_strong]:text-foreground">
+          <ReactMarkdown>{msg.content}</ReactMarkdown>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div className="flex flex-col h-full pb-20 -mx-4 -mt-3">
       <input ref={fileRef} type="file" className="hidden" onChange={handleFileUpload} accept=".pdf,.jpg,.png,.jpeg" />
 
-      {/* Header */}
-      <div className="px-5 pt-4 pb-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center">
-            <Stethoscope className="w-5 h-5 text-primary" />
-          </div>
-          <div>
-            <h1 className="text-lg font-bold text-foreground">AI Doctor</h1>
-            <p className="text-[11px] text-muted-foreground">Clinical-grade health intelligence</p>
-          </div>
+      {/* Minimal header */}
+      <div className="px-5 pt-4 pb-3 flex items-center gap-3">
+        <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center">
+          <Stethoscope className="w-5 h-5 text-primary" />
         </div>
-        <div className="flex items-center gap-2">
-          {bookingSuggestions.length > 0 && (
-            <button
-              onClick={() => setShowBookings(!showBookings)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-500/10 text-red-400 text-xs font-medium hover:bg-red-500/20 transition-colors"
-            >
-              <Calendar className="w-3.5 h-3.5" />
-              Book
-            </button>
-          )}
-          <button
-            onClick={() => fileRef.current?.click()}
-            disabled={isUploading}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors"
-          >
-            {isUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-            {isUploading ? "Analyzing..." : "Upload labs"}
-          </button>
+        <div>
+          <h1 className="text-lg font-bold text-foreground">AI Doctor</h1>
+          <p className="text-[11px] text-muted-foreground">Clinical-grade health intelligence</p>
         </div>
       </div>
-
-      {/* Hospital Booking Panel */}
-      {showBookings && bookingSuggestions.length > 0 && (
-        <div className="mx-4 mb-3 bg-card border border-red-500/20 rounded-2xl p-4 space-y-3 animate-fade-in">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-red-400" />
-              <span className="text-xs font-semibold text-foreground uppercase tracking-wider">
-                Recommended Appointments
-              </span>
-            </div>
-            <button onClick={() => setShowBookings(false)} className="text-muted-foreground hover:text-foreground text-xs">
-              ✕
-            </button>
-          </div>
-          <p className="text-[11px] text-muted-foreground">
-            Based on your <span className="text-red-400 font-medium">{diagnosis.severity}</span> {diagnosis.category} findings, 
-            we recommend scheduling a specialist consultation:
-          </p>
-          <div className="space-y-2">
-            {bookingSuggestions.map((b, i) => (
-              <a
-                key={i}
-                href={b.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-3 p-3 bg-secondary/30 border border-border/30 rounded-xl hover:bg-secondary/50 transition-colors group"
-              >
-                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                  <MapPin className="w-4 h-4 text-primary" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">{b.name}</p>
-                  <p className="text-[11px] text-muted-foreground">{b.specialty} · {b.phone}</p>
-                </div>
-                <ExternalLink className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary shrink-0" />
-              </a>
-            ))}
-          </div>
-          <p className="text-[10px] text-muted-foreground/60 text-center">
-            Links open hospital booking pages directly
-          </p>
-        </div>
-      )}
 
       {/* Messages */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 space-y-4">
@@ -414,23 +414,35 @@ RESPONSE FORMAT RULES:
             <div className="text-center space-y-1.5">
               <p className="text-lg font-semibold text-foreground">Your AI Doctor</p>
               <p className="text-xs text-muted-foreground max-w-[280px]">
-                I see all your biomarkers, substances, and diagnoses. Ask me anything — I'll give you clinical-grade answers with specific protocols.
+                Ask me anything about your health. I'll analyze your biomarkers and give you specific protocols.
               </p>
             </div>
 
-            {/* Appointment alert for critical/high */}
-            {bookingSuggestions.length > 0 && (
+            {/* Smart contextual actions — integrated in chat */}
+            <div className="w-full max-w-sm space-y-2">
+              {isHighRisk && (
+                <button
+                  onClick={handleBookSpecialist}
+                  className="w-full flex items-center gap-3 p-3 bg-red-500/10 border border-red-500/20 rounded-2xl hover:bg-red-500/15 transition-colors text-left"
+                >
+                  <Calendar className="w-5 h-5 text-red-400 shrink-0" />
+                  <div>
+                    <p className="text-sm font-semibold text-red-400">Ask about a specialist</p>
+                    <p className="text-[11px] text-muted-foreground">{diagnosis.severity} risk — let me find you the right doctor</p>
+                  </div>
+                </button>
+              )}
               <button
-                onClick={() => setShowBookings(true)}
-                className="w-full max-w-sm flex items-center gap-3 p-3 bg-red-500/10 border border-red-500/20 rounded-2xl hover:bg-red-500/15 transition-colors"
+                onClick={() => fileRef.current?.click()}
+                className="w-full flex items-center gap-3 p-3 bg-primary/5 border border-primary/20 rounded-2xl hover:bg-primary/10 transition-colors text-left"
               >
-                <Calendar className="w-5 h-5 text-red-400 shrink-0" />
-                <div className="text-left">
-                  <p className="text-sm font-semibold text-red-400">Book a specialist</p>
-                  <p className="text-[11px] text-muted-foreground">Your {diagnosis.severity} risk level warrants a doctor visit</p>
+                <Upload className="w-5 h-5 text-primary shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Upload lab results</p>
+                  <p className="text-[11px] text-muted-foreground">PDF or photo — I'll extract and analyze everything</p>
                 </div>
               </button>
-            )}
+            </div>
 
             <div className="grid grid-cols-2 gap-2 w-full max-w-sm">
               {quickPrompts.map(q => (
@@ -446,31 +458,36 @@ RESPONSE FORMAT RULES:
           </div>
         )}
 
-        {messages.map(msg => (
-          <div key={msg.id} className={`flex gap-2.5 ${msg.role === "user" ? "justify-end" : ""} animate-fade-in`}>
-            {msg.role === "assistant" && (
-              <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-1">
-                <Bot className="w-4 h-4 text-primary" />
-              </div>
-            )}
-            <div className={`max-w-[85%] rounded-2xl px-4 py-3 ${
-              msg.role === "user" ? "bg-primary text-primary-foreground" : "bg-card border border-border/50"
-            }`}>
-              {msg.role === "assistant" ? (
-                <div className="prose prose-sm prose-invert max-w-none text-[13px] leading-relaxed [&_p]:mb-2 [&_ul]:mb-2 [&_ol]:mb-2 [&_li]:mb-0.5 [&_strong]:text-foreground [&_h2]:text-base [&_h2]:font-bold [&_h2]:mb-2 [&_h2]:mt-3 [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mb-1 [&_table]:w-full [&_table]:text-[11px] [&_th]:bg-secondary/50 [&_th]:px-2 [&_th]:py-1.5 [&_th]:text-left [&_th]:font-semibold [&_th]:border-b [&_th]:border-border/50 [&_td]:px-2 [&_td]:py-1.5 [&_td]:border-t [&_td]:border-border/30 [&_code]:bg-secondary/50 [&_code]:px-1 [&_code]:rounded [&_table]:border [&_table]:border-border/30 [&_table]:rounded-lg [&_table]:overflow-hidden">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content || "..."}</ReactMarkdown>
+        {messages.map(msg => {
+          if (msg.role === "action" && msg.actionType === "booking") return <div key={msg.id}>{renderBookingCard(msg)}</div>;
+          if (msg.role === "action") return <div key={msg.id}>{renderUploadAction(msg)}</div>;
+
+          return (
+            <div key={msg.id} className={`flex gap-2.5 ${msg.role === "user" ? "justify-end" : ""} animate-fade-in`}>
+              {msg.role === "assistant" && (
+                <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-1">
+                  <Bot className="w-4 h-4 text-primary" />
                 </div>
-              ) : (
-                <p className="text-[13px] leading-relaxed">{msg.content}</p>
+              )}
+              <div className={`max-w-[85%] rounded-2xl px-4 py-3 ${
+                msg.role === "user" ? "bg-primary text-primary-foreground" : "bg-card border border-border/50"
+              }`}>
+                {msg.role === "assistant" ? (
+                  <div className="prose prose-sm prose-invert max-w-none text-[13px] leading-relaxed [&_p]:mb-2 [&_ul]:mb-2 [&_ol]:mb-2 [&_li]:mb-0.5 [&_strong]:text-foreground [&_h2]:text-base [&_h2]:font-bold [&_h2]:mb-2 [&_h2]:mt-3 [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mb-1 [&_table]:w-full [&_table]:text-[11px] [&_th]:bg-secondary/50 [&_th]:px-2 [&_th]:py-1.5 [&_th]:text-left [&_th]:font-semibold [&_th]:border-b [&_th]:border-border/50 [&_td]:px-2 [&_td]:py-1.5 [&_td]:border-t [&_td]:border-border/30 [&_code]:bg-secondary/50 [&_code]:px-1 [&_code]:rounded [&_table]:border [&_table]:border-border/30 [&_table]:rounded-lg [&_table]:overflow-hidden">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content || "..."}</ReactMarkdown>
+                  </div>
+                ) : (
+                  <p className="text-[13px] leading-relaxed">{msg.content}</p>
+                )}
+              </div>
+              {msg.role === "user" && (
+                <div className="w-7 h-7 rounded-lg bg-secondary flex items-center justify-center shrink-0 mt-1">
+                  <User className="w-4 h-4 text-muted-foreground" />
+                </div>
               )}
             </div>
-            {msg.role === "user" && (
-              <div className="w-7 h-7 rounded-lg bg-secondary flex items-center justify-center shrink-0 mt-1">
-                <User className="w-4 h-4 text-muted-foreground" />
-              </div>
-            )}
-          </div>
-        ))}
+          );
+        })}
 
         {isStreaming && messages[messages.length - 1]?.content === "" && (
           <div className="flex gap-2.5 animate-fade-in">
@@ -499,9 +516,17 @@ RESPONSE FORMAT RULES:
         </div>
       )}
 
-      {/* Input */}
+      {/* Input bar with integrated upload */}
       <div className="px-4 pt-3 pb-2">
         <div className="flex items-center gap-2 bg-card border border-border/50 rounded-2xl px-3 py-2">
+          <button
+            onClick={() => fileRef.current?.click()}
+            disabled={isUploading}
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors shrink-0"
+            title="Upload lab report"
+          >
+            {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Paperclip className="w-4 h-4" />}
+          </button>
           <input
             ref={inputRef}
             value={input}
