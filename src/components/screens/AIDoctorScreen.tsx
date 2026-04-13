@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { useHealth } from "@/lib/health-context";
 import { runDiagnosis, SubstanceEntry } from "@/lib/diagnosis-engine";
 import { supabase } from "@/integrations/supabase/client";
-import { Send, Mic, Bot, User, Stethoscope, Upload, Loader2 } from "lucide-react";
+import { Send, Mic, Bot, User, Stethoscope, Upload, Loader2, Calendar, ExternalLink, MapPin } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -13,7 +13,76 @@ interface ChatMsg {
   content: string;
 }
 
+interface HospitalBooking {
+  name: string;
+  specialty: string;
+  url: string;
+  phone: string;
+  reason: string;
+}
+
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
+
+const ROMANIAN_HOSPITALS: { name: string; url: string; phone: string; specialties: Record<string, string> }[] = [
+  {
+    name: "Regina Maria",
+    url: "https://www.reginamaria.ro/programari",
+    phone: "+40 21 9268",
+    specialties: {
+      cardiovascular: "Cardiologie",
+      metabolic: "Endocrinologie & Diabet",
+      hormonal: "Endocrinologie",
+      inflammation: "Medicină Internă",
+      recovery: "Neurologie / Somnologie",
+      general: "Medicină Internă",
+    },
+  },
+  {
+    name: "Sanador",
+    url: "https://www.sanador.ro/programari-online",
+    phone: "+40 21 9699",
+    specialties: {
+      cardiovascular: "Cardiologie",
+      metabolic: "Endocrinologie",
+      hormonal: "Endocrinologie",
+      inflammation: "Medicină Internă",
+      recovery: "Neurologie",
+      general: "Medicină Internă",
+    },
+  },
+  {
+    name: "MedLife",
+    url: "https://www.medlife.ro/programare",
+    phone: "+40 21 9646",
+    specialties: {
+      cardiovascular: "Cardiologie",
+      metabolic: "Diabet & Nutriție",
+      hormonal: "Endocrinologie",
+      inflammation: "Medicină Internă",
+      recovery: "Neurologie",
+      general: "Medicină Internă",
+    },
+  },
+];
+
+function getBookingSuggestions(diagnosisId: string, severity: string): HospitalBooking[] {
+  if (severity !== "critical" && severity !== "high") return [];
+
+  const systemKey = diagnosisId.includes("cardio") ? "cardiovascular"
+    : diagnosisId.includes("metabol") ? "metabolic"
+    : diagnosisId.includes("inflam") ? "inflammation"
+    : diagnosisId.includes("hormon") ? "hormonal"
+    : diagnosisId.includes("recov") ? "recovery"
+    : "general";
+
+  return ROMANIAN_HOSPITALS.map(h => ({
+    name: h.name,
+    specialty: h.specialties[systemKey] || h.specialties.general,
+    url: h.url,
+    phone: h.phone,
+    reason: `${severity === "critical" ? "Urgent" : "Recommended"} consultation for ${systemKey} concerns`,
+  }));
+}
 
 export default function AIDoctorScreen() {
   const { profile, updateField, longevityScore, biologicalAge, chronologicalAge, userId } = useHealth();
@@ -23,6 +92,7 @@ export default function AIDoctorScreen() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [isHolding, setIsHolding] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [showBookings, setShowBookings] = useState(false);
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -40,6 +110,7 @@ export default function AIDoctorScreen() {
   }, [messages]);
 
   const diagnosis = runDiagnosis(profile, substances);
+  const bookingSuggestions = getBookingSuggestions(diagnosis.id, diagnosis.severity);
 
   const substanceList = substances.length > 0
     ? substances.map(s => `${s.name} (${s.category}${s.dose ? `, ${s.dose}` : ""})`).join(", ")
@@ -88,6 +159,10 @@ SUBSTANCES: ${substanceList}
 
 CURRENT DIAGNOSIS:
 ${diagnosisSummary}
+
+IMPORTANT CONTEXT:
+- The patient is based in Romania. When suggesting specialist consultations, recommend specific hospitals: Regina Maria, Sanador, or MedLife.
+- For critical or high-risk findings, explicitly recommend scheduling an appointment.
 
 RESPONSE FORMAT RULES:
 - Use **markdown tables** when comparing biomarkers (columns: Biomarker | Your Value | Optimal Range | Status | Action)
@@ -264,15 +339,70 @@ RESPONSE FORMAT RULES:
             <p className="text-[11px] text-muted-foreground">Clinical-grade health intelligence</p>
           </div>
         </div>
-        <button
-          onClick={() => fileRef.current?.click()}
-          disabled={isUploading}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors"
-        >
-          {isUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-          {isUploading ? "Analyzing..." : "Upload labs"}
-        </button>
+        <div className="flex items-center gap-2">
+          {bookingSuggestions.length > 0 && (
+            <button
+              onClick={() => setShowBookings(!showBookings)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-500/10 text-red-400 text-xs font-medium hover:bg-red-500/20 transition-colors"
+            >
+              <Calendar className="w-3.5 h-3.5" />
+              Book
+            </button>
+          )}
+          <button
+            onClick={() => fileRef.current?.click()}
+            disabled={isUploading}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors"
+          >
+            {isUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+            {isUploading ? "Analyzing..." : "Upload labs"}
+          </button>
+        </div>
       </div>
+
+      {/* Hospital Booking Panel */}
+      {showBookings && bookingSuggestions.length > 0 && (
+        <div className="mx-4 mb-3 bg-card border border-red-500/20 rounded-2xl p-4 space-y-3 animate-fade-in">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-red-400" />
+              <span className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                Recommended Appointments
+              </span>
+            </div>
+            <button onClick={() => setShowBookings(false)} className="text-muted-foreground hover:text-foreground text-xs">
+              ✕
+            </button>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            Based on your <span className="text-red-400 font-medium">{diagnosis.severity}</span> {diagnosis.category} findings, 
+            we recommend scheduling a specialist consultation:
+          </p>
+          <div className="space-y-2">
+            {bookingSuggestions.map((b, i) => (
+              <a
+                key={i}
+                href={b.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-3 p-3 bg-secondary/30 border border-border/30 rounded-xl hover:bg-secondary/50 transition-colors group"
+              >
+                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                  <MapPin className="w-4 h-4 text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">{b.name}</p>
+                  <p className="text-[11px] text-muted-foreground">{b.specialty} · {b.phone}</p>
+                </div>
+                <ExternalLink className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary shrink-0" />
+              </a>
+            ))}
+          </div>
+          <p className="text-[10px] text-muted-foreground/60 text-center">
+            Links open hospital booking pages directly
+          </p>
+        </div>
+      )}
 
       {/* Messages */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 space-y-4">
@@ -287,6 +417,21 @@ RESPONSE FORMAT RULES:
                 I see all your biomarkers, substances, and diagnoses. Ask me anything — I'll give you clinical-grade answers with specific protocols.
               </p>
             </div>
+
+            {/* Appointment alert for critical/high */}
+            {bookingSuggestions.length > 0 && (
+              <button
+                onClick={() => setShowBookings(true)}
+                className="w-full max-w-sm flex items-center gap-3 p-3 bg-red-500/10 border border-red-500/20 rounded-2xl hover:bg-red-500/15 transition-colors"
+              >
+                <Calendar className="w-5 h-5 text-red-400 shrink-0" />
+                <div className="text-left">
+                  <p className="text-sm font-semibold text-red-400">Book a specialist</p>
+                  <p className="text-[11px] text-muted-foreground">Your {diagnosis.severity} risk level warrants a doctor visit</p>
+                </div>
+              </button>
+            )}
+
             <div className="grid grid-cols-2 gap-2 w-full max-w-sm">
               {quickPrompts.map(q => (
                 <button
