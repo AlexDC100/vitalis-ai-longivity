@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useHealth } from "@/lib/health-context";
 import {
   runDiagnosis, getOverallRisk, getAllSystemScores,
