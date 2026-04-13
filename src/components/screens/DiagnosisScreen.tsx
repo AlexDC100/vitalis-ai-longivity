@@ -229,6 +229,74 @@ export default function DiagnosisScreen() {
           })}
         </div>
       </div>
+
+      {/* 7-Day Activity Bar Chart */}
+      <div className="bg-card border border-border/50 rounded-2xl p-4">
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">7-Day History</span>
+        <div className="flex items-end justify-between gap-1 mt-3">
+          {(() => {
+            const log: Record<string, string[]> = (() => { try { return JSON.parse(localStorage.getItem("vitalis_action_log") || "{}"); } catch { return {}; } })();
+            const days: { label: string; count: number; isToday: boolean }[] = [];
+            for (let i = 6; i >= 0; i--) {
+              const d = new Date(); d.setDate(d.getDate() - i);
+              const key = d.toISOString().slice(0, 10);
+              days.push({ label: d.toLocaleDateString("en", { weekday: "short" }).slice(0, 2), count: (log[key] || []).length, isToday: i === 0 });
+            }
+            const maxC = Math.max(...days.map(d => d.count), 1);
+            return days.map((day, idx) => (
+              <div key={idx} className="flex flex-col items-center flex-1 gap-1">
+                <div className="w-full flex items-end justify-center" style={{ height: 40 }}>
+                  <div className={`w-full max-w-[24px] rounded-t-md ${day.count > 0 ? day.isToday ? "bg-primary" : "bg-primary/60" : "bg-muted/50"}`}
+                    style={{ height: day.count > 0 ? Math.max(6, (day.count / maxC) * 40) : 3 }} />
+                </div>
+                <span className={`text-[8px] ${day.isToday ? "text-primary font-bold" : "text-muted-foreground"}`}>{day.label}</span>
+              </div>
+            ));
+          })()}
+        </div>
+      </div>
+
+      {/* Monthly Heatmap */}
+      <div className="bg-card border border-border/50 rounded-2xl p-4">
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Monthly Activity</span>
+        {(() => {
+          const log: Record<string, string[]> = (() => { try { return JSON.parse(localStorage.getItem("vitalis_action_log") || "{}"); } catch { return {}; } })();
+          const now = new Date();
+          const year = now.getFullYear(), month = now.getMonth();
+          const daysInMonth = new Date(year, month + 1, 0).getDate();
+          const firstDow = new Date(year, month, 1).getDay();
+          const monthName = now.toLocaleDateString("en", { month: "long" });
+          const cells: { day: number; count: number }[] = [];
+          for (let i = 0; i < firstDow; i++) cells.push({ day: 0, count: 0 });
+          for (let d = 1; d <= daysInMonth; d++) {
+            const key = `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+            cells.push({ day: d, count: (log[key] || []).length });
+          }
+          const maxC = Math.max(...cells.map(c => c.count), 1);
+          const today = now.getDate();
+          return (
+            <>
+              <p className="text-[9px] text-muted-foreground mt-1.5 mb-1.5">{monthName} {year}</p>
+              <div className="grid grid-cols-7 gap-[3px]">
+                {["S","M","T","W","T","F","S"].map((d, i) => (
+                  <span key={i} className="text-[7px] text-muted-foreground/50 text-center">{d}</span>
+                ))}
+                {cells.map((cell, i) => {
+                  if (cell.day === 0) return <div key={`b${i}`} />;
+                  const intensity = cell.count === 0 ? 0 : Math.ceil((cell.count / maxC) * 4);
+                  const bg = intensity === 0 ? "bg-muted/30" : intensity === 1 ? "bg-primary/20" : intensity === 2 ? "bg-primary/40" : intensity === 3 ? "bg-primary/60" : "bg-primary";
+                  return <div key={cell.day} className={`aspect-square rounded-sm ${bg} ${cell.day === today ? "ring-1 ring-primary" : ""}`} title={`${monthName} ${cell.day}: ${cell.count} actions`} />;
+                })}
+              </div>
+              <div className="flex items-center justify-end gap-1 mt-2">
+                <span className="text-[7px] text-muted-foreground">Less</span>
+                {["bg-muted/30","bg-primary/20","bg-primary/40","bg-primary/60","bg-primary"].map((c,i) => <div key={i} className={`w-2.5 h-2.5 rounded-sm ${c}`} />)}
+                <span className="text-[7px] text-muted-foreground">More</span>
+              </div>
+            </>
+          );
+        })()}
+      </div>
     </div>
   );
 }
