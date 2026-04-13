@@ -456,6 +456,45 @@ export default function TodayScreen() {
         </div>
       </div>
 
+      {/* 7-Day History Timeline */}
+      <div className="bg-card border border-border rounded-xl p-3">
+        <h3 className="text-[10px] text-muted-foreground uppercase tracking-wider mb-3">7-Day History</h3>
+        <div className="flex items-end justify-between gap-1">
+          {(() => {
+            const log = getActionLog();
+            const days: { label: string; count: number; isToday: boolean }[] = [];
+            for (let i = 6; i >= 0; i--) {
+              const d = new Date();
+              d.setDate(d.getDate() - i);
+              const key = d.toISOString().slice(0, 10);
+              const dayLabel = d.toLocaleDateString("en", { weekday: "short" }).slice(0, 2);
+              days.push({ label: dayLabel, count: (log[key] || []).length, isToday: i === 0 });
+            }
+            const maxCount = Math.max(...days.map(d => d.count), 1);
+            return days.map((day, idx) => (
+              <div key={idx} className="flex flex-col items-center flex-1 gap-1">
+                <div className="w-full flex items-end justify-center" style={{ height: 48 }}>
+                  <div
+                    className={`w-full max-w-[28px] rounded-t-md transition-all ${
+                      day.count > 0
+                        ? day.isToday ? "bg-primary" : "bg-primary/60"
+                        : "bg-muted"
+                    }`}
+                    style={{ height: day.count > 0 ? Math.max(8, (day.count / maxCount) * 48) : 4 }}
+                  />
+                </div>
+                <span className={`text-[9px] ${day.isToday ? "text-primary font-bold" : "text-muted-foreground"}`}>
+                  {day.label}
+                </span>
+                {day.count > 0 && (
+                  <span className="text-[8px] text-muted-foreground">{day.count}</span>
+                )}
+              </div>
+            ));
+          })()}
+        </div>
+      </div>
+
       {/* Data Gravity */}
       <div className="bg-card border border-border rounded-xl p-3">
         <div className="flex items-center justify-between mb-1">
