@@ -63,6 +63,7 @@ export default function DiagnosisScreen() {
       if (diff.length > 0) setChanges(diff);
     }
     prevDiagRef.current = diagnosis;
+    localStorage.setItem("vitalis_prev_diagnosis", JSON.stringify(diagnosis));
   }, [diagnosis.id, diagnosis.riskScore, diagnosis.severity]);
 
   const hasProblem = diagnosis.riskScore > 0;
