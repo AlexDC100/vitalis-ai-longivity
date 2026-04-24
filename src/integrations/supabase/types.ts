@@ -14,6 +14,42 @@ export type Database = {
   }
   public: {
     Tables: {
+      action_completions: {
+        Row: {
+          action_text: string
+          completed_at: string | null
+          created_at: string
+          fix_key: string
+          id: string
+          started_at: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          action_text: string
+          completed_at?: string | null
+          created_at?: string
+          fix_key: string
+          id?: string
+          started_at?: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          action_text?: string
+          completed_at?: string | null
+          created_at?: string
+          fix_key?: string
+          id?: string
+          started_at?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       health_profiles: {
         Row: {
           apob: number | null
@@ -140,6 +176,48 @@ export type Database = {
           vo2_max?: number | null
           waist_cm?: number | null
           weight_kg?: number | null
+        }
+        Relationships: []
+      }
+      health_snapshots: {
+        Row: {
+          bio_age: number
+          chrono_age: number
+          created_at: string
+          id: string
+          main_issue: string | null
+          risk_score: number | null
+          score: number
+          severity: string | null
+          snapshot_date: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          bio_age: number
+          chrono_age: number
+          created_at?: string
+          id?: string
+          main_issue?: string | null
+          risk_score?: number | null
+          score: number
+          severity?: string | null
+          snapshot_date?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          bio_age?: number
+          chrono_age?: number
+          created_at?: string
+          id?: string
+          main_issue?: string | null
+          risk_score?: number | null
+          score?: number
+          severity?: string | null
+          snapshot_date?: string
+          updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }
