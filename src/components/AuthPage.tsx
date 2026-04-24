@@ -233,18 +233,18 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
 
       <main className="relative">
         {/* HERO */}
-        <section className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 pt-14 lg:pt-20 pb-20 lg:pb-28">
-          <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+        <section className="relative max-w-7xl mx-auto px-5 sm:px-6 lg:px-10 pt-10 sm:pt-14 lg:pt-20 pb-14 sm:pb-20 lg:pb-28">
+          <div className="grid lg:grid-cols-2 gap-10 sm:gap-12 lg:gap-16 items-center">
             {/* Copy */}
-            <div className="animate-auth-fade">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 ring-1 ring-primary/20 mb-6">
+            <div className="animate-auth-fade text-center lg:text-left">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 ring-1 ring-primary/20 mb-5 sm:mb-6">
                 <Sparkles className="w-3.5 h-3.5 text-primary" />
                 <span className="text-[11px] font-semibold tracking-[0.18em] text-primary uppercase">
                   AI Health Intelligence
                 </span>
               </div>
 
-              <h1 className="text-4xl sm:text-5xl lg:text-[3.5rem] font-bold tracking-tight text-foreground leading-[1.05]">
+              <h1 className="text-[2rem] leading-[1.1] sm:text-5xl lg:text-[3.5rem] sm:leading-[1.05] font-bold tracking-tight text-foreground">
                 AI-powered health{" "}
                 <span className="bg-gradient-to-r from-primary via-primary to-[hsl(var(--vitalis-info))] bg-clip-text text-transparent">
                   intelligence
@@ -252,15 +252,15 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
                 for better decisions
               </h1>
 
-              <p className="mt-6 text-base sm:text-lg text-muted-foreground leading-relaxed max-w-xl">
+              <p className="mt-5 sm:mt-6 text-[15px] sm:text-lg text-muted-foreground leading-relaxed max-w-xl mx-auto lg:mx-0">
                 Upload medical reports, connect devices, and turn health data into clear, clinical-grade insights — for individuals, clinics, and hospitals.
               </p>
 
-              <div className="mt-8 flex flex-col sm:flex-row gap-3">
+              <div className="mt-7 sm:mt-8 flex flex-col sm:flex-row gap-3 sm:justify-center lg:justify-start">
                 <Button
                   variant="vitalis"
                   onClick={() => openAuth("sign_up")}
-                  className="h-12 px-6 rounded-xl text-sm font-semibold tracking-wide shadow-[0_10px_30px_-10px_hsl(var(--primary)/0.6)] hover:shadow-[0_12px_36px_-10px_hsl(var(--primary)/0.8)] hover:-translate-y-0.5 transition-all"
+                  className="h-12 w-full sm:w-auto px-6 rounded-xl text-sm font-semibold tracking-wide shadow-[0_10px_30px_-10px_hsl(var(--primary)/0.6)] hover:shadow-[0_12px_36px_-10px_hsl(var(--primary)/0.8)] hover:-translate-y-0.5 transition-all"
                 >
                   Start health assessment
                   <ArrowRight className="w-4 h-4 ml-1.5" />
@@ -268,14 +268,14 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
                 <a
                   href="#how"
                   onClick={(e) => { e.preventDefault(); openHow(); }}
-                  className="inline-flex items-center justify-center h-12 px-5 rounded-xl text-sm font-semibold text-foreground bg-secondary/60 ring-1 ring-border/60 hover:bg-secondary transition-all"
+                  className="inline-flex items-center justify-center h-12 w-full sm:w-auto px-5 rounded-xl text-sm font-semibold text-foreground bg-secondary/60 ring-1 ring-border/60 hover:bg-secondary transition-all"
                 >
                   <PlayCircle className="w-4 h-4 mr-2 text-primary" />
                   See how it works
                 </a>
               </div>
 
-              <div className="mt-10 flex flex-wrap items-center gap-x-5 gap-y-2 text-[11px] text-muted-foreground">
+              <div className="mt-8 sm:mt-10 flex flex-wrap items-center justify-center lg:justify-start gap-x-4 sm:gap-x-5 gap-y-2 text-[11px] text-muted-foreground">
                 <span className="flex items-center gap-1.5"><Check className="w-3 h-3 text-primary" /> HIPAA-grade encryption</span>
                 <span className="flex items-center gap-1.5"><Check className="w-3 h-3 text-primary" /> Used by clinical teams</span>
                 <span className="flex items-center gap-1.5"><Check className="w-3 h-3 text-primary" /> No data resale</span>
@@ -283,9 +283,9 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
             </div>
 
             {/* Product preview panel */}
-            <div className="relative animate-auth-fade">
+            <div className="relative animate-auth-fade max-w-md mx-auto w-full lg:max-w-none">
               <div className="absolute -inset-4 bg-gradient-to-br from-primary/20 via-transparent to-[hsl(var(--vitalis-info))]/15 blur-3xl rounded-[2rem] pointer-events-none" />
-              <div className="relative auth-glass rounded-3xl p-5 sm:p-6 ring-1 ring-border/60 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.5)]">
+              <div className="relative auth-glass rounded-3xl p-4 sm:p-6 ring-1 ring-border/60 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.5)]">
                 {/* AI Doctor summary */}
                 <div className="flex items-start gap-3 pb-4 border-b border-border/40">
                   <div className="w-9 h-9 rounded-xl bg-primary/15 ring-1 ring-primary/30 flex items-center justify-center shrink-0">
@@ -346,22 +346,22 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
         </section>
 
         {/* HOW IT WORKS */}
-        <section id="how" className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 py-20 lg:py-24">
-          <div className="text-center max-w-2xl mx-auto mb-14">
+        <section id="how" className="relative max-w-7xl mx-auto px-5 sm:px-6 lg:px-10 py-14 sm:py-20 lg:py-24">
+          <div className="text-center max-w-2xl mx-auto mb-10 sm:mb-14">
             <span className="text-[11px] font-semibold tracking-[0.18em] text-primary uppercase">How Vitalis works</span>
-            <h2 className="mt-3 text-3xl sm:text-4xl font-bold tracking-tight text-foreground">
+            <h2 className="mt-3 text-[1.75rem] leading-tight sm:text-4xl font-bold tracking-tight text-foreground">
               From raw data to a clear plan
             </h2>
-            <p className="mt-4 text-base text-muted-foreground">
+            <p className="mt-3 sm:mt-4 text-[15px] sm:text-base text-muted-foreground">
               Four steps. Built on clinical evidence and your actual biology.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             {steps.map((s, i) => (
               <div
                 key={s.title}
-                className="auth-glass rounded-2xl p-5 ring-1 ring-border/50 hover:ring-primary/40 transition-all"
+                className="auth-glass rounded-2xl p-4 sm:p-5 ring-1 ring-border/50 hover:ring-primary/40 transition-all"
               >
                 <div className="flex items-center gap-2.5">
                   <div className="w-9 h-9 rounded-xl bg-primary/15 ring-1 ring-primary/30 flex items-center justify-center">
@@ -369,8 +369,8 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
                   </div>
                   <span className="text-[11px] font-semibold text-muted-foreground tracking-wider">0{i + 1}</span>
                 </div>
-                <h3 className="mt-4 text-base font-semibold text-foreground">{s.title}</h3>
-                <p className="mt-1.5 text-sm text-muted-foreground leading-relaxed">{s.desc}</p>
+                <h3 className="mt-3 sm:mt-4 text-[15px] sm:text-base font-semibold text-foreground">{s.title}</h3>
+                <p className="mt-1.5 text-[13px] sm:text-sm text-muted-foreground leading-relaxed">{s.desc}</p>
               </div>
             ))}
           </div>
