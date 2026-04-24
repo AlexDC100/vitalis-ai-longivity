@@ -17,6 +17,8 @@ import {
   Sparkles,
   Loader2,
   ArrowLeft,
+  RefreshCw,
+  AlertCircle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -276,11 +278,11 @@ export default function AuthPage({ onGuestLogin }: Props) {
         </section>
 
         {/* RIGHT — Login card */}
-        <section className="flex items-center justify-center px-6 sm:px-10 lg:px-12 pb-12 lg:pb-0 animate-auth-fade">
+        <section className="flex items-center justify-center px-4 sm:px-10 lg:px-12 pb-10 lg:pb-0 animate-auth-fade">
           <div className="w-full max-w-md">
-            <div className="auth-glass rounded-3xl p-7 sm:p-9">
+            <div className="auth-glass rounded-3xl p-5 sm:p-9">
               {/* Header */}
-              <div className="mb-7">
+              <div className="mb-6 sm:mb-7">
                 <h2 className="text-2xl font-bold text-foreground tracking-tight">
                   {forgotMode
                     ? "Reset your password"
@@ -299,13 +301,13 @@ export default function AuthPage({ onGuestLogin }: Props) {
 
               {/* Tabs (hidden in forgot-password mode) */}
               {!forgotMode && (
-              <div className="flex rounded-xl bg-secondary/60 p-1 mb-6 ring-1 ring-border/50">
+              <div className="flex rounded-xl bg-secondary/60 p-1 mb-5 sm:mb-6 ring-1 ring-border/50">
                 <button
                   onClick={() => {
                     setIsSignUp(false);
                     track({ name: "auth_tab_switch", to: "sign_in" });
                   }}
-                  className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all ${
+                  className={`flex-1 py-2 sm:py-2.5 rounded-lg text-sm font-semibold transition-all ${
                     !isSignUp
                       ? "bg-primary text-primary-foreground shadow-[0_4px_20px_-6px_hsl(var(--primary)/0.6)]"
                       : "text-muted-foreground hover:text-foreground"
@@ -318,7 +320,7 @@ export default function AuthPage({ onGuestLogin }: Props) {
                     setIsSignUp(true);
                     track({ name: "auth_tab_switch", to: "sign_up" });
                   }}
-                  className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all ${
+                  className={`flex-1 py-2 sm:py-2.5 rounded-lg text-sm font-semibold transition-all ${
                     isSignUp
                       ? "bg-primary text-primary-foreground shadow-[0_4px_20px_-6px_hsl(var(--primary)/0.6)]"
                       : "text-muted-foreground hover:text-foreground"
@@ -363,7 +365,7 @@ export default function AuthPage({ onGuestLogin }: Props) {
 
               {/* Divider */}
               {!forgotMode && (
-                <div className="flex items-center gap-3 my-6">
+                <div className="flex items-center gap-3 my-5 sm:my-6">
                   <div className="flex-1 h-px bg-border/60" />
                   <span className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
                     or use email
@@ -380,7 +382,10 @@ export default function AuthPage({ onGuestLogin }: Props) {
                     type="email"
                     placeholder="Email address"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      if (lastError) setLastError(null);
+                    }}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" && forgotMode) handleForgotPassword();
                     }}
@@ -394,7 +399,10 @@ export default function AuthPage({ onGuestLogin }: Props) {
                     type={showPassword ? "text" : "password"}
                     placeholder="Password"
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      if (lastError) setLastError(null);
+                    }}
                     onKeyDown={(e) => e.key === "Enter" && handleAuth()}
                     className="w-full h-11 pl-10 pr-10 rounded-xl bg-secondary/60 ring-1 ring-border/50 text-foreground placeholder:text-muted-foreground text-sm focus:ring-2 focus:ring-primary/60 focus:bg-secondary outline-none transition-all"
                   />
@@ -420,6 +428,41 @@ export default function AuthPage({ onGuestLogin }: Props) {
                       className="text-xs font-semibold text-primary hover:underline"
                     >
                       Forgot password?
+                    </button>
+                  </div>
+                )}
+
+                {/* Inline error banner with retry */}
+                {!forgotMode && lastError && (
+                  <div
+                    role="alert"
+                    className="flex items-start gap-3 p-3 rounded-xl bg-destructive/10 ring-1 ring-destructive/30 animate-auth-fade"
+                  >
+                    <AlertCircle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-destructive">
+                        {lastError.method === "email"
+                          ? lastError.mode === "sign_up"
+                            ? "Couldn't create account"
+                            : "Sign in failed"
+                          : `${lastError.method === "google" ? "Google" : "Apple"} sign-in failed`}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5 break-words">
+                        {lastError.message}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={retryLastAuth}
+                      disabled={loading || socialLoading !== null}
+                      className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-primary/15 ring-1 ring-primary/30 text-[11px] font-semibold text-primary hover:bg-primary/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {loading || socialLoading ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <RefreshCw className="w-3 h-3" />
+                      )}
+                      Retry
                     </button>
                   </div>
                 )}
