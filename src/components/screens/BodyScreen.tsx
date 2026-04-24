@@ -1,61 +1,64 @@
 import { useHealth } from "@/lib/health-context";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Upload, FileText, Heart, Brain, Wind, Droplets, Activity, ChevronRight, User, Dna, MessageCircle, Send, Bot, X } from "lucide-react";
+import {
+  Upload, FileText, Heart, Brain, Activity, Sparkles,
+  ChevronRight, User, Dna, MessageCircle, Send, Bot,
+  TrendingUp, TrendingDown, Minus, AlertCircle, Zap, Moon, Wind, Droplets,
+} from "lucide-react";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
+import ScoreRing from "@/components/ScoreRing";
+import { runDiagnosis, getAllSystemScores, SubstanceEntry } from "@/lib/diagnosis-engine";
 
 const FAMILY_CONDITIONS = [
   "Heart Disease", "Diabetes", "Cancer", "Alzheimer's", "Stroke",
-  "High Blood Pressure", "Obesity", "Autoimmune", "None"
+  "High Blood Pressure", "Obesity", "Autoimmune", "None",
 ];
 
-const BODY_SYSTEMS = [
-  { id: "heart", label: "Heart", icon: Heart, fields: ["bp_systolic", "bp_diastolic", "resting_hr", "hrv_ms"], color: "text-red-400" },
-  { id: "metabolic", label: "Metabolic", icon: Droplets, fields: ["fasting_glucose", "hba1c", "fasting_insulin"], color: "text-amber-400" },
-  { id: "lipids", label: "Lipids", icon: Activity, fields: ["ldl", "hdl", "triglycerides", "apob", "lpa"], color: "text-blue-400" },
-  { id: "brain", label: "Brain & Sleep", icon: Brain, fields: ["avg_sleep_hours", "sleep_quality"], color: "text-purple-400" },
-  { id: "lungs", label: "Fitness", icon: Wind, fields: ["vo2_max", "fev1_pct"], color: "text-emerald-400" },
+// 4 systems shown as bars (matches diagnosis engine categories)
+const SYSTEM_DISPLAY = [
+  { id: "cardiovascular", label: "Cardiovascular", icon: Heart, color: "from-rose-500 to-rose-400" },
+  { id: "metabolic",      label: "Metabolic",      icon: Droplets, color: "from-amber-500 to-amber-400" },
+  { id: "recovery",       label: "Recovery",       icon: Moon,    color: "from-violet-500 to-violet-400" },
+  { id: "hormonal",       label: "Hormonal",       icon: Sparkles, color: "from-emerald-500 to-emerald-400" },
 ];
 
-const FIELD_LABELS: Record<string, { label: string; unit: string; optimal: string }> = {
-  bp_systolic: { label: "Systolic BP", unit: "mmHg", optimal: "<120" },
-  bp_diastolic: { label: "Diastolic BP", unit: "mmHg", optimal: "<80" },
-  resting_hr: { label: "Resting HR", unit: "bpm", optimal: "50-60" },
-  hrv_ms: { label: "HRV", unit: "ms", optimal: ">60" },
-  fasting_glucose: { label: "Fasting Glucose", unit: "mg/dL", optimal: "72-85" },
-  hba1c: { label: "HbA1c", unit: "%", optimal: "<5.2" },
-  fasting_insulin: { label: "Fasting Insulin", unit: "μIU/mL", optimal: "<5" },
-  ldl: { label: "LDL", unit: "mg/dL", optimal: "<100" },
-  hdl: { label: "HDL", unit: "mg/dL", optimal: ">60" },
-  triglycerides: { label: "Triglycerides", unit: "mg/dL", optimal: "<100" },
-  apob: { label: "ApoB", unit: "mg/dL", optimal: "<80" },
-  lpa: { label: "Lp(a)", unit: "nmol/L", optimal: "<30" },
-  avg_sleep_hours: { label: "Sleep Duration", unit: "hours", optimal: "7.5-8.5" },
-  sleep_quality: { label: "Sleep Quality", unit: "%", optimal: ">80" },
-  vo2_max: { label: "VO2 Max", unit: "ml/kg/min", optimal: ">50" },
-  fev1_pct: { label: "FEV1", unit: "%", optimal: ">95" },
-};
+function scoreLabel(score: number): { label: string; tone: string } {
+  if (score >= 85) return { label: "Excellent", tone: "text-emerald-400" };
+  if (score >= 70) return { label: "Good",      tone: "text-primary"      };
+  if (score >= 55) return { label: "Fair",      tone: "text-amber-400"    };
+  return                   { label: "Needs attention", tone: "text-rose-400" };
+}
 
 export default function BodyScreen() {
-  const { profile, updateField, userId, dataCompleteness } = useHealth();
-  const [selectedSystem, setSelectedSystem] = useState<string | null>(null);
+  const {
+    profile, updateField, userId, dataCompleteness,
+    longevityScore, biologicalAge, chronologicalAge,
+  } = useHealth();
+
+  // Collapsibles — secondary content closed by default for premium hierarchy
+  const [showMetrics, setShowMetrics] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
+  const [showVault, setShowVault] = useState(false);
+
+  // Vault state
   const [documents, setDocuments] = useState<any[]>([]);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
-  const [familyHistory, setFamilyHistory] = useState<string[]>([]);
-  const [showProfile, setShowProfile] = useState(true);
 
-  // AI Chat state
+  // Family history
+  const [familyHistory, setFamilyHistory] = useState<string[]>([]);
+
+  // AI Chat
   const [chatOpen, setChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  
 
-  // Load family history from localStorage
+  // ─── Load persisted data ───────────────────────────────────
   useEffect(() => {
     const saved = localStorage.getItem("vitalis_family_history");
     if (saved) setFamilyHistory(JSON.parse(saved));
@@ -69,44 +72,89 @@ export default function BodyScreen() {
         .select("id, file_name, status, created_at, document_type")
         .eq("user_id", userId)
         .order("created_at", { ascending: false })
-        .limit(10);
+        .limit(5);
       if (data) setDocuments(data);
     })();
   }, [userId]);
 
+  // ─── Intelligence: systems, diagnosis, trend ───────────────
+  const substances = useMemo<SubstanceEntry[]>(() => {
+    try { return JSON.parse(localStorage.getItem("vitalis_substances") || "[]"); }
+    catch { return []; }
+  }, []);
+
+  const diagnosis = useMemo(() => runDiagnosis(profile, substances), [profile, substances]);
+  const systemResults = useMemo(() => getAllSystemScores(profile, substances), [profile, substances]);
+
+  // Map system risk (0..) → health score (0-100)
+  const systemHealth = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const s of systemResults) {
+      const health = Math.max(0, Math.min(100, 100 - s.score));
+      map[s.id] = health;
+    }
+    return map;
+  }, [systemResults]);
+
+  // Trend: compare current longevity score to last snapshot in localStorage
+  const [trend, setTrend] = useState<{ direction: "up" | "down" | "flat"; deltaYears: number }>({
+    direction: "flat", deltaYears: 0,
+  });
+
+  useEffect(() => {
+    const key = "vitalis_score_history";
+    const raw = localStorage.getItem(key);
+    let history: { ts: number; score: number; bioAge: number }[] = [];
+    try { history = raw ? JSON.parse(raw) : []; } catch {}
+
+    // Compare against snapshot ~30d old (or oldest)
+    const monthAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const past = [...history].reverse().find(h => h.ts <= monthAgo) || history[0];
+
+    if (past) {
+      const scoreDelta = longevityScore - past.score;
+      const bioDelta = past.bioAge - biologicalAge; // lower bio age = better
+      const direction: "up" | "down" | "flat" =
+        scoreDelta >= 2 ? "up" : scoreDelta <= -2 ? "down" : "flat";
+      setTrend({ direction, deltaYears: Math.round(bioDelta * 10) / 10 });
+    }
+
+    // Append fresh snapshot (max once/day)
+    const today = new Date().toDateString();
+    const lastTs = history[history.length - 1]?.ts;
+    const lastDay = lastTs ? new Date(lastTs).toDateString() : null;
+    if (lastDay !== today) {
+      history.push({ ts: Date.now(), score: longevityScore, bioAge: biologicalAge });
+      localStorage.setItem(key, JSON.stringify(history.slice(-90)));
+    }
+  }, [longevityScore, biologicalAge]);
+
+  // ─── Handlers ───────────────────────────────────────────────
   const handleFileUpload = useCallback(async (files: FileList | null) => {
     if (!files || !userId) return;
     setUploading(true);
     for (const file of Array.from(files)) {
       const filePath = `${userId}/${Date.now()}_${file.name}`;
       const { error: uploadError } = await supabase.storage.from("medical-documents").upload(filePath, file);
-      if (uploadError) {
-        toast.error("Upload failed: " + uploadError.message);
-        continue;
-      }
+      if (uploadError) { toast.error("Upload failed: " + uploadError.message); continue; }
       const { data: doc } = await supabase
         .from("medical_documents")
         .insert({ user_id: userId, file_name: file.name, file_path: filePath, document_type: "lab_report", status: "new" })
-        .select()
-        .single();
+        .select().single();
       if (doc) {
         setDocuments(prev => [doc, ...prev]);
         toast.success("Document uploaded — AI is analyzing...");
-        
-        // Call parse-document and update UI when done
         try {
-          const { data, error } = await supabase.functions.invoke("parse-document", { 
-            body: { documentId: doc.id, filePath } 
-          });
+          const { error } = await supabase.functions.invoke("parse-document", { body: { documentId: doc.id, filePath } });
           if (error) {
             toast.error("Analysis failed: " + (error.message || "Unknown error"));
             setDocuments(prev => prev.map(d => d.id === doc.id ? { ...d, status: "error" } : d));
           } else {
-            toast.success("Analysis complete! Your health data has been updated.");
+            toast.success("Analysis complete!");
             setDocuments(prev => prev.map(d => d.id === doc.id ? { ...d, status: "reviewed" } : d));
           }
-        } catch (err) {
-          toast.error("Analysis failed. Please try again.");
+        } catch {
+          toast.error("Analysis failed.");
           setDocuments(prev => prev.map(d => d.id === doc.id ? { ...d, status: "error" } : d));
         }
       }
@@ -135,59 +183,34 @@ export default function BodyScreen() {
     setChatLoading(true);
     setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
 
-    // Build system prompt with user's health context
-    const systemPrompt = `You are an elite longevity medicine AI advisor (combining expertise of Dr. Peter Attia, Dr. Andrew Huberman, Dr. David Sinclair). You have access to this patient's data:
-
-Patient: ${profile.full_name || "Unknown"}, ${profile.sex || "Unknown"}, Age ~${profile.date_of_birth ? new Date().getFullYear() - new Date(profile.date_of_birth).getFullYear() : "unknown"}
-Weight: ${profile.weight_kg}kg, Height: ${profile.height_cm}cm, Body Fat: ${profile.body_fat_pct}%, Waist: ${profile.waist_cm}cm
-BP: ${profile.bp_systolic}/${profile.bp_diastolic}, HR: ${profile.resting_hr}bpm, HRV: ${profile.hrv_ms}ms, VO2max: ${profile.vo2_max}
-Glucose: ${profile.fasting_glucose}mg/dL, HbA1c: ${profile.hba1c}%, Insulin: ${profile.fasting_insulin}
-Cholesterol: Total ${profile.total_cholesterol}, LDL ${profile.ldl}, HDL ${profile.hdl}, Trig ${profile.triglycerides}, ApoB ${profile.apob}, Lp(a) ${profile.lpa}
-Inflammation: hsCRP ${profile.hscrp}, Homocysteine ${profile.homocysteine}
-Hormones: Testosterone ${profile.testosterone}, Free T ${profile.free_t}, Cortisol ${profile.cortisol}, TSH ${profile.tsh}
-Sleep: ${profile.avg_sleep_hours}h, Quality: ${profile.sleep_quality}/100
-Vitamin D: ${profile.vitamin_d}
-
-Be direct, specific, and reference their actual values. Use markdown formatting. Keep responses concise but thorough. Flag anything suboptimal aggressively — this patient wants to live to 120+.`;
+    const systemPrompt = `You are an elite longevity medicine AI advisor. Patient: ${profile.full_name || "Unknown"}, ${profile.sex || "Unknown"}, Age ~${chronologicalAge}.
+Longevity score: ${longevityScore}/100. Bio age: ${biologicalAge}.
+Top issue: ${diagnosis.title} (${diagnosis.severity}).
+BP ${profile.bp_systolic}/${profile.bp_diastolic}, HRV ${profile.hrv_ms}, VO2 ${profile.vo2_max}.
+LDL ${profile.ldl}, ApoB ${profile.apob}, hsCRP ${profile.hscrp}.
+Glucose ${profile.fasting_glucose}, HbA1c ${profile.hba1c}.
+Be direct, specific, reference actual values. Markdown formatting.`;
 
     try {
       const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
       const resp = await fetch(url, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-        },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
         body: JSON.stringify({ messages: allMessages, systemPrompt }),
       });
-
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({ error: "Unknown error" }));
-        toast.error(err.error || "AI request failed");
-        setChatLoading(false);
-        return;
-      }
-
-      // Stream response
-      const reader = resp.body?.getReader();
-      if (!reader) throw new Error("No stream");
+      if (!resp.ok) { toast.error("AI request failed"); setChatLoading(false); return; }
+      const reader = resp.body?.getReader(); if (!reader) throw new Error("No stream");
       const decoder = new TextDecoder();
-      let assistantContent = "";
-      let buffer = "";
-
+      let assistantContent = ""; let buffer = "";
       while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+        const { done, value } = await reader.read(); if (done) break;
         buffer += decoder.decode(value, { stream: true });
-
-        let newlineIdx: number;
-        while ((newlineIdx = buffer.indexOf("\n")) !== -1) {
-          let line = buffer.slice(0, newlineIdx);
-          buffer = buffer.slice(newlineIdx + 1);
+        let nl: number;
+        while ((nl = buffer.indexOf("\n")) !== -1) {
+          let line = buffer.slice(0, nl); buffer = buffer.slice(nl + 1);
           if (line.endsWith("\r")) line = line.slice(0, -1);
           if (!line.startsWith("data: ")) continue;
-          const jsonStr = line.slice(6).trim();
-          if (jsonStr === "[DONE]") break;
+          const jsonStr = line.slice(6).trim(); if (jsonStr === "[DONE]") break;
           try {
             const parsed = JSON.parse(jsonStr);
             const content = parsed.choices?.[0]?.delta?.content;
@@ -195,9 +218,7 @@ Be direct, specific, and reference their actual values. Use markdown formatting.
               assistantContent += content;
               setChatMessages(prev => {
                 const last = prev[prev.length - 1];
-                if (last?.role === "assistant") {
-                  return prev.map((m, i) => i === prev.length - 1 ? { ...m, content: assistantContent } : m);
-                }
+                if (last?.role === "assistant") return prev.map((m, i) => i === prev.length - 1 ? { ...m, content: assistantContent } : m);
                 return [...prev, { role: "assistant", content: assistantContent }];
               });
               chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -205,65 +226,195 @@ Be direct, specific, and reference their actual values. Use markdown formatting.
           } catch {}
         }
       }
-    } catch (e) {
-      toast.error("Failed to reach AI advisor");
-    }
+    } catch { toast.error("Failed to reach AI advisor"); }
     setChatLoading(false);
-  }, [chatMessages, chatLoading, profile]);
+  }, [chatMessages, chatLoading, profile, chronologicalAge, longevityScore, biologicalAge, diagnosis]);
 
-  const system = BODY_SYSTEMS.find(s => s.id === selectedSystem);
+  // ─── Derived view-model ────────────────────────────────────
+  const overall = scoreLabel(longevityScore);
+  const topFixes = diagnosis.fixes.slice(0, 3);
 
-  const chronoAge = profile.date_of_birth ? new Date().getFullYear() - new Date(profile.date_of_birth).getFullYear() : 0;
+  const trendMeta =
+    trend.direction === "up"   ? { Icon: TrendingUp,   text: "Improving",  tone: "text-emerald-400 bg-emerald-400/10 border-emerald-400/20" } :
+    trend.direction === "down" ? { Icon: TrendingDown, text: "Declining",  tone: "text-rose-400 bg-rose-400/10 border-rose-400/20" } :
+                                 { Icon: Minus,        text: "Stable",     tone: "text-muted-foreground bg-muted border-border" };
+
+  const yearsLine =
+    trend.deltaYears > 0 ? `+${trend.deltaYears} years gained this month` :
+    trend.deltaYears < 0 ? `${trend.deltaYears} years this month` :
+                           "Baseline established";
 
   return (
-    <div className="space-y-5 pb-24 animate-fade-in">
-      <div className="text-center pt-1">
-        <h1 className="text-lg font-semibold text-foreground">Your Body</h1>
-        <p className="text-xs text-muted-foreground mt-0.5">Health data & medical vault</p>
-      </div>
+    <div className="space-y-8 pb-28 animate-fade-in">
 
-      {/* Quick Profile Section */}
-      <div className="bg-card border border-border rounded-xl overflow-hidden">
+      {/* ══════════ 1. HERO ══════════ */}
+      <header className="text-center pt-2 space-y-3">
+        <h1 className="text-3xl sm:text-4xl font-bold text-foreground tracking-tight">Your Body</h1>
+        <div className="flex items-center justify-center gap-2">
+          <span className={`inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-full border ${trendMeta.tone}`}>
+            <trendMeta.Icon className="w-3 h-3" />
+            {trendMeta.text}
+          </span>
+          <span className="text-[11px] text-muted-foreground">{yearsLine}</span>
+        </div>
+      </header>
+
+      {/* ══════════ 2. LONGEVITY SCORE ══════════ */}
+      <section className="flex flex-col items-center gap-3">
+        <ScoreRing score={longevityScore} size={220} strokeWidth={14} />
+        <div className="text-center">
+          <p className={`text-base font-semibold ${overall.tone}`}>{overall.label}</p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">
+            Bio age <span className="text-foreground font-medium">{biologicalAge}</span> · Actual {chronologicalAge}
+          </p>
+        </div>
+      </section>
+
+      {/* ══════════ 3. BODY SYSTEMS ══════════ */}
+      <section className="space-y-3">
+        <div className="flex items-baseline justify-between px-1">
+          <h2 className="text-sm font-semibold text-foreground">Body systems</h2>
+          <span className="text-[10px] text-muted-foreground uppercase tracking-wider">0–100</span>
+        </div>
+        <div className="space-y-2.5">
+          {SYSTEM_DISPLAY.map(sys => {
+            const Icon = sys.icon;
+            const score = systemHealth[sys.id] ?? 100;
+            const meta = scoreLabel(score);
+            return (
+              <div key={sys.id} className="bg-card border border-border rounded-xl p-3.5">
+                <div className="flex items-center gap-3 mb-2">
+                  <Icon className="w-4 h-4 text-muted-foreground shrink-0" />
+                  <span className="text-sm font-medium text-foreground flex-1">{sys.label}</span>
+                  <span className={`text-base font-bold tabular-nums ${meta.tone}`}>{score}</span>
+                </div>
+                <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className={`h-full rounded-full bg-gradient-to-r ${sys.color} transition-[width] duration-1000 ease-out`}
+                    style={{ width: `${score}%` }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* ══════════ 4. MAIN ISSUE ══════════ */}
+      {diagnosis.riskScore > 0 && (
+        <section className="bg-gradient-to-br from-rose-500/10 to-amber-500/5 border border-rose-500/20 rounded-2xl p-5 space-y-2">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-400" />
+            <span className="text-[10px] font-semibold text-rose-400 uppercase tracking-wider">Main issue</span>
+          </div>
+          <h3 className="text-xl font-bold text-foreground tracking-tight">{diagnosis.title}</h3>
+          <p className="text-xs text-muted-foreground leading-relaxed">{diagnosis.lifeImpact}</p>
+        </section>
+      )}
+
+      {/* ══════════ 5. ACTIONS ══════════ */}
+      {topFixes.length > 0 && (
+        <section className="space-y-3">
+          <div className="flex items-center gap-2 px-1">
+            <Zap className="w-3.5 h-3.5 text-primary" />
+            <h2 className="text-sm font-semibold text-foreground">What to do</h2>
+          </div>
+          <div className="space-y-2">
+            {topFixes.map((fix, i) => (
+              <div key={i} className="bg-card border border-border rounded-xl p-3.5 flex items-start gap-3">
+                <div className="w-6 h-6 rounded-full bg-primary/15 text-primary text-[11px] font-bold flex items-center justify-center shrink-0 mt-0.5">
+                  {i + 1}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground leading-snug">{fix.action}</p>
+                  <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed">{fix.why}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* ══════════ 6. METRICS (secondary, collapsible) ══════════ */}
+      <section>
         <button
-          onClick={() => setShowProfile(!showProfile)}
-          className="w-full flex items-center justify-between p-3"
+          onClick={() => setShowMetrics(!showMetrics)}
+          className="w-full flex items-center justify-between py-2 px-1 group"
         >
           <div className="flex items-center gap-2">
-            <User className="w-4 h-4 text-primary" />
-            <span className="text-xs font-semibold text-foreground uppercase tracking-wider">Quick Profile</span>
+            <Activity className="w-3.5 h-3.5 text-muted-foreground" />
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Your metrics</span>
+          </div>
+          <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform ${showMetrics ? "rotate-90" : ""}`} />
+        </button>
+
+        {showMetrics && (
+          <div className="grid grid-cols-2 gap-2 mt-2 animate-fade-in">
+            {[
+              { key: "weight_kg",        label: "Weight",   unit: "kg",  icon: User },
+              { key: "resting_hr",       label: "Resting HR", unit: "bpm", icon: Heart },
+              { key: "hrv_ms",           label: "HRV",      unit: "ms",  icon: Activity },
+              { key: "avg_sleep_hours",  label: "Sleep",    unit: "h",   icon: Moon },
+              { key: "vo2_max",          label: "VO₂ max",  unit: "",    icon: Wind },
+              { key: "body_fat_pct",     label: "Body fat", unit: "%",   icon: User },
+            ].map(m => {
+              const Icon = m.icon;
+              const val = (profile as any)[m.key];
+              return (
+                <div key={m.key} className="bg-card border border-border rounded-lg p-2.5">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <Icon className="w-3 h-3 text-muted-foreground" />
+                    <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{m.label}</span>
+                  </div>
+                  <input
+                    type="number"
+                    value={val || ""}
+                    onChange={(e) => updateField(m.key as any, parseFloat(e.target.value) || 0)}
+                    className="w-full text-base font-semibold tabular-nums bg-transparent text-foreground focus:outline-none"
+                    placeholder="—"
+                  />
+                  {m.unit && <span className="text-[10px] text-muted-foreground">{m.unit}</span>}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* ══════════ Profile (collapsible) ══════════ */}
+      <section>
+        <button
+          onClick={() => setShowProfile(!showProfile)}
+          className="w-full flex items-center justify-between py-2 px-1"
+        >
+          <div className="flex items-center gap-2">
+            <User className="w-3.5 h-3.5 text-muted-foreground" />
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Profile & history</span>
           </div>
           <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform ${showProfile ? "rotate-90" : ""}`} />
         </button>
 
         {showProfile && (
-          <div className="px-3 pb-3 space-y-3 border-t border-border/50 pt-3 animate-fade-in">
-            {/* Basic Info Row */}
+          <div className="mt-2 bg-card border border-border rounded-xl p-3.5 space-y-3 animate-fade-in">
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="text-[9px] text-muted-foreground uppercase tracking-wider">Age</label>
-                <div className="flex items-center gap-1 mt-0.5">
-                  <input
-                    type="number"
-                    value={chronoAge || ""}
-                    onChange={(e) => {
-                      const age = parseInt(e.target.value) || 30;
-                      const year = new Date().getFullYear() - age;
-                      updateField("date_of_birth", `${year}-01-01`);
-                    }}
-                    className="w-full text-sm font-mono bg-muted border border-border rounded-lg px-2 py-1.5 text-foreground focus:outline-none focus:border-primary"
-                    placeholder="33"
-                    min={1}
-                    max={120}
-                  />
-                  <span className="text-[10px] text-muted-foreground">yrs</span>
-                </div>
+                <label className="text-[10px] text-muted-foreground uppercase tracking-wider">Age</label>
+                <input
+                  type="number"
+                  value={chronologicalAge || ""}
+                  onChange={(e) => {
+                    const age = parseInt(e.target.value) || 30;
+                    updateField("date_of_birth", `${new Date().getFullYear() - age}-01-01`);
+                  }}
+                  className="w-full text-sm font-mono bg-muted border border-border rounded-lg px-2 py-1.5 text-foreground focus:outline-none focus:border-primary mt-1"
+                />
               </div>
               <div>
-                <label className="text-[9px] text-muted-foreground uppercase tracking-wider">Sex</label>
+                <label className="text-[10px] text-muted-foreground uppercase tracking-wider">Sex</label>
                 <select
                   value={profile.sex || ""}
                   onChange={(e) => updateField("sex", e.target.value)}
-                  className="w-full text-sm bg-muted border border-border rounded-lg px-2 py-1.5 text-foreground focus:outline-none focus:border-primary mt-0.5 appearance-none"
+                  className="w-full text-sm bg-muted border border-border rounded-lg px-2 py-1.5 text-foreground focus:outline-none focus:border-primary mt-1"
                 >
                   <option value="">—</option>
                   <option value="Male">Male</option>
@@ -272,147 +423,80 @@ Be direct, specific, and reference their actual values. Use markdown formatting.
               </div>
             </div>
 
-            {/* Body Measurements */}
-            <div className="grid grid-cols-4 gap-1.5">
-              {[
-                { key: "weight_kg", label: "Weight", unit: "kg", placeholder: "84" },
-                { key: "height_cm", label: "Height", unit: "cm", placeholder: "180" },
-                { key: "body_fat_pct", label: "Body Fat", unit: "%", placeholder: "18" },
-                { key: "waist_cm", label: "Waist", unit: "cm", placeholder: "86" },
-              ].map(f => (
-                <div key={f.key}>
-                  <label className="text-[8px] text-muted-foreground uppercase">{f.label}</label>
-                  <input
-                    type="number"
-                    value={(profile as any)[f.key] || ""}
-                    onChange={(e) => updateField(f.key as any, parseFloat(e.target.value) || 0)}
-                    className="w-full text-xs font-mono bg-muted border border-border rounded-lg px-1.5 py-1 text-foreground focus:outline-none focus:border-primary mt-0.5"
-                    placeholder={f.placeholder}
-                  />
-                  <span className="text-[8px] text-muted-foreground">{f.unit}</span>
-                </div>
-              ))}
-            </div>
-
-            {/* Family History */}
             <div>
               <div className="flex items-center gap-1.5 mb-1.5">
                 <Dna className="w-3 h-3 text-muted-foreground" />
-                <label className="text-[9px] text-muted-foreground uppercase tracking-wider">Family History</label>
+                <label className="text-[10px] text-muted-foreground uppercase tracking-wider">Family history</label>
               </div>
               <div className="flex flex-wrap gap-1">
-                {FAMILY_CONDITIONS.map(condition => (
+                {FAMILY_CONDITIONS.map(c => (
                   <button
-                    key={condition}
-                    onClick={() => toggleFamilyCondition(condition)}
+                    key={c}
+                    onClick={() => toggleFamilyCondition(c)}
                     className={`text-[10px] px-2 py-0.5 rounded-full border transition-all ${
-                      familyHistory.includes(condition)
+                      familyHistory.includes(c)
                         ? "bg-primary/10 border-primary/30 text-primary font-medium"
                         : "bg-muted border-border text-muted-foreground"
                     }`}
-                  >
-                    {condition}
-                  </button>
+                  >{c}</button>
                 ))}
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Model accuracy</span>
+                <span className="text-xs font-bold text-primary tabular-nums">{dataCompleteness}%</span>
+              </div>
+              <div className="w-full h-1 rounded-full bg-muted">
+                <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${dataCompleteness}%` }} />
               </div>
             </div>
           </div>
         )}
-      </div>
+      </section>
 
-      {/* Data Gravity */}
-      <div className="bg-card border border-border rounded-xl p-3">
-        <div className="flex items-center justify-between mb-1">
-          <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Model Accuracy</span>
-          <span className="text-xs font-bold text-primary">{dataCompleteness}%</span>
-        </div>
-        <div className="w-full h-1.5 rounded-full bg-muted">
-          <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${dataCompleteness}%` }} />
-        </div>
-        <p className="text-[9px] text-muted-foreground/60 mt-1">
-          {dataCompleteness < 50 ? "Add more data to improve predictions" : dataCompleteness < 80 ? "Upload labs to reach 90%+ accuracy" : "Your model is highly accurate"}
-        </p>
-      </div>
-
-      {/* Body Systems */}
-      <div>
-        <h2 className="text-xs font-semibold text-foreground mb-2 uppercase tracking-wider">Systems</h2>
-        <div className="space-y-1.5">
-          {BODY_SYSTEMS.map(sys => {
-            const Icon = sys.icon;
-            const filledCount = sys.fields.filter(f => (profile as any)[f] > 0).length;
-            const total = sys.fields.length;
-            return (
-              <button
-                key={sys.id}
-                onClick={() => setSelectedSystem(selectedSystem === sys.id ? null : sys.id)}
-                className="w-full bg-card border border-border rounded-xl p-3 flex items-center gap-3 hover:border-primary/30 transition-colors text-left"
-              >
-                <Icon className={`w-5 h-5 ${sys.color} shrink-0`} />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-foreground">{sys.label}</p>
-                  <p className="text-[10px] text-muted-foreground">{filledCount}/{total} markers</p>
-                </div>
-                <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform ${selectedSystem === sys.id ? "rotate-90" : ""}`} />
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Expanded System Detail */}
-      {system && (
-        <div className="bg-card border border-border rounded-xl p-4 space-y-3 animate-fade-in">
-          <h3 className="text-sm font-semibold text-foreground">{system.label} Markers</h3>
-          {system.fields.map(field => {
-            const meta = FIELD_LABELS[field];
-            const value = (profile as any)[field];
-            return (
-              <div key={field} className="flex items-center gap-3">
-                <div className="flex-1">
-                  <p className="text-xs text-foreground font-medium">{meta?.label || field}</p>
-                  <p className="text-[10px] text-muted-foreground">Optimal: {meta?.optimal || "—"}</p>
-                </div>
-                <div className="flex items-center gap-1">
-                  <input
-                    type="number"
-                    value={value || ""}
-                    onChange={(e) => updateField(field as any, parseFloat(e.target.value) || 0)}
-                    className="w-20 text-right text-sm font-mono bg-muted border border-border rounded-lg px-2 py-1 text-foreground focus:outline-none focus:border-primary"
-                    placeholder="—"
-                  />
-                  <span className="text-[10px] text-muted-foreground w-12">{meta?.unit}</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Medical Vault */}
-      <div>
-        <h2 className="text-xs font-semibold text-foreground mb-2 uppercase tracking-wider">Medical Vault</h2>
-        <div
-          className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors cursor-pointer ${dragOver ? "border-primary bg-primary/5" : "border-border"}`}
-          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={(e) => { e.preventDefault(); setDragOver(false); handleFileUpload(e.dataTransfer.files); }}
-          onClick={() => { const input = document.createElement("input"); input.type = "file"; input.accept = ".pdf,.jpg,.png"; input.multiple = true; input.onchange = (e) => handleFileUpload((e.target as HTMLInputElement).files); input.click(); }}
+      {/* ══════════ Vault (collapsible) ══════════ */}
+      <section>
+        <button
+          onClick={() => setShowVault(!showVault)}
+          className="w-full flex items-center justify-between py-2 px-1"
         >
-          {uploading ? (
-            <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
-          ) : (
-            <>
-              <Upload className="w-6 h-6 text-muted-foreground mx-auto mb-2" />
-              <p className="text-xs text-muted-foreground">Drop lab reports here or tap to upload</p>
-              <p className="text-[10px] text-muted-foreground/50 mt-1">PDF, JPG, PNG</p>
-            </>
-          )}
-        </div>
+          <div className="flex items-center gap-2">
+            <FileText className="w-3.5 h-3.5 text-muted-foreground" />
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              Lab reports {documents.length > 0 && `· ${documents.length}`}
+            </span>
+          </div>
+          <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform ${showVault ? "rotate-90" : ""}`} />
+        </button>
 
-        {documents.length > 0 && (
-          <div className="mt-3 space-y-1.5">
-            {documents.slice(0, 5).map(doc => (
+        {showVault && (
+          <div className="mt-2 space-y-2 animate-fade-in">
+            <div
+              className={`border-2 border-dashed rounded-xl p-5 text-center transition-colors cursor-pointer ${dragOver ? "border-primary bg-primary/5" : "border-border"}`}
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => { e.preventDefault(); setDragOver(false); handleFileUpload(e.dataTransfer.files); }}
+              onClick={() => {
+                const input = document.createElement("input");
+                input.type = "file"; input.accept = ".pdf,.jpg,.png"; input.multiple = true;
+                input.onchange = (e) => handleFileUpload((e.target as HTMLInputElement).files);
+                input.click();
+              }}
+            >
+              {uploading ? (
+                <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
+              ) : (
+                <>
+                  <Upload className="w-5 h-5 text-muted-foreground mx-auto mb-1.5" />
+                  <p className="text-xs text-muted-foreground">Upload lab reports</p>
+                  <p className="text-[10px] text-muted-foreground/50 mt-0.5">PDF, JPG, PNG</p>
+                </>
+              )}
+            </div>
+
+            {documents.map(doc => (
               <div key={doc.id} className="bg-card border border-border rounded-lg p-2.5 flex items-center gap-2">
                 <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
                 <div className="flex-1 min-w-0">
@@ -420,16 +504,16 @@ Be direct, specific, and reference their actual values. Use markdown formatting.
                   <p className="text-[10px] text-muted-foreground">{new Date(doc.created_at).toLocaleDateString()}</p>
                 </div>
                 <span className={`text-[9px] font-medium px-1.5 py-0.5 rounded-full ${doc.status === "reviewed" ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
-                  {doc.status === "reviewed" ? "Analyzed" : doc.status === "processing" ? "Processing..." : "New"}
+                  {doc.status === "reviewed" ? "Analyzed" : "New"}
                 </span>
               </div>
             ))}
           </div>
         )}
-      </div>
+      </section>
 
-      {/* AI Medical Advisor Chat */}
-      <div>
+      {/* ══════════ AI Medical Advisor ══════════ */}
+      <section>
         <button
           onClick={() => { setChatOpen(!chatOpen); setTimeout(() => inputRef.current?.focus(), 100); }}
           className="w-full bg-gradient-to-r from-primary/10 to-primary/5 border border-primary/20 rounded-xl p-3 flex items-center gap-3 hover:border-primary/40 transition-all"
@@ -438,29 +522,26 @@ Be direct, specific, and reference their actual values. Use markdown formatting.
             <Bot className="w-4 h-4 text-primary" />
           </div>
           <div className="flex-1 text-left">
-            <p className="text-sm font-semibold text-foreground">AI Medical Advisor</p>
-            <p className="text-[10px] text-muted-foreground">Ask about your labs, risks, or health plan</p>
+            <p className="text-sm font-semibold text-foreground">Ask your AI advisor</p>
+            <p className="text-[10px] text-muted-foreground">About your labs, risks, or plan</p>
           </div>
           <MessageCircle className={`w-4 h-4 transition-transform ${chatOpen ? "text-primary" : "text-muted-foreground"}`} />
         </button>
 
         {chatOpen && (
           <div className="mt-2 bg-card border border-border rounded-xl overflow-hidden animate-fade-in">
-            {/* Messages */}
             <div className="h-72 overflow-y-auto p-3 space-y-3">
               {chatMessages.length === 0 && (
                 <div className="text-center py-8">
                   <Bot className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
-                  <p className="text-xs text-muted-foreground">Ask me anything about your health data</p>
+                  <p className="text-xs text-muted-foreground">Ask about your health data</p>
                   <div className="flex flex-wrap gap-1.5 justify-center mt-3">
-                    {["What are my biggest risks?", "Explain my LDL levels", "What supplements should I take?"].map(q => (
+                    {["What are my biggest risks?", "Explain my LDL", "Best supplements for me?"].map(q => (
                       <button
                         key={q}
                         onClick={() => { setChatInput(q); setTimeout(() => sendChat(q), 50); }}
                         className="text-[10px] px-2 py-1 rounded-full bg-muted border border-border text-muted-foreground hover:border-primary/30 hover:text-primary transition-colors"
-                      >
-                        {q}
-                      </button>
+                      >{q}</button>
                     ))}
                   </div>
                 </div>
@@ -468,9 +549,7 @@ Be direct, specific, and reference their actual values. Use markdown formatting.
               {chatMessages.map((msg, i) => (
                 <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
                   <div className={`max-w-[85%] rounded-xl px-3 py-2 text-xs ${
-                    msg.role === "user"
-                      ? "bg-primary text-primary-foreground rounded-br-sm"
-                      : "bg-muted text-foreground rounded-bl-sm"
+                    msg.role === "user" ? "bg-primary text-primary-foreground rounded-br-sm" : "bg-muted text-foreground rounded-bl-sm"
                   }`}>
                     {msg.role === "assistant" ? (
                       <div className="prose prose-xs prose-invert max-w-none [&_p]:m-0 [&_ul]:my-1 [&_li]:my-0.5 [&_strong]:text-primary">
@@ -484,7 +563,7 @@ Be direct, specific, and reference their actual values. Use markdown formatting.
                 <div className="flex justify-start">
                   <div className="bg-muted rounded-xl px-3 py-2 rounded-bl-sm">
                     <div className="flex gap-1">
-                      <div className="w-1.5 h-1.5 bg-muted-foreground/40 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                      <div className="w-1.5 h-1.5 bg-muted-foreground/40 rounded-full animate-bounce" />
                       <div className="w-1.5 h-1.5 bg-muted-foreground/40 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
                       <div className="w-1.5 h-1.5 bg-muted-foreground/40 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
                     </div>
@@ -494,7 +573,6 @@ Be direct, specific, and reference their actual values. Use markdown formatting.
               <div ref={chatEndRef} />
             </div>
 
-            {/* Input */}
             <div className="border-t border-border p-2 flex gap-2">
               <input
                 ref={inputRef}
@@ -516,7 +594,7 @@ Be direct, specific, and reference their actual values. Use markdown formatting.
             </div>
           </div>
         )}
-      </div>
+      </section>
     </div>
   );
 }
