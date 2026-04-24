@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable/index";
 import { Button } from "@/components/ui/button";
+import { track } from "@/lib/analytics";
 import {
   TrendingUp,
   Mail,
@@ -29,19 +30,33 @@ export default function AuthPage({ onGuestLogin }: Props) {
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
+  // Fire once when the pricing preview is rendered (left column on lg+).
+  useEffect(() => {
+    track({ name: "pricing_preview_view", plan: "Pro" });
+  }, []);
+
   const handleAuth = async () => {
     if (!email || !password) return;
     setLoading(true);
+    const mode = isSignUp ? "sign_up" : "sign_in";
+    track(
+      isSignUp
+        ? { name: "auth_create_account_attempt", method: "email" }
+        : { name: "auth_sign_in_attempt", method: "email" }
+    );
     try {
       if (isSignUp) {
         const { error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
+        track({ name: "auth_success", method: "email", mode: "sign_up" });
         toast({ title: "Account created!", description: "Check your email to verify." });
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
+        track({ name: "auth_success", method: "email", mode: "sign_in" });
       }
     } catch (err: any) {
+      track({ name: "auth_error", method: "email", mode, message: err?.message });
       toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally {
       setLoading(false);
@@ -49,12 +64,21 @@ export default function AuthPage({ onGuestLogin }: Props) {
   };
 
   const handleSocial = async (provider: "google" | "apple") => {
+    const mode = isSignUp ? "sign_up" : "sign_in";
+    track(
+      isSignUp
+        ? { name: "auth_create_account_attempt", method: provider }
+        : { name: "auth_sign_in_attempt", method: provider }
+    );
     const result = await lovable.auth.signInWithOAuth(provider, {
       redirect_uri: window.location.origin,
     });
     if (result.error) {
+      track({ name: "auth_error", method: provider, mode, message: result.error.message });
       toast({ title: "Error", description: result.error.message, variant: "destructive" });
     }
+    // Note: on success the browser redirects; the final `auth_success`
+    // event fires from the auth-state listener below (covers OAuth too).
   };
 
   const features = [
@@ -172,7 +196,10 @@ export default function AuthPage({ onGuestLogin }: Props) {
               {/* Tabs */}
               <div className="flex rounded-xl bg-secondary/60 p-1 mb-6 ring-1 ring-border/50">
                 <button
-                  onClick={() => setIsSignUp(false)}
+                  onClick={() => {
+                    setIsSignUp(false);
+                    track({ name: "auth_tab_switch", to: "sign_in" });
+                  }}
                   className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all ${
                     !isSignUp
                       ? "bg-primary text-primary-foreground shadow-[0_4px_20px_-6px_hsl(var(--primary)/0.6)]"
@@ -182,7 +209,10 @@ export default function AuthPage({ onGuestLogin }: Props) {
                   Sign In
                 </button>
                 <button
-                  onClick={() => setIsSignUp(true)}
+                  onClick={() => {
+                    setIsSignUp(true);
+                    track({ name: "auth_tab_switch", to: "sign_up" });
+                  }}
                   className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all ${
                     isSignUp
                       ? "bg-primary text-primary-foreground shadow-[0_4px_20px_-6px_hsl(var(--primary)/0.6)]"
