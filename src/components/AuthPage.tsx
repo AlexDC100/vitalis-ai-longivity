@@ -387,26 +387,34 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
 
       {/* HEADER */}
       <header
-        className={`sticky top-0 z-40 border-b backdrop-blur-xl transition-[background-color,border-color,box-shadow] duration-300 ease-out ${
+        className={`sticky top-0 z-40 border-b backdrop-blur-xl ${
+          reducedMotion ? "" : "transition-[background-color,border-color,box-shadow] duration-300 ease-out"
+        } ${
           scrolled
             ? "bg-background/85 border-border/60 shadow-[0_4px_20px_-12px_hsl(var(--background)/0.8)]"
             : "bg-background/60 border-border/30"
         }`}
       >
         <div
-          className={`max-w-7xl mx-auto flex items-center justify-between gap-3 px-4 sm:px-6 lg:px-10 transition-[height] duration-300 ease-out ${
+          className={`max-w-7xl mx-auto flex items-center justify-between gap-3 px-4 sm:px-6 lg:px-10 ${
+            reducedMotion ? "" : "transition-[height] duration-300 ease-out"
+          } ${
             scrolled ? "h-12 md:h-14" : "h-14 md:h-16"
           }`}
         >
           {/* Logo */}
           <a href="#" className="flex items-center gap-2 sm:gap-2.5 min-w-0">
             <div
-              className={`rounded-xl bg-primary/15 ring-1 ring-primary/30 flex items-center justify-center shrink-0 transition-[width,height] duration-300 ease-out ${
+              className={`rounded-xl bg-primary/15 ring-1 ring-primary/30 flex items-center justify-center shrink-0 ${
+                reducedMotion ? "" : "transition-[width,height] duration-300 ease-out"
+              } ${
                 scrolled ? "w-7 h-7 sm:w-8 sm:h-8" : "w-8 h-8 sm:w-9 sm:h-9"
               }`}
             >
               <TrendingUp
-                className={`text-primary transition-[width,height] duration-300 ease-out ${
+                className={`text-primary ${
+                  reducedMotion ? "" : "transition-[width,height] duration-300 ease-out"
+                } ${
                   scrolled ? "w-3.5 h-3.5 sm:w-4 sm:h-4" : "w-4 h-4 sm:w-[18px] sm:h-[18px]"
                 }`}
               />
@@ -458,9 +466,16 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
               ref={hamburgerRef}
               type="button"
               aria-label={mobileNavOpen ? "Close menu" : "Open menu"}
+              aria-haspopup="menu"
               aria-expanded={mobileNavOpen}
-              aria-controls="mobile-nav-panel"
-              onClick={() => setMobileNavOpen((v) => !v)}
+              aria-controls={mobileNavOpen ? "mobile-nav-panel" : undefined}
+              onClick={(e) => {
+                if (mobileNavOpen) {
+                  closeMobileNav(e.currentTarget);
+                } else {
+                  openMobileNav(e.currentTarget);
+                }
+              }}
               className="md:hidden inline-flex items-center justify-center w-9 h-9 rounded-lg text-foreground hover:bg-secondary/60 transition-colors"
             >
               {mobileNavOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -475,11 +490,16 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
           role="dialog"
           aria-modal="true"
           aria-label="Main menu"
+          aria-labelledby={undefined}
           aria-hidden={!mobileNavOpen}
-          className={`md:hidden overflow-hidden border-t border-border/40 bg-background/95 backdrop-blur-xl origin-top transform-gpu will-change-[transform,opacity,max-height] transition-[max-height,opacity,transform] duration-[400ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${
+          className={`md:hidden overflow-hidden border-t border-border/40 bg-background/95 backdrop-blur-xl origin-top transform-gpu will-change-[transform,opacity,max-height] ${
+            reducedMotion
+              ? "transition-none"
+              : "transition-[max-height,opacity,transform] duration-[400ms] ease-[cubic-bezier(0.22,1,0.36,1)]"
+          } ${
             mobileNavOpen
               ? "max-h-[480px] opacity-100 scale-y-100 pointer-events-auto"
-              : "max-h-0 opacity-0 scale-y-95 pointer-events-none"
+              : `max-h-0 opacity-0 pointer-events-none ${reducedMotion ? "scale-y-100" : "scale-y-95"}`
           }`}
         >
           <nav className="px-4 sm:px-6 py-3 flex flex-col">
@@ -492,7 +512,10 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
                   href={item.href}
                   aria-current={isActive ? "true" : undefined}
                   tabIndex={mobileNavOpen ? 0 : -1}
-                  onClick={() => setMobileNavOpen(false)}
+                  onClick={(e) => {
+                    setActiveSection(id);
+                    closeMobileNav(e.currentTarget);
+                  }}
                   className={`group relative flex items-center justify-between py-3 pl-3 pr-2 -mx-1 rounded-lg text-[15px] font-medium border-b border-border/30 last:border-b-0 transition-colors ${
                     isActive
                       ? "text-foreground bg-primary/10"
@@ -514,8 +537,8 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
             })}
             <button
               tabIndex={mobileNavOpen ? 0 : -1}
-              onClick={() => {
-                setMobileNavOpen(false);
+              onClick={(e) => {
+                closeMobileNav(e.currentTarget);
                 openAuth("sign_in");
               }}
               className="mt-3 inline-flex items-center justify-center h-11 rounded-lg text-[14px] font-semibold text-foreground bg-secondary/60 hover:bg-secondary transition-colors"
