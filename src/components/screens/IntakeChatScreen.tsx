@@ -74,7 +74,7 @@ export default function IntakeChatScreen({ onComplete }: { onComplete: () => voi
         user_id: userId,
         section: sectionId,
         status: "in_progress",
-        transcript,
+        transcript: transcript as unknown as never,
         extracted_fields: {},
       })
       .select("id")
@@ -101,8 +101,8 @@ export default function IntakeChatScreen({ onComplete }: { onComplete: () => voi
       .from("intake_sessions")
       .update({
         status: "completed",
-        transcript,
-        extracted_fields: extracted,
+        transcript: transcript as unknown as never,
+        extracted_fields: JSON.parse(JSON.stringify(extracted)) as never,
         completed_at: new Date().toISOString(),
       })
       .eq("id", id);
