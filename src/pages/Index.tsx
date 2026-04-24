@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Session } from "@supabase/supabase-js";
 import { HealthProvider, useHealth } from "@/lib/health-context";
 import AuthPage from "@/components/AuthPage";
+import { track } from "@/lib/analytics";
 import OnboardingScreen from "@/components/screens/OnboardingScreen";
 import DiagnosisScreen from "@/components/screens/DiagnosisScreen";
 import BodyDataScreen from "@/components/screens/BodyDataScreen";
@@ -24,10 +25,23 @@ function AppShell() {
   const screenOrder: Screen[] = ["diagnosis", "body", "doctor"];
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
       setSession(s);
       if (s) { setIsGuest(false); setUserId(s.user.id); } else { setUserId(null); }
       setLoading(false);
+
+      // Fire a single, reliable success event covering email + OAuth flows.
+      if (event === "SIGNED_IN" && s) {
+        const provider = (s.user.app_metadata?.provider ?? "email") as
+          | "google"
+          | "apple"
+          | "email";
+        track({
+          name: "auth_success",
+          method: provider === "google" || provider === "apple" ? provider : "email",
+          mode: "sign_in",
+        });
+      }
     });
     supabase.auth.getSession().then(({ data: { session: s } }) => {
       setSession(s);
