@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { track } from "@/lib/analytics";
 import AuthDialog from "@/components/AuthDialog";
@@ -46,6 +46,10 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
   const [billing, setBilling] = useState<"monthly" | "annual">("monthly");
   const [expandedAudience, setExpandedAudience] = useState<string | null>("Individuals");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+  const [activeSection, setActiveSection] = useState<string>("");
+  const hamburgerRef = useRef<HTMLButtonElement | null>(null);
+  const mobilePanelRef = useRef<HTMLDivElement | null>(null);
 
   // Lock body scroll while mobile nav is open
   useEffect(() => {
@@ -56,6 +60,91 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
         document.body.style.overflow = prev;
       };
     }
+  }, [mobileNavOpen]);
+
+  // Track scroll for header shrink + auto-close mobile nav on scroll
+  useEffect(() => {
+    let lastY = window.scrollY;
+    const onScroll = () => {
+      const y = window.scrollY;
+      setScrolled(y > 8);
+      // Close mobile nav if user scrolls the page noticeably (won't fire while body is locked)
+      if (Math.abs(y - lastY) > 24) {
+        setMobileNavOpen((open) => (open ? false : open));
+      }
+      lastY = y;
+    };
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // Scroll-spy: highlight the nav link of the section currently in view
+  useEffect(() => {
+    const ids = ["product", "how", "pricing", "audiences", "security"];
+    const sections = ids
+      .map((id) => document.getElementById(id))
+      .filter((el): el is HTMLElement => !!el);
+    if (sections.length === 0) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio);
+        if (visible[0]) setActiveSection(visible[0].target.id);
+      },
+      { rootMargin: "-40% 0px -50% 0px", threshold: [0, 0.25, 0.5, 0.75, 1] },
+    );
+    sections.forEach((s) => observer.observe(s));
+    return () => observer.disconnect();
+  }, []);
+
+  // Focus trap + Esc to close + return focus to hamburger when mobile nav closes
+  useEffect(() => {
+    if (!mobileNavOpen) return;
+    const panel = mobilePanelRef.current;
+    if (!panel) return;
+
+    const getFocusable = () =>
+      Array.from(
+        panel.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((el) => !el.hasAttribute("data-focus-skip"));
+
+    // Move focus into the panel
+    const focusables = getFocusable();
+    focusables[0]?.focus();
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setMobileNavOpen(false);
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const items = getFocusable();
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      if (e.shiftKey) {
+        if (active === first || !panel.contains(active)) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else if (active === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      // Return focus to the hamburger when the panel closes
+      hamburgerRef.current?.focus();
+    };
   }, [mobileNavOpen]);
 
   useEffect(() => {
@@ -203,12 +292,30 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
       <div className="absolute inset-0 auth-grid-pattern pointer-events-none" />
 
       {/* HEADER */}
-      <header className="sticky top-0 z-40 border-b border-border/40 bg-background/75 backdrop-blur-xl">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 px-4 sm:px-6 lg:px-10 h-14 md:h-16">
+      <header
+        className={`sticky top-0 z-40 border-b backdrop-blur-xl transition-[background-color,border-color,box-shadow] duration-300 ease-out ${
+          scrolled
+            ? "bg-background/85 border-border/60 shadow-[0_4px_20px_-12px_hsl(var(--background)/0.8)]"
+            : "bg-background/60 border-border/30"
+        }`}
+      >
+        <div
+          className={`max-w-7xl mx-auto flex items-center justify-between gap-3 px-4 sm:px-6 lg:px-10 transition-[height] duration-300 ease-out ${
+            scrolled ? "h-12 md:h-14" : "h-14 md:h-16"
+          }`}
+        >
           {/* Logo */}
           <a href="#" className="flex items-center gap-2 sm:gap-2.5 min-w-0">
-            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-primary/15 ring-1 ring-primary/30 flex items-center justify-center shrink-0">
-              <TrendingUp className="w-4 h-4 sm:w-[18px] sm:h-[18px] text-primary" />
+            <div
+              className={`rounded-xl bg-primary/15 ring-1 ring-primary/30 flex items-center justify-center shrink-0 transition-[width,height] duration-300 ease-out ${
+                scrolled ? "w-7 h-7 sm:w-8 sm:h-8" : "w-8 h-8 sm:w-9 sm:h-9"
+              }`}
+            >
+              <TrendingUp
+                className={`text-primary transition-[width,height] duration-300 ease-out ${
+                  scrolled ? "w-3.5 h-3.5 sm:w-4 sm:h-4" : "w-4 h-4 sm:w-[18px] sm:h-[18px]"
+                }`}
+              />
             </div>
             <span className="text-[15px] sm:text-base font-semibold tracking-tight text-foreground truncate">
               Vitalis
@@ -217,15 +324,24 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
 
           {/* Desktop nav */}
           <nav className="hidden md:flex items-center gap-7">
-            {navItems.map((item) => (
-              <a
-                key={item.label}
-                href={item.href}
-                className="text-[13px] font-medium text-muted-foreground hover:text-foreground transition-colors"
-              >
-                {item.label}
-              </a>
-            ))}
+            {navItems.map((item) => {
+              const id = item.href.replace("#", "");
+              const isActive = activeSection === id;
+              return (
+                <a
+                  key={item.label}
+                  href={item.href}
+                  aria-current={isActive ? "true" : undefined}
+                  className={`text-[13px] font-medium transition-colors ${
+                    isActive
+                      ? "text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {item.label}
+                </a>
+              );
+            })}
           </nav>
 
           {/* Right side actions */}
@@ -245,6 +361,7 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
             </Button>
             {/* Mobile menu toggle */}
             <button
+              ref={hamburgerRef}
               type="button"
               aria-label={mobileNavOpen ? "Close menu" : "Open menu"}
               aria-expanded={mobileNavOpen}
@@ -260,22 +377,49 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
         {/* Mobile nav panel */}
         <div
           id="mobile-nav-panel"
-          className={`md:hidden overflow-hidden border-t border-border/40 bg-background/95 backdrop-blur-xl transition-[max-height,opacity] duration-300 ease-out ${
-            mobileNavOpen ? "max-h-[420px] opacity-100" : "max-h-0 opacity-0"
+          ref={mobilePanelRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Main menu"
+          aria-hidden={!mobileNavOpen}
+          className={`md:hidden overflow-hidden border-t border-border/40 bg-background/95 backdrop-blur-xl origin-top transform-gpu will-change-[transform,opacity,max-height] transition-[max-height,opacity,transform] duration-[400ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${
+            mobileNavOpen
+              ? "max-h-[480px] opacity-100 scale-y-100 pointer-events-auto"
+              : "max-h-0 opacity-0 scale-y-95 pointer-events-none"
           }`}
         >
           <nav className="px-4 sm:px-6 py-3 flex flex-col">
-            {navItems.map((item) => (
-              <a
-                key={item.label}
-                href={item.href}
-                onClick={() => setMobileNavOpen(false)}
-                className="py-3 text-[15px] font-medium text-foreground/90 hover:text-foreground border-b border-border/30 last:border-b-0 transition-colors"
-              >
-                {item.label}
-              </a>
-            ))}
+            {navItems.map((item) => {
+              const id = item.href.replace("#", "");
+              const isActive = activeSection === id;
+              return (
+                <a
+                  key={item.label}
+                  href={item.href}
+                  aria-current={isActive ? "true" : undefined}
+                  tabIndex={mobileNavOpen ? 0 : -1}
+                  onClick={() => setMobileNavOpen(false)}
+                  className={`group relative flex items-center justify-between py-3 pl-3 pr-2 -mx-1 rounded-lg text-[15px] font-medium border-b border-border/30 last:border-b-0 transition-colors ${
+                    isActive
+                      ? "text-foreground bg-primary/10"
+                      : "text-foreground/85 hover:text-foreground hover:bg-secondary/40"
+                  }`}
+                >
+                  <span className="flex items-center gap-2.5">
+                    <span
+                      aria-hidden="true"
+                      className={`block w-1 h-5 rounded-full transition-colors ${
+                        isActive ? "bg-primary" : "bg-transparent"
+                      }`}
+                    />
+                    {item.label}
+                  </span>
+                  <ChevronRight className="w-4 h-4 text-muted-foreground/60 group-hover:text-foreground transition-colors" />
+                </a>
+              );
+            })}
             <button
+              tabIndex={mobileNavOpen ? 0 : -1}
               onClick={() => {
                 setMobileNavOpen(false);
                 openAuth("sign_in");
