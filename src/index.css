@@ -104,3 +104,35 @@
 .animate-pulse-glow {
   animation: pulse-glow 2s ease-in-out infinite;
 }
+
+/* Auth page premium styles */
+@keyframes auth-fade-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-auth-fade {
+  animation: auth-fade-up 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.auth-bg {
+  background:
+    radial-gradient(1200px 600px at 10% 10%, hsl(174 72% 46% / 0.10), transparent 60%),
+    radial-gradient(900px 500px at 90% 90%, hsl(210 72% 56% / 0.08), transparent 60%),
+    linear-gradient(180deg, hsl(210 45% 5%) 0%, hsl(210 40% 6%) 100%);
+}
+.auth-glass {
+  background: linear-gradient(180deg, hsl(210 35% 11% / 0.85), hsl(210 35% 8% / 0.85));
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid hsl(180 10% 92% / 0.06);
+  box-shadow:
+    0 30px 60px -20px hsl(210 60% 2% / 0.6),
+    0 0 0 1px hsl(180 10% 92% / 0.02) inset;
+}
+.auth-grid-pattern {
+  background-image:
+    linear-gradient(hsl(180 10% 92% / 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, hsl(180 10% 92% / 0.04) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+}
