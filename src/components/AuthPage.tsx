@@ -34,6 +34,11 @@ export default function AuthPage({ onGuestLogin }: Props) {
   const [forgotMode, setForgotMode] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
   const [resetSent, setResetSent] = useState(false);
+  const [lastError, setLastError] = useState<{
+    method: "email" | "google" | "apple";
+    mode: "sign_in" | "sign_up";
+    message: string;
+  } | null>(null);
   const { toast } = useToast();
 
   // Fire once when the pricing preview is rendered (left column on lg+).
@@ -43,7 +48,9 @@ export default function AuthPage({ onGuestLogin }: Props) {
 
   const handleAuth = async () => {
     if (!email || !password) return;
+    if (loading || socialLoading) return; // prevent double-submit
     setLoading(true);
+    setLastError(null);
     const mode = isSignUp ? "sign_up" : "sign_in";
     track(
       isSignUp
@@ -62,8 +69,14 @@ export default function AuthPage({ onGuestLogin }: Props) {
         track({ name: "auth_success", method: "email", mode: "sign_in" });
       }
     } catch (err: any) {
-      track({ name: "auth_error", method: "email", mode, message: err?.message });
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+      const message = err?.message ?? "Something went wrong. Please try again.";
+      track({ name: "auth_error", method: "email", mode, message });
+      setLastError({ method: "email", mode, message });
+      toast({
+        title: mode === "sign_up" ? "Couldn't create account" : "Sign in failed",
+        description: message,
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }
@@ -78,22 +91,54 @@ export default function AuthPage({ onGuestLogin }: Props) {
         : { name: "auth_sign_in_attempt", method: provider }
     );
     setSocialLoading(provider);
-    const result = await lovable.auth.signInWithOAuth(provider, {
-      redirect_uri: window.location.origin,
-    });
-    if (result.error) {
-      track({ name: "auth_error", method: provider, mode, message: result.error.message });
-      toast({ title: "Error", description: result.error.message, variant: "destructive" });
-      setSocialLoading(null);
-      return;
-    }
-    if (!result.redirected) {
-      // Tokens already returned (rare); clear loader.
+    setLastError(null);
+    try {
+      const result = await lovable.auth.signInWithOAuth(provider, {
+        redirect_uri: window.location.origin,
+      });
+      if (result.error) {
+        const raw = result.error.message ?? "";
+        const canceled = /cancel|denied|closed|user.*aborted/i.test(raw);
+        const message = canceled
+          ? `${provider === "google" ? "Google" : "Apple"} sign-in was canceled. You can try again.`
+          : raw || `${provider === "google" ? "Google" : "Apple"} sign-in failed. Please try again.`;
+        track({ name: "auth_error", method: provider, mode, message });
+        setLastError({ method: provider, mode, message });
+        toast({
+          title: canceled ? "Sign-in canceled" : "Sign-in failed",
+          description: message,
+          variant: "destructive",
+        });
+        setSocialLoading(null);
+        return;
+      }
+      if (!result.redirected) {
+        // Tokens already returned (rare); clear loader.
+        setSocialLoading(null);
+      }
+    } catch (err: any) {
+      const message = err?.message ?? "Network error. Check your connection and try again.";
+      track({ name: "auth_error", method: provider, mode, message });
+      setLastError({ method: provider, mode, message });
+      toast({
+        title: "Sign-in failed",
+        description: message,
+        variant: "destructive",
+      });
       setSocialLoading(null);
     }
     // If redirected, the loader stays until the browser navigates away.
     // Note: on success the browser redirects; the final `auth_success`
     // event fires from the auth-state listener below (covers OAuth too).
+  };
+
+  const retryLastAuth = () => {
+    if (!lastError) return;
+    if (lastError.method === "email") {
+      handleAuth();
+    } else {
+      handleSocial(lastError.method);
+    }
   };
 
   const handleForgotPassword = async () => {
@@ -105,22 +150,26 @@ export default function AuthPage({ onGuestLogin }: Props) {
       });
       return;
     }
+    if (resetLoading) return;
     setResetLoading(true);
+    track({ name: "password_reset_requested" });
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: `${window.location.origin}/reset-password`,
       });
       if (error) throw error;
-      track({ name: "auth_sign_in_attempt", method: "email" });
+      track({ name: "password_reset_email_sent" });
       setResetSent(true);
       toast({
         title: "Check your inbox",
         description: "We sent a secure link to reset your password.",
       });
     } catch (err: any) {
+      const message = err?.message ?? "Please try again.";
+      track({ name: "password_reset_email_error", message });
       toast({
         title: "Couldn't send reset email",
-        description: err?.message ?? "Please try again.",
+        description: message,
         variant: "destructive",
       });
     } finally {
