@@ -19,6 +19,7 @@ import {
   FileText,
   Hospital,
   Lock,
+  Menu,
   PlayCircle,
   ShieldCheck,
   Sparkles,
@@ -28,6 +29,7 @@ import {
   User,
   Users,
   Watch,
+  X,
   Zap,
 } from "lucide-react";
 
@@ -43,6 +45,18 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
   const [securityOpen, setSecurityOpen] = useState(false);
   const [billing, setBilling] = useState<"monthly" | "annual">("monthly");
   const [expandedAudience, setExpandedAudience] = useState<string | null>("Individuals");
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  // Lock body scroll while mobile nav is open
+  useEffect(() => {
+    if (mobileNavOpen) {
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = prev;
+      };
+    }
+  }, [mobileNavOpen]);
 
   useEffect(() => {
     track({ name: "pricing_preview_view", plan: "Pro" });
@@ -189,17 +203,19 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
       <div className="absolute inset-0 auth-grid-pattern pointer-events-none" />
 
       {/* HEADER */}
-      <header className="relative z-30 border-b border-border/40 bg-background/60 backdrop-blur-xl">
-        <div className="max-w-7xl mx-auto flex items-center justify-between px-4 sm:px-6 lg:px-10 h-16">
+      <header className="sticky top-0 z-40 border-b border-border/40 bg-background/75 backdrop-blur-xl">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 px-4 sm:px-6 lg:px-10 h-14 md:h-16">
           {/* Logo */}
-          <a href="#" className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-primary/15 ring-1 ring-primary/30 flex items-center justify-center">
-              <TrendingUp className="w-4.5 h-4.5 text-primary" />
+          <a href="#" className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-primary/15 ring-1 ring-primary/30 flex items-center justify-center shrink-0">
+              <TrendingUp className="w-4 h-4 sm:w-[18px] sm:h-[18px] text-primary" />
             </div>
-            <span className="text-base font-semibold tracking-tight text-foreground">Vitalis</span>
+            <span className="text-[15px] sm:text-base font-semibold tracking-tight text-foreground truncate">
+              Vitalis
+            </span>
           </a>
 
-          {/* Nav */}
+          {/* Desktop nav */}
           <nav className="hidden md:flex items-center gap-7">
             {navItems.map((item) => (
               <a
@@ -212,22 +228,63 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
             ))}
           </nav>
 
-          {/* Auth */}
-          <div className="flex items-center gap-2">
+          {/* Right side actions */}
+          <div className="flex items-center gap-1.5 sm:gap-2">
             <button
               onClick={() => openAuth("sign_in")}
-              className="hidden sm:inline-flex items-center px-3.5 h-9 rounded-lg text-[13px] font-semibold text-foreground hover:bg-secondary/60 transition-colors"
+              className="hidden md:inline-flex items-center px-3.5 h-9 rounded-lg text-[13px] font-semibold text-foreground hover:bg-secondary/60 transition-colors"
             >
               Sign in
             </button>
             <Button
               variant="vitalis"
               onClick={() => openAuth("sign_up")}
-              className="h-9 px-4 rounded-lg text-[13px] font-semibold"
+              className="h-9 px-3 sm:px-4 rounded-lg text-[13px] font-semibold"
             >
               Get started
             </Button>
+            {/* Mobile menu toggle */}
+            <button
+              type="button"
+              aria-label={mobileNavOpen ? "Close menu" : "Open menu"}
+              aria-expanded={mobileNavOpen}
+              aria-controls="mobile-nav-panel"
+              onClick={() => setMobileNavOpen((v) => !v)}
+              className="md:hidden inline-flex items-center justify-center w-9 h-9 rounded-lg text-foreground hover:bg-secondary/60 transition-colors"
+            >
+              {mobileNavOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
           </div>
+        </div>
+
+        {/* Mobile nav panel */}
+        <div
+          id="mobile-nav-panel"
+          className={`md:hidden overflow-hidden border-t border-border/40 bg-background/95 backdrop-blur-xl transition-[max-height,opacity] duration-300 ease-out ${
+            mobileNavOpen ? "max-h-[420px] opacity-100" : "max-h-0 opacity-0"
+          }`}
+        >
+          <nav className="px-4 sm:px-6 py-3 flex flex-col">
+            {navItems.map((item) => (
+              <a
+                key={item.label}
+                href={item.href}
+                onClick={() => setMobileNavOpen(false)}
+                className="py-3 text-[15px] font-medium text-foreground/90 hover:text-foreground border-b border-border/30 last:border-b-0 transition-colors"
+              >
+                {item.label}
+              </a>
+            ))}
+            <button
+              onClick={() => {
+                setMobileNavOpen(false);
+                openAuth("sign_in");
+              }}
+              className="mt-3 inline-flex items-center justify-center h-11 rounded-lg text-[14px] font-semibold text-foreground bg-secondary/60 hover:bg-secondary transition-colors"
+            >
+              Sign in
+            </button>
+          </nav>
         </div>
       </header>
 
