@@ -47,9 +47,38 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
   const [expandedAudience, setExpandedAudience] = useState<string | null>("Individuals");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const [activeSection, setActiveSection] = useState<string>("");
+  const [activeSection, setActiveSection] = useState<string>(() => {
+    if (typeof window === "undefined") return "";
+    const hash = window.location.hash.replace("#", "");
+    return hash || "";
+  });
+  const [reducedMotion, setReducedMotion] = useState(false);
   const hamburgerRef = useRef<HTMLButtonElement | null>(null);
   const mobilePanelRef = useRef<HTMLDivElement | null>(null);
+  // Tracks the element that triggered the mobile menu so we can restore focus to it on close.
+  const menuOpenerRef = useRef<HTMLElement | null>(null);
+  // Distinguishes "opening" transitions from re-renders so we only autofocus on open.
+  const wasMobileNavOpenRef = useRef(false);
+
+  const closeMobileNav = (opener?: HTMLElement | null) => {
+    if (opener) menuOpenerRef.current = opener;
+    setMobileNavOpen(false);
+  };
+
+  const openMobileNav = (opener: HTMLElement | null) => {
+    menuOpenerRef.current = opener;
+    setMobileNavOpen(true);
+  };
+
+  // prefers-reduced-motion live tracking
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setReducedMotion(mq.matches);
+    update();
+    mq.addEventListener?.("change", update);
+    return () => mq.removeEventListener?.("change", update);
+  }, []);
 
   // Lock body scroll while mobile nav is open
   useEffect(() => {
@@ -62,21 +91,67 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
     }
   }, [mobileNavOpen]);
 
-  // Track scroll for header shrink + auto-close mobile nav on scroll
+  // Track scroll for header shrink + debounced auto-close of mobile nav.
+  // The auto-close only fires when scrolling has settled OR the cumulative
+  // distance crosses a threshold — preventing accidental closes from micro-scrolls.
   useEffect(() => {
     let lastY = window.scrollY;
+    let openAnchorY = window.scrollY;
+    let settleTimer: number | null = null;
+    const DISTANCE_THRESHOLD = 80; // px
+    const SETTLE_MS = 140;
+
     const onScroll = () => {
       const y = window.scrollY;
       setScrolled(y > 8);
-      // Close mobile nav if user scrolls the page noticeably (won't fire while body is locked)
-      if (Math.abs(y - lastY) > 24) {
-        setMobileNavOpen((open) => (open ? false : open));
-      }
+
+      setMobileNavOpen((open) => {
+        if (!open) {
+          openAnchorY = y;
+          return open;
+        }
+        // Crossed the distance threshold from where the menu opened — close immediately.
+        if (Math.abs(y - openAnchorY) > DISTANCE_THRESHOLD) {
+          return false;
+        }
+        // Otherwise debounce: only close once scrolling has settled.
+        if (settleTimer !== null) window.clearTimeout(settleTimer);
+        settleTimer = window.setTimeout(() => {
+          if (Math.abs(window.scrollY - openAnchorY) > 24) {
+            setMobileNavOpen(false);
+          }
+        }, SETTLE_MS);
+        return open;
+      });
+
       lastY = y;
     };
+
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      if (settleTimer !== null) window.clearTimeout(settleTimer);
+    };
+  }, []);
+
+  // Reset the scroll anchor whenever the menu opens so the threshold is measured
+  // from the open position, not from page load.
+  useEffect(() => {
+    if (mobileNavOpen) {
+      // no-op; openAnchorY is updated on the next scroll tick via `open=false` branch above.
+    }
+  }, [mobileNavOpen]);
+
+  // Close the mobile nav on hash route changes (e.g., user taps a section link).
+  useEffect(() => {
+    const onHashChange = () => {
+      const id = window.location.hash.replace("#", "");
+      if (id) setActiveSection(id);
+      setMobileNavOpen(false);
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
 
   // Scroll-spy: highlight the nav link of the section currently in view
@@ -86,6 +161,11 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
       .map((id) => document.getElementById(id))
       .filter((el): el is HTMLElement => !!el);
     if (sections.length === 0) return;
+    // Honor an initial hash so the active link persists on first paint.
+    const initialHash = window.location.hash.replace("#", "");
+    if (initialHash && ids.includes(initialHash)) {
+      setActiveSection(initialHash);
+    }
     const observer = new IntersectionObserver(
       (entries) => {
         const visible = entries
@@ -99,9 +179,23 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
     return () => observer.disconnect();
   }, []);
 
-  // Focus trap + Esc to close + return focus to hamburger when mobile nav closes
+  // Focus trap + Esc to close + return focus to the element that opened the menu.
   useEffect(() => {
-    if (!mobileNavOpen) return;
+    const wasOpen = wasMobileNavOpenRef.current;
+    wasMobileNavOpenRef.current = mobileNavOpen;
+
+    if (!mobileNavOpen) {
+      // Restore focus only on the open->closed transition, to the original opener
+      // (falling back to the hamburger if we don't have one).
+      if (wasOpen) {
+        const target = menuOpenerRef.current ?? hamburgerRef.current;
+        // Defer to allow any click handler / focus shifts to settle.
+        requestAnimationFrame(() => target?.focus?.());
+        menuOpenerRef.current = null;
+      }
+      return;
+    }
+
     const panel = mobilePanelRef.current;
     if (!panel) return;
 
@@ -112,9 +206,11 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
         ),
       ).filter((el) => !el.hasAttribute("data-focus-skip"));
 
-    // Move focus into the panel
-    const focusables = getFocusable();
-    focusables[0]?.focus();
+    // Move focus into the panel only on the closed->open transition.
+    if (!wasOpen) {
+      const focusables = getFocusable();
+      focusables[0]?.focus();
+    }
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -142,8 +238,6 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
     document.addEventListener("keydown", onKeyDown);
     return () => {
       document.removeEventListener("keydown", onKeyDown);
-      // Return focus to the hamburger when the panel closes
-      hamburgerRef.current?.focus();
     };
   }, [mobileNavOpen]);
 
