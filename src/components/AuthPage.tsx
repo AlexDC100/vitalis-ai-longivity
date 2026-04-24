@@ -196,7 +196,10 @@ export default function AuthPage({ onGuestLogin }: Props) {
               {/* Tabs */}
               <div className="flex rounded-xl bg-secondary/60 p-1 mb-6 ring-1 ring-border/50">
                 <button
-                  onClick={() => setIsSignUp(false)}
+                  onClick={() => {
+                    setIsSignUp(false);
+                    track({ name: "auth_tab_switch", to: "sign_in" });
+                  }}
                   className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all ${
                     !isSignUp
                       ? "bg-primary text-primary-foreground shadow-[0_4px_20px_-6px_hsl(var(--primary)/0.6)]"
@@ -206,7 +209,10 @@ export default function AuthPage({ onGuestLogin }: Props) {
                   Sign In
                 </button>
                 <button
-                  onClick={() => setIsSignUp(true)}
+                  onClick={() => {
+                    setIsSignUp(true);
+                    track({ name: "auth_tab_switch", to: "sign_up" });
+                  }}
                   className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all ${
                     isSignUp
                       ? "bg-primary text-primary-foreground shadow-[0_4px_20px_-6px_hsl(var(--primary)/0.6)]"
