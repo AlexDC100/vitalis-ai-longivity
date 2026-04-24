@@ -1,9 +1,19 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Lock, Eye, EyeOff, Loader2, Check, TrendingUp } from "lucide-react";
+import {
+  Lock,
+  Eye,
+  EyeOff,
+  Loader2,
+  Check,
+  TrendingUp,
+  AlertCircle,
+  ArrowLeft,
+} from "lucide-react";
+import { track } from "@/lib/analytics";
 
 export default function ResetPassword() {
   const navigate = useNavigate();
@@ -14,19 +24,78 @@ export default function ResetPassword() {
   const [loading, setLoading] = useState(false);
   const [ready, setReady] = useState(false);
   const [done, setDone] = useState(false);
+  const [tokenError, setTokenError] = useState<{
+    title: string;
+    description: string;
+  } | null>(null);
 
-  // Supabase puts the recovery token in the URL hash and creates a recovery session.
+  // Supabase puts the recovery token in the URL hash (#access_token=…&type=recovery)
+  // and creates a recovery session via onAuthStateChange.
   useEffect(() => {
+    // 1. Surface explicit error params from the URL hash (Supabase puts them there
+    //    when the link is invalid/expired/already used).
+    const hash = window.location.hash.startsWith("#")
+      ? window.location.hash.slice(1)
+      : window.location.hash;
+    const params = new URLSearchParams(hash);
+    const errParam = params.get("error") ?? params.get("error_code");
+    const errDesc = params.get("error_description");
+
+    if (errParam) {
+      const isExpired = /expired|otp_expired/i.test(errParam) || /expired/i.test(errDesc ?? "");
+      const reason = isExpired ? "expired" : errParam;
+      track({ name: "password_reset_token_invalid", reason });
+      setTokenError(
+        isExpired
+          ? {
+              title: "This reset link has expired",
+              description:
+                "Reset links are valid for a limited time. Request a new one and try again.",
+            }
+          : {
+              title: "This reset link is invalid",
+              description:
+                errDesc?.replace(/\+/g, " ") ??
+                "The link may have already been used or was tampered with. Request a fresh one.",
+            }
+      );
+      return;
+    }
+
+    // 2. Wait for a real recovery session. If none arrives within a short
+    //    window, treat the link as invalid (e.g. opened directly without a token).
+    let resolved = false;
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN") {
+        resolved = true;
         setReady(true);
       }
     });
+
     // Also check existing session in case the listener already fired.
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) setReady(true);
+      if (session) {
+        resolved = true;
+        setReady(true);
+      }
     });
-    return () => subscription.unsubscribe();
+
+    const timeout = setTimeout(() => {
+      if (!resolved) {
+        track({ name: "password_reset_token_invalid", reason: "no_session" });
+        setTokenError({
+          title: "We couldn't verify this reset link",
+          description:
+            "The link is missing or invalid. Open the most recent email we sent, or request a new reset link.",
+        });
+      }
+    }, 2500);
+
+    return () => {
+      subscription.unsubscribe();
+      clearTimeout(timeout);
+    };
   }, []);
 
   const handleUpdate = async () => {
@@ -46,17 +115,30 @@ export default function ResetPassword() {
       });
       return;
     }
+    if (loading) return;
     setLoading(true);
     try {
       const { error } = await supabase.auth.updateUser({ password });
       if (error) throw error;
+      track({ name: "password_reset_completed" });
       setDone(true);
       toast({ title: "Password updated", description: "You're signed in." });
       setTimeout(() => navigate("/"), 1200);
     } catch (err: any) {
+      const message = err?.message ?? "Please try again.";
+      // Supabase returns "Auth session missing" / "JWT expired" if the recovery
+      // session lapsed before submission — surface as token error.
+      if (/session|jwt|expired|token/i.test(message)) {
+        track({ name: "password_reset_token_invalid", reason: "session_expired" });
+        setTokenError({
+          title: "Your reset session expired",
+          description: "Request a new reset link and try again — it only takes a moment.",
+        });
+        return;
+      }
       toast({
         title: "Couldn't update password",
-        description: err?.message ?? "Please try again.",
+        description: message,
         variant: "destructive",
       });
     } finally {
@@ -76,14 +158,42 @@ export default function ResetPassword() {
         </div>
 
         <div className="auth-glass rounded-3xl p-7 sm:p-9">
-          <h1 className="text-2xl font-bold text-foreground tracking-tight">
-            Set a new password
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1.5">
-            Pick something strong — at least 8 characters.
-          </p>
+          {tokenError ? (
+            <div className="flex flex-col items-center text-center py-2">
+              <div className="w-12 h-12 rounded-full bg-destructive/15 ring-1 ring-destructive/30 flex items-center justify-center mb-4">
+                <AlertCircle className="w-6 h-6 text-destructive" />
+              </div>
+              <h1 className="text-xl font-bold text-foreground tracking-tight">
+                {tokenError.title}
+              </h1>
+              <p className="text-sm text-muted-foreground mt-2 max-w-xs">
+                {tokenError.description}
+              </p>
+              <Button
+                variant="vitalis"
+                className="mt-6 w-full h-12 rounded-xl text-sm font-semibold tracking-wide shadow-[0_10px_30px_-10px_hsl(var(--primary)/0.6)] hover:shadow-[0_12px_36px_-10px_hsl(var(--primary)/0.8)] hover:-translate-y-0.5 transition-all"
+                onClick={() => navigate("/")}
+              >
+                Request a new reset link
+              </Button>
+              <Link
+                to="/"
+                className="mt-4 inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                Back to sign in
+              </Link>
+            </div>
+          ) : (
+          <>
+            <h1 className="text-2xl font-bold text-foreground tracking-tight">
+              Set a new password
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1.5">
+              Pick something strong — at least 8 characters.
+            </p>
 
-          {!ready ? (
+            {!ready ? (
             <div className="mt-8 flex items-center justify-center py-10">
               <Loader2 className="w-5 h-5 text-primary animate-spin" />
             </div>
@@ -141,6 +251,8 @@ export default function ResetPassword() {
                 )}
               </Button>
             </div>
+            )}
+          </>
           )}
         </div>
       </div>
