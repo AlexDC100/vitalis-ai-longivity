@@ -6,7 +6,7 @@ import AuthPage from "@/components/AuthPage";
 import { track } from "@/lib/analytics";
 import OnboardingScreen from "@/components/screens/OnboardingScreen";
 import DiagnosisScreen from "@/components/screens/DiagnosisScreen";
-import BodyDataScreen from "@/components/screens/BodyDataScreen";
+import BodyScreen from "@/components/screens/BodyScreen";
 import AIDoctorScreen from "@/components/screens/AIDoctorScreen";
 import { Toaster } from "@/components/ui/toaster";
 import { AlertTriangle, Stethoscope, User } from "lucide-react";
@@ -118,7 +118,7 @@ function AppShell() {
       <div className="flex-1 overflow-y-auto px-4 pt-4">
         <div key={screen} className={animClass}>
           {screen === "diagnosis" && <DiagnosisScreen />}
-          {screen === "body" && <BodyDataScreen />}
+          {screen === "body" && <BodyScreen />}
           {screen === "doctor" && <AIDoctorScreen />}
         </div>
       </div>
