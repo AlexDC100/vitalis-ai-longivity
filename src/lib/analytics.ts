@@ -20,6 +20,8 @@ export type AnalyticsEvent =
   | { name: "auth_error"; method: AuthMethod; mode: "sign_in" | "sign_up"; message?: string }
   | { name: "auth_tab_switch"; to: "sign_in" | "sign_up" }
   | { name: "pricing_preview_view"; plan?: string }
+  | { name: "pricing_billing_toggle"; cycle: "monthly" | "annual" }
+  | { name: "how_it_works_open" }
   // Password recovery funnel
   | { name: "password_reset_requested" }
   | { name: "password_reset_email_sent" }

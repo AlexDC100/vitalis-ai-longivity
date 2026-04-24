@@ -3,11 +3,19 @@ import { Button } from "@/components/ui/button";
 import { track } from "@/lib/analytics";
 import AuthDialog from "@/components/AuthDialog";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import {
   Activity,
   ArrowRight,
   Building2,
   Check,
   ChevronRight,
+  ChevronDown,
   FileText,
   Hospital,
   Lock,
@@ -30,10 +38,30 @@ interface Props {
 export default function AuthPage({ onGuestLogin: _ }: Props) {
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"sign_in" | "sign_up">("sign_in");
+  const [howOpen, setHowOpen] = useState(false);
+  const [howStep, setHowStep] = useState(0);
+  const [securityOpen, setSecurityOpen] = useState(false);
+  const [billing, setBilling] = useState<"monthly" | "annual">("monthly");
+  const [expandedAudience, setExpandedAudience] = useState<string | null>("Individuals");
 
   useEffect(() => {
     track({ name: "pricing_preview_view", plan: "Pro" });
   }, []);
+
+  // Walkthrough auto-advance
+  useEffect(() => {
+    if (!howOpen) return;
+    const id = setInterval(() => {
+      setHowStep((s) => (s + 1) % 4);
+    }, 2200);
+    return () => clearInterval(id);
+  }, [howOpen]);
+
+  const openHow = () => {
+    setHowStep(0);
+    setHowOpen(true);
+    track({ name: "how_it_works_open" });
+  };
 
   const openAuth = (mode: "sign_in" | "sign_up") => {
     setAuthMode(mode);
@@ -72,31 +100,79 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
   ];
 
   const audiences = [
-    { icon: User, title: "Individuals", desc: "Personal longevity & risk insight." },
-    { icon: Building2, title: "Corporations", desc: "Executive health programs at scale." },
-    { icon: Stethoscope, title: "Private clinics", desc: "Augment consultations with AI triage." },
-    { icon: Hospital, title: "Hospitals", desc: "Decision support for chronic care." },
+    {
+      icon: User,
+      title: "Individuals",
+      desc: "Personal longevity & risk insight.",
+      outcomes: [
+        "Identify your #1 health risk in under 5 minutes from existing labs.",
+        "Track biological age and longevity score trajectory month over month.",
+      ],
+      compliance: "GDPR-aligned. Personal data export and full account deletion at any time.",
+    },
+    {
+      icon: Building2,
+      title: "Corporations",
+      desc: "Executive health programs at scale.",
+      outcomes: [
+        "Roll out executive health screening across leadership with aggregated risk dashboards.",
+        "Reduce sick leave with proactive metabolic and cardiovascular intervention plans.",
+      ],
+      compliance: "SSO-ready, role-based access. Aggregated reporting only — no individual data shared with employers.",
+    },
+    {
+      icon: Stethoscope,
+      title: "Private clinics",
+      desc: "Augment consultations with AI triage.",
+      outcomes: [
+        "Pre-consultation summaries cut intake time per patient by up to 40%.",
+        "Standardized longevity protocols with auditable AI reasoning per recommendation.",
+      ],
+      compliance: "HIPAA-grade encryption, BAA available. Clinician override on every AI suggestion.",
+    },
+    {
+      icon: Hospital,
+      title: "Hospitals",
+      desc: "Decision support for chronic care.",
+      outcomes: [
+        "Continuous risk stratification for chronic disease cohorts (cardio, metabolic, renal).",
+        "Integrates with existing lab and EHR data via secure import pipelines.",
+      ],
+      compliance: "HIPAA + ISO 27001 controls. Data residency options for EU/US deployments.",
+    },
   ];
+
+  const annualDiscount = 0.2; // 20% off annual
+  const formatPrice = (monthly: number) => {
+    if (monthly === 0) return { price: "$0", cadence: billing === "annual" ? "7 days" : "7 days", note: "" };
+    if (billing === "monthly") {
+      return { price: `$${monthly}`, cadence: "/ month", note: "Billed monthly" };
+    }
+    const annualPerMonth = Math.round(monthly * (1 - annualDiscount));
+    const annualTotal = annualPerMonth * 12;
+    return {
+      price: `$${annualPerMonth}`,
+      cadence: "/ month",
+      note: `$${annualTotal} billed annually · save 20%`,
+    };
+  };
 
   const plans = [
     {
       name: "Free trial",
-      price: "$0",
-      cadence: "7 days",
+      monthly: 0,
       features: ["Upload 1 report", "AI Doctor preview", "Basic risk scoring"],
       highlight: false,
     },
     {
       name: "Essential",
-      price: "$20",
-      cadence: "/ month",
+      monthly: 20,
       features: ["Unlimited reports", "Device integrations", "Longevity score & trends"],
       highlight: false,
     },
     {
       name: "Pro",
-      price: "$50",
-      cadence: "/ month",
+      monthly: 50,
       features: ["Full AI Doctor chat", "Clinical-grade insights", "Priority support"],
       highlight: true,
     },
@@ -191,6 +267,7 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
                 </Button>
                 <a
                   href="#how"
+                  onClick={(e) => { e.preventDefault(); openHow(); }}
                   className="inline-flex items-center justify-center h-12 px-5 rounded-xl text-sm font-semibold text-foreground bg-secondary/60 ring-1 ring-border/60 hover:bg-secondary transition-all"
                 >
                   <PlayCircle className="w-4 h-4 mr-2 text-primary" />
@@ -311,19 +388,66 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
             </p>
           </div>
 
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            {audiences.map((a) => (
-              <div
-                key={a.title}
-                className="auth-glass rounded-2xl p-5 ring-1 ring-border/50 hover:ring-primary/40 transition-all"
-              >
-                <div className="w-10 h-10 rounded-xl bg-primary/10 ring-1 ring-primary/25 flex items-center justify-center">
-                  <a.icon className="w-5 h-5 text-primary" />
-                </div>
-                <h3 className="mt-4 text-base font-semibold text-foreground">{a.title}</h3>
-                <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">{a.desc}</p>
-              </div>
-            ))}
+          <div className="grid gap-3 max-w-4xl mx-auto">
+            {audiences.map((a) => {
+              const isOpen = expandedAudience === a.title;
+              return (
+                <button
+                  key={a.title}
+                  onClick={() => setExpandedAudience(isOpen ? null : a.title)}
+                  className={`text-left auth-glass rounded-2xl ring-1 transition-all overflow-hidden ${
+                    isOpen ? "ring-primary/40 bg-primary/5" : "ring-border/50 hover:ring-primary/30"
+                  }`}
+                >
+                  <div className="flex items-center gap-4 p-5">
+                    <div className="w-10 h-10 rounded-xl bg-primary/10 ring-1 ring-primary/25 flex items-center justify-center shrink-0">
+                      <a.icon className="w-5 h-5 text-primary" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-base font-semibold text-foreground">{a.title}</h3>
+                      <p className="text-xs text-muted-foreground mt-0.5">{a.desc}</p>
+                    </div>
+                    <ChevronDown
+                      className={`w-4 h-4 text-muted-foreground shrink-0 transition-transform duration-300 ${
+                        isOpen ? "rotate-180 text-primary" : ""
+                      }`}
+                    />
+                  </div>
+                  <div
+                    className={`grid transition-all duration-300 ease-out ${
+                      isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+                    }`}
+                  >
+                    <div className="overflow-hidden">
+                      <div className="px-5 pb-5 pt-1 border-t border-border/40 grid sm:grid-cols-2 gap-4">
+                        <div>
+                          <span className="text-[10px] font-semibold tracking-[0.16em] text-primary uppercase">
+                            Outcomes
+                          </span>
+                          <ul className="mt-2 space-y-2">
+                            {a.outcomes.map((o) => (
+                              <li key={o} className="flex items-start gap-2 text-xs text-foreground/85 leading-relaxed">
+                                <Check className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
+                                <span>{o}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                        <div>
+                          <span className="text-[10px] font-semibold tracking-[0.16em] text-primary uppercase">
+                            Compliance
+                          </span>
+                          <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
+                            <ShieldCheck className="w-3.5 h-3.5 text-primary inline mr-1.5 -mt-0.5" />
+                            {a.compliance}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </section>
 
@@ -337,10 +461,35 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
             <p className="mt-4 text-base text-muted-foreground">
               Start free. Upgrade when your team is ready.
             </p>
+
+            {/* Billing toggle */}
+            <div className="mt-7 inline-flex items-center p-1 rounded-full bg-secondary/60 ring-1 ring-border/60">
+              <button
+                onClick={() => { setBilling("monthly"); track({ name: "pricing_billing_toggle", cycle: "monthly" }); }}
+                className={`px-4 h-8 rounded-full text-xs font-semibold transition-all ${
+                  billing === "monthly" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Monthly
+              </button>
+              <button
+                onClick={() => { setBilling("annual"); track({ name: "pricing_billing_toggle", cycle: "annual" }); }}
+                className={`px-4 h-8 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                  billing === "annual" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Annual
+                <span className="text-[9px] font-bold tracking-wider uppercase px-1.5 py-0.5 rounded-md bg-primary/15 text-primary">
+                  -20%
+                </span>
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-5xl mx-auto">
-            {plans.map((p) => (
+            {plans.map((p) => {
+              const pricing = formatPrice(p.monthly);
+              return (
               <div
                 key={p.name}
                 className={`auth-glass rounded-2xl p-6 ring-1 transition-all ${
@@ -358,9 +507,10 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
                   )}
                 </div>
                 <div className="mt-4 flex items-baseline gap-1.5">
-                  <span className="text-3xl font-bold text-foreground">{p.price}</span>
-                  <span className="text-sm text-muted-foreground">{p.cadence}</span>
+                  <span className="text-3xl font-bold text-foreground">{pricing.price}</span>
+                  <span className="text-sm text-muted-foreground">{pricing.cadence}</span>
                 </div>
+                <p className="mt-1 text-[11px] text-muted-foreground min-h-[16px]">{pricing.note}</p>
                 <ul className="mt-5 space-y-2.5">
                   {p.features.map((f) => (
                     <li key={f} className="flex items-start gap-2 text-sm text-muted-foreground">
@@ -374,10 +524,10 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
                   onClick={() => openAuth("sign_up")}
                   className="mt-6 w-full h-11 rounded-xl text-sm font-semibold"
                 >
-                  {p.price === "$0" ? "Start free trial" : "Get started"}
+                  {p.monthly === 0 ? "Start free trial" : "Get started"}
                 </Button>
               </div>
-            ))}
+            );})}
           </div>
         </section>
 
@@ -451,14 +601,181 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
               <span className="text-sm font-semibold text-foreground">Vitalis</span>
               <span className="text-xs text-muted-foreground ml-2">© {new Date().getFullYear()} · AI health intelligence</span>
             </div>
-            <p className="text-[11px] text-muted-foreground max-w-md text-center sm:text-right">
-              Vitalis provides decision support and is not a substitute for professional medical advice, diagnosis, or treatment.
-            </p>
+            <div className="flex flex-col sm:items-end gap-2">
+              <div className="flex items-center gap-4 text-[11px] font-medium">
+                <button
+                  onClick={() => setSecurityOpen(true)}
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Security & privacy
+                </button>
+                <button
+                  onClick={() => setSecurityOpen(true)}
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Data retention
+                </button>
+                <button
+                  onClick={() => setSecurityOpen(true)}
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Medical disclaimer
+                </button>
+              </div>
+              <p className="text-[11px] text-muted-foreground max-w-md text-center sm:text-right">
+                Decision support tool — not a substitute for professional medical advice.
+              </p>
+            </div>
           </div>
         </footer>
       </main>
 
       <AuthDialog open={authOpen} onOpenChange={setAuthOpen} defaultMode={authMode} />
+
+      {/* HOW IT WORKS WALKTHROUGH */}
+      <Dialog open={howOpen} onOpenChange={setHowOpen}>
+        <DialogContent className="max-w-2xl auth-glass border-border/60 p-0 overflow-hidden">
+          <DialogHeader className="px-6 pt-6 pb-2">
+            <DialogTitle className="text-xl font-semibold tracking-tight">See how Vitalis works</DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              A 4-step walkthrough — from raw data to a clear action plan.
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Stage */}
+          <div className="relative mx-6 mt-2 mb-4 h-56 rounded-2xl bg-gradient-to-br from-secondary/60 to-background ring-1 ring-border/50 overflow-hidden">
+            {steps.map((s, i) => {
+              const Icon = s.icon;
+              const active = howStep === i;
+              return (
+                <div
+                  key={s.title}
+                  className={`absolute inset-0 flex flex-col items-center justify-center px-6 transition-all duration-500 ${
+                    active ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3 pointer-events-none"
+                  }`}
+                >
+                  <div className="w-16 h-16 rounded-2xl bg-primary/15 ring-1 ring-primary/30 flex items-center justify-center animate-pulse-glow">
+                    <Icon className="w-7 h-7 text-primary" />
+                  </div>
+                  <h3 className="mt-5 text-lg font-semibold text-foreground">{s.title}</h3>
+                  <p className="mt-2 text-sm text-muted-foreground text-center max-w-sm leading-relaxed">{s.desc}</p>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Stepper */}
+          <div className="px-6 pb-6">
+            <div className="grid grid-cols-4 gap-2">
+              {steps.map((s, i) => {
+                const active = howStep === i;
+                const done = howStep > i;
+                return (
+                  <button
+                    key={s.title}
+                    onClick={() => setHowStep(i)}
+                    className={`group flex flex-col items-start gap-1.5 p-2.5 rounded-xl ring-1 transition-all ${
+                      active
+                        ? "ring-primary/50 bg-primary/10"
+                        : done
+                        ? "ring-border/50 bg-secondary/40"
+                        : "ring-border/40 hover:ring-border/70"
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 w-full">
+                      <span className={`text-[10px] font-bold tracking-wider ${active ? "text-primary" : "text-muted-foreground"}`}>
+                        0{i + 1}
+                      </span>
+                      {done && <Check className="w-3 h-3 text-primary ml-auto" />}
+                    </div>
+                    <span className={`text-[11px] font-semibold ${active ? "text-foreground" : "text-muted-foreground"} text-left leading-tight`}>
+                      {s.title}
+                    </span>
+                    <div className={`h-0.5 w-full rounded-full overflow-hidden bg-border/40`}>
+                      <div
+                        className={`h-full bg-primary transition-all ${
+                          active ? "w-full duration-[2200ms] ease-linear" : done ? "w-full" : "w-0"
+                        }`}
+                      />
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mt-5 flex items-center justify-between gap-3">
+              <p className="text-[11px] text-muted-foreground">
+                Step {howStep + 1} of 4 · auto-advancing
+              </p>
+              <Button
+                variant="vitalis"
+                onClick={() => { setHowOpen(false); openAuth("sign_up"); }}
+                className="h-10 px-4 rounded-xl text-sm font-semibold"
+              >
+                Start free trial <ArrowRight className="w-3.5 h-3.5 ml-1" />
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* SECURITY & PRIVACY MODAL */}
+      <Dialog open={securityOpen} onOpenChange={setSecurityOpen}>
+        <DialogContent className="max-w-2xl auth-glass border-border/60 max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <div className="w-10 h-10 rounded-xl bg-primary/15 ring-1 ring-primary/30 flex items-center justify-center mb-2">
+              <ShieldCheck className="w-5 h-5 text-primary" />
+            </div>
+            <DialogTitle className="text-xl font-semibold tracking-tight">Security, privacy & disclaimers</DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              How Vitalis protects your medical data and the limits of its clinical role.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="mt-2 space-y-5">
+            <div className="p-4 rounded-2xl bg-secondary/40 ring-1 ring-border/50">
+              <div className="flex items-center gap-2">
+                <Lock className="w-4 h-4 text-primary" />
+                <h4 className="text-sm font-semibold text-foreground">Encryption</h4>
+              </div>
+              <ul className="mt-2 space-y-1.5 text-xs text-muted-foreground leading-relaxed">
+                <li>• <span className="text-foreground/90">AES-256</span> encryption at rest for all medical documents and biomarker records.</li>
+                <li>• <span className="text-foreground/90">TLS 1.3</span> in transit between your device, Vitalis, and our AI inference layer.</li>
+                <li>• Per-user encryption keys; row-level security enforced at the database level.</li>
+              </ul>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-secondary/40 ring-1 ring-border/50">
+              <div className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-primary" />
+                <h4 className="text-sm font-semibold text-foreground">Data retention</h4>
+              </div>
+              <ul className="mt-2 space-y-1.5 text-xs text-muted-foreground leading-relaxed">
+                <li>• Documents and biomarkers are retained while your account is active.</li>
+                <li>• Account deletion permanently removes all personal data within <span className="text-foreground/90">30 days</span>.</li>
+                <li>• Backups are encrypted and rotated on a <span className="text-foreground/90">90-day</span> cycle.</li>
+                <li>• Your data is <span className="text-foreground/90">never</span> sold or used to train public AI models.</li>
+              </ul>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-[hsl(var(--vitalis-warning)/0.08)] ring-1 ring-[hsl(var(--vitalis-warning)/0.3)]">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-[hsl(var(--vitalis-warning))]" />
+                <h4 className="text-sm font-semibold text-foreground">Medical disclaimer</h4>
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
+                Vitalis is a <span className="text-foreground/90">decision-support tool</span>. It does not provide a medical
+                diagnosis, prescription, or treatment. Always consult a licensed clinician before making changes to your
+                medication, supplements, or care plan. In an emergency, contact your local emergency services immediately.
+              </p>
+            </div>
+
+            <p className="text-[11px] text-muted-foreground text-center pt-1">
+              Questions about compliance? Contact <span className="text-foreground/90">privacy@vitalis.health</span>
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
