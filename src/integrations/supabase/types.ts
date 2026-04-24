@@ -221,6 +221,42 @@ export type Database = {
         }
         Relationships: []
       }
+      intake_sessions: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          extracted_fields: Json
+          id: string
+          section: string
+          status: string
+          transcript: Json
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          extracted_fields?: Json
+          id?: string
+          section: string
+          status?: string
+          transcript?: Json
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          extracted_fields?: Json
+          id?: string
+          section?: string
+          status?: string
+          transcript?: Json
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       medical_documents: {
         Row: {
           created_at: string

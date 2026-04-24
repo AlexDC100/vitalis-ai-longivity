@@ -4,7 +4,7 @@ import { Session } from "@supabase/supabase-js";
 import { HealthProvider, useHealth } from "@/lib/health-context";
 import AuthPage from "@/components/AuthPage";
 import { track } from "@/lib/analytics";
-import OnboardingScreen from "@/components/screens/OnboardingScreen";
+import IntakeChatScreen from "@/components/screens/IntakeChatScreen";
 import DiagnosisScreen from "@/components/screens/DiagnosisScreen";
 import BodyScreen from "@/components/screens/BodyScreen";
 import AIDoctorScreen from "@/components/screens/AIDoctorScreen";
@@ -84,7 +84,7 @@ function AppShell() {
 
   if (onboarded === false) {
     return (
-      <OnboardingScreen
+      <IntakeChatScreen
         onComplete={() => {
           if (session) localStorage.setItem(`vitalis_onboarded_${session.user.id}`, "true");
           setOnboarded(true);
