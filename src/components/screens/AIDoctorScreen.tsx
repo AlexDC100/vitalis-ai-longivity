@@ -263,6 +263,56 @@ ${diagnosisSummary}`;
     }
   }, [messages, isStreaming, systemPrompt, toast]);
 
+  /**
+   * Test-mode helper: sends a prompt through the same edge function with
+   * the same systemPrompt as the real chat, but does NOT mutate the
+   * visible message list. Returns the full assistant text (including the
+   * hidden [[SEVERITY:...]] tags) so the test panel can validate it.
+   */
+  const runTestPrompt = useCallback(async (prompt: string): Promise<string> => {
+    const resp = await fetch(CHAT_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+      },
+      body: JSON.stringify({
+        messages: [{ role: "user", content: prompt }],
+        systemPrompt,
+      }),
+    });
+    if (!resp.ok) {
+      const errData = await resp.json().catch(() => null);
+      throw new Error(errData?.error || `Error ${resp.status}`);
+    }
+    if (!resp.body) throw new Error("No response body");
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let full = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let idx: number;
+      while ((idx = buffer.indexOf("\n")) !== -1) {
+        let line = buffer.slice(0, idx);
+        buffer = buffer.slice(idx + 1);
+        if (line.endsWith("\r")) line = line.slice(0, -1);
+        if (!line.startsWith("data: ")) continue;
+        const json = line.slice(6).trim();
+        if (json === "[DONE]") return full;
+        try {
+          const parsed = JSON.parse(json);
+          const c = parsed.choices?.[0]?.delta?.content;
+          if (c) full += c;
+        } catch { /* partial chunk, ignore */ }
+      }
+    }
+    return full;
+  }, [systemPrompt]);
+
   const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !userId) return;
