@@ -19,7 +19,6 @@ import {
   CommandSeparator,
 } from "@/components/ui/command";
 import { DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 
 export type PaletteScreen = "diagnosis" | "body" | "doctor";
 export type PaletteAction =
@@ -81,12 +80,10 @@ export default function CommandPalette({
 
   return (
     <CommandDialog open={open} onOpenChange={onOpenChange}>
-      <VisuallyHidden>
-        <DialogTitle>Command palette</DialogTitle>
-        <DialogDescription>
-          Quickly navigate between screens or trigger common actions. Press Escape to close.
-        </DialogDescription>
-      </VisuallyHidden>
+      <DialogTitle className="sr-only">Command palette</DialogTitle>
+      <DialogDescription className="sr-only">
+        Quickly navigate between screens or trigger common actions. Press Escape to close.
+      </DialogDescription>
       <CommandInput
         placeholder="Jump to a screen or run an action…"
         aria-label="Search commands"
