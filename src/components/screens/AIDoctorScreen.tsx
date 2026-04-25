@@ -532,6 +532,9 @@ ${diagnosisSummary}`;
         </div>
       </div>
 
+      {/* Test mode — verify mandatory 5-block structure */}
+      <AIDoctorTestMode runPrompt={runTestPrompt} />
+
       {/* Messages */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 space-y-4">
         {messages.length === 0 && (
