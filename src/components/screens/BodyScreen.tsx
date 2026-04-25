@@ -1,6 +1,8 @@
 import { useHealth } from "@/lib/health-context";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useSubstances } from "@/lib/use-substances";
+import { useFamilyHistory } from "@/lib/use-family-history";
 import {
   Upload, FileText, Heart, Brain, Activity, Sparkles,
   ChevronRight, User, Dna, MessageCircle, Send, Bot,
@@ -10,7 +12,7 @@ import {
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 import ScoreRing from "@/components/ScoreRing";
-import { runDiagnosis, getAllSystemScores, SubstanceEntry } from "@/lib/diagnosis-engine";
+import { runDiagnosis, getAllSystemScores } from "@/lib/diagnosis-engine";
 
 const FAMILY_CONDITIONS = [
   "Heart Disease", "Diabetes", "Cancer", "Alzheimer's", "Stroke",
@@ -78,8 +80,8 @@ export default function BodyScreen() {
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
 
-  // Family history
-  const [familyHistory, setFamilyHistory] = useState<string[]>([]);
+  // Family history (RLS-protected `user_family_history` table)
+  const { conditions: familyHistory, toggleCondition } = useFamilyHistory();
 
   // AI insights
   const [insights, setInsights] = useState<AIInsights | null>(null);
@@ -106,10 +108,8 @@ export default function BodyScreen() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   // ─── Fallback diagnosis (used until AI returns) ────────────
-  const substances = useMemo<SubstanceEntry[]>(() => {
-    try { return JSON.parse(localStorage.getItem("vitalis_substances") || "[]"); }
-    catch { return []; }
-  }, []);
+  // Substances now come from RLS-protected `user_substances` table.
+  const { substances } = useSubstances();
 
   const fallbackDiagnosis = useMemo(() => runDiagnosis(profile, substances), [profile, substances]);
   const systemResults = useMemo(() => getAllSystemScores(profile, substances), [profile, substances]);
@@ -119,12 +119,6 @@ export default function BodyScreen() {
     for (const s of systemResults) map[s.id] = Math.max(0, Math.min(100, 100 - s.score));
     return map;
   }, [systemResults]);
-
-  // ─── Load family history ───────────────────────────────────
-  useEffect(() => {
-    const saved = localStorage.getItem("vitalis_family_history");
-    if (saved) setFamilyHistory(JSON.parse(saved));
-  }, []);
 
   // ─── Load documents ────────────────────────────────────────
   useEffect(() => {
@@ -332,15 +326,7 @@ export default function BodyScreen() {
   }, [userId, fetchInsights]);
 
   const toggleFamilyCondition = (condition: string) => {
-    setFamilyHistory(prev => {
-      const next = condition === "None"
-        ? ["None"]
-        : prev.includes(condition)
-          ? prev.filter(c => c !== condition)
-          : [...prev.filter(c => c !== "None"), condition];
-      localStorage.setItem("vitalis_family_history", JSON.stringify(next));
-      return next;
-    });
+    void toggleCondition(condition);
   };
 
   // ─── Chat ──────────────────────────────────────────────────

@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useHealth } from "@/lib/health-context";
+import { useSubstances } from "@/lib/use-substances";
+import { useActionLog } from "@/lib/use-action-log";
 import {
   runDiagnosis, getOverallRisk, getAllSystemScores,
   calculateConfidence, diffDiagnosis,
-  SubstanceEntry, Diagnosis, DiagnosisChange,
+  Diagnosis, DiagnosisChange,
 } from "@/lib/diagnosis-engine";
 import {
   AlertTriangle, Zap, Clock, TrendingUp, Shield,
@@ -34,45 +36,23 @@ const URGENCY_LABELS = {
 
 export default function DiagnosisScreen() {
   const { profile } = useHealth();
-  const [substances, setSubstances] = useState<SubstanceEntry[]>([]);
+  const { substances } = useSubstances();
+  const { getTodayCompleted, completeAction } = useActionLog();
   const [changes, setChanges] = useState<DiagnosisChange[]>([]);
   const prevDiagRef = useRef<Diagnosis | null>(null);
-  const [completedFixes, setCompletedFixes] = useState<string[]>([]);
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
 
-  // Load today's completed actions
-  useEffect(() => {
-    try {
-      const log = JSON.parse(localStorage.getItem("vitalis_action_log") || "{}");
-      const today = new Date().toISOString().slice(0, 10);
-      setCompletedFixes(log[today] || []);
-    } catch {}
-  }, []);
+  // Today's completed actions come from the RLS-protected `action_completions` table.
+  const completedFixes = getTodayCompleted();
 
-  const completeFix = useCallback((fixId: string, label: string) => {
-    try {
-      const log = JSON.parse(localStorage.getItem("vitalis_action_log") || "{}");
-      const today = new Date().toISOString().slice(0, 10);
-      if (!log[today]) log[today] = [];
-      if (!log[today].includes(fixId)) log[today].push(fixId);
-      localStorage.setItem("vitalis_action_log", JSON.stringify(log));
-      setCompletedFixes([...log[today]]);
+  const completeFix = useCallback(
+    (fixId: string, label: string) => {
+      void completeAction(fixId, label);
       setFeedbackMsg(`✓ ${label}`);
       setTimeout(() => setFeedbackMsg(null), 2500);
-    } catch {}
-  }, []);
-
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem("vitalis_prev_diagnosis");
-      if (saved) prevDiagRef.current = JSON.parse(saved);
-    } catch {}
-  }, []);
-
-  useEffect(() => {
-    const saved = localStorage.getItem("vitalis_substances");
-    if (saved) try { setSubstances(JSON.parse(saved)); } catch {}
-  }, []);
+    },
+    [completeAction],
+  );
 
   const diagnosis = runDiagnosis(profile, substances);
   const overall = getOverallRisk(diagnosis);
@@ -80,14 +60,14 @@ export default function DiagnosisScreen() {
   const systems = getAllSystemScores(profile, substances);
   const styles = SEVERITY_STYLES[diagnosis.severity];
 
-  // Track changes
+  // Track changes — kept in-memory only (previous version persisted full
+  // diagnosis in localStorage, which leaked sensitive medical data).
   useEffect(() => {
     if (prevDiagRef.current) {
       const diff = diffDiagnosis(prevDiagRef.current, diagnosis);
       if (diff.length > 0) setChanges(diff);
     }
     prevDiagRef.current = diagnosis;
-    localStorage.setItem("vitalis_prev_diagnosis", JSON.stringify(diagnosis));
   }, [diagnosis.id, diagnosis.riskScore, diagnosis.severity]);
 
   const hasProblem = diagnosis.riskScore > 0;
