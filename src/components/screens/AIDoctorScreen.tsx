@@ -3,7 +3,7 @@ import { useHealth } from "@/lib/health-context";
 import { runDiagnosis } from "@/lib/diagnosis-engine";
 import { supabase } from "@/integrations/supabase/client";
 import { useSubstances } from "@/lib/use-substances";
-import { Send, Mic, Bot, User, Stethoscope, Upload, Loader2, Calendar, ExternalLink, MapPin, Paperclip } from "lucide-react";
+import { Send, Mic, Bot, User, Stethoscope, Upload, Loader2, Calendar, ExternalLink, MapPin, Paperclip, AlertTriangle, ShieldCheck, Activity, Siren } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -12,52 +12,47 @@ interface ChatMsg {
   id: string;
   role: "user" | "assistant" | "action";
   content: string;
-  actionType?: "booking" | "upload-success";
+  actionType?: "booking" | "upload-success" | "care";
   actionData?: any;
 }
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
 
-const ROMANIAN_HOSPITALS = [
-  {
-    name: "Regina Maria",
-    url: "https://www.reginamaria.ro/programari",
-    phone: "+40 21 9268",
-    specialties: {
-      cardiovascular: "Cardiologie", metabolic: "Endocrinologie & Diabet",
-      hormonal: "Endocrinologie", inflammation: "Medicină Internă",
-      recovery: "Neurologie / Somnologie", general: "Medicină Internă",
-    },
-  },
-  {
-    name: "Sanador",
-    url: "https://www.sanador.ro/programari-online",
-    phone: "+40 21 9699",
-    specialties: {
-      cardiovascular: "Cardiologie", metabolic: "Endocrinologie",
-      hormonal: "Endocrinologie", inflammation: "Medicină Internă",
-      recovery: "Neurologie", general: "Medicină Internă",
-    },
-  },
-  {
-    name: "MedLife",
-    url: "https://www.medlife.ro/programare",
-    phone: "+40 21 9646",
-    specialties: {
-      cardiovascular: "Cardiologie", metabolic: "Diabet & Nutriție",
-      hormonal: "Endocrinologie", inflammation: "Medicină Internă",
-      recovery: "Neurologie", general: "Medicină Internă",
-    },
-  },
-];
+type Severity = "LOW" | "MODERATE" | "HIGH" | "URGENT";
 
-function getSystemKey(diagnosisId: string) {
-  if (diagnosisId.includes("cardio")) return "cardiovascular";
-  if (diagnosisId.includes("metabol")) return "metabolic";
-  if (diagnosisId.includes("inflam")) return "inflammation";
-  if (diagnosisId.includes("hormon")) return "hormonal";
-  if (diagnosisId.includes("recov")) return "recovery";
-  return "general";
+const SEVERITY_META: Record<Severity, {
+  label: string; tagline: string; bg: string; border: string; text: string; icon: React.ElementType;
+}> = {
+  LOW:      { label: "Low", tagline: "Monitor — no action needed now",
+              bg: "bg-emerald-500/10", border: "border-emerald-500/25", text: "text-emerald-400", icon: ShieldCheck },
+  MODERATE: { label: "Moderate", tagline: "Improve lifestyle factors",
+              bg: "bg-amber-500/10", border: "border-amber-500/25", text: "text-amber-400", icon: Activity },
+  HIGH:     { label: "High", tagline: "Consult a doctor soon",
+              bg: "bg-orange-500/10", border: "border-orange-500/25", text: "text-orange-400", icon: AlertTriangle },
+  URGENT:   { label: "Urgent", tagline: "Seek medical care immediately",
+              bg: "bg-red-500/10", border: "border-red-500/25", text: "text-red-400", icon: Siren },
+};
+
+function parseSeverity(content: string): Severity | null {
+  // Look for explicit machine-readable tag the model is instructed to emit.
+  const m = content.match(/\[\[SEVERITY:(LOW|MODERATE|HIGH|URGENT)\]\]/i);
+  if (m) return m[1].toUpperCase() as Severity;
+  // Fallback: scan a "Severity Level" line in the markdown
+  const m2 = content.match(/severity[^\n]*?(URGENT|HIGH|MODERATE|LOW)/i);
+  return m2 ? (m2[1].toUpperCase() as Severity) : null;
+}
+
+function parseSpecialty(content: string): string | null {
+  const m = content.match(/\[\[SPECIALTY:([^\]]+)\]\]/i);
+  return m ? m[1].trim() : null;
+}
+
+// Strip the machine-readable tags before rendering markdown
+function stripTags(content: string): string {
+  return content
+    .replace(/\[\[SEVERITY:(LOW|MODERATE|HIGH|URGENT)\]\]/gi, "")
+    .replace(/\[\[SPECIALTY:[^\]]+\]\]/gi, "")
+    .trim();
 }
 
 export default function AIDoctorScreen() {
