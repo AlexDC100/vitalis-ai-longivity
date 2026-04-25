@@ -73,11 +73,9 @@ export default function AIDoctorScreen() {
   const recognitionRef = useRef<any>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const [substances, setSubstances] = useState<SubstanceEntry[]>([]);
-  useEffect(() => {
-    const saved = localStorage.getItem("vitalis_substances");
-    if (saved) try { setSubstances(JSON.parse(saved)); } catch {}
-  }, []);
+  // Substances now sourced from RLS-protected `user_substances` table
+  // (was previously `localStorage["vitalis_substances"]`).
+  const { substances } = useSubstances();
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
