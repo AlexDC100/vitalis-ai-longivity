@@ -532,6 +532,15 @@ ${diagnosisSummary}`;
         </div>
       </div>
 
+      {/* Persistent safety disclaimer */}
+      <div className="mx-4 mb-2 flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-500/5 border border-amber-500/20">
+        <ShieldCheck className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+        <p className="text-[10.5px] leading-tight text-muted-foreground">
+          <span className="text-amber-400/90 font-medium">This app does not replace a licensed doctor.</span>
+          {" "}Use AI guidance to inform your decisions, not replace professional care.
+        </p>
+      </div>
+
       {/* Test mode — verify mandatory 5-block structure */}
       <AIDoctorTestMode runPrompt={runTestPrompt} />
 

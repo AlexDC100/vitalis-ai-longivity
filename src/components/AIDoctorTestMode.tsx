@@ -1,7 +1,74 @@
 import { useState } from "react";
-import { Beaker, CheckCircle2, XCircle, Loader2, ChevronDown, ChevronUp, Play } from "lucide-react";
+import { Beaker, CheckCircle2, XCircle, Loader2, ChevronDown, ChevronUp, Play, Zap } from "lucide-react";
 
 type Severity = "LOW" | "MODERATE" | "HIGH" | "URGENT";
+
+type TriggerCondition =
+  | "high-risk-biomarkers"
+  | "serious-pattern"
+  | "repeated-warnings"
+  | "serious-symptom-question"
+  | "none";
+
+const TRIGGER_META: Record<TriggerCondition, { label: string; hint: string; tone: "danger" | "warn" | "ok" }> = {
+  "high-risk-biomarkers":     { label: "High-risk biomarkers",     hint: "One or more lab values are well outside safe range.", tone: "danger" },
+  "serious-pattern":          { label: "Serious health pattern",   hint: "Multiple metrics combine into a clinically concerning picture.", tone: "danger" },
+  "repeated-warnings":        { label: "Repeated warning signals", hint: "Several moderate flags reinforce each other.", tone: "warn" },
+  "serious-symptom-question": { label: "Serious symptom reported", hint: "User-reported symptoms suggest possible acute risk.", tone: "danger" },
+  "none":                     { label: "No trigger",               hint: "Inputs look normal / low-risk — no booking card.", tone: "ok" },
+};
+
+/**
+ * Predicts which booking-trigger condition the live system would fire for
+ * the test inputs. This is a *preview* — the actual decision is made by
+ * the AI's severity tag at runtime — but it lets us sanity-check the
+ * escalation logic without sending the prompt.
+ */
+function predictTrigger(labs: string, biometrics: string, symptoms: string): TriggerCondition {
+  const allText = `${labs}\n${biometrics}\n${symptoms}`.toLowerCase();
+
+  // 1. Acute / serious symptoms → highest priority trigger
+  const seriousSymptoms = [
+    "chest pain", "chest tightness", "shortness of breath", "difficulty breathing",
+    "fainting", "passed out", "stroke", "slurred speech", "numbness",
+    "suicidal", "severe headache", "vision loss", "blood in stool", "coughing blood",
+  ];
+  if (seriousSymptoms.some(s => symptoms.toLowerCase().includes(s))) {
+    return "serious-symptom-question";
+  }
+
+  // 2. High-risk biomarker thresholds (rough heuristics matching common danger zones)
+  const highRiskPatterns: RegExp[] = [
+    /ldl[^\d]{0,8}(1[6-9]\d|[2-9]\d{2,})/i,         // LDL ≥ 160
+    /apob[^\d]{0,8}(1[3-9]\d|[2-9]\d{2,})/i,        // ApoB ≥ 130
+    /lp\(?a\)?[^\d]{0,8}(1[5-9]\d|[2-9]\d{2,})/i,   // Lp(a) ≥ 150
+    /hba1c[^\d]{0,8}(6\.[5-9]|[7-9]\.\d|1\d)/i,     // HbA1c ≥ 6.5
+    /fasting glucose[^\d]{0,8}(1[2-9]\d|[2-9]\d{2,})/i, // ≥ 126
+    /(bp|blood pressure)[^\d]{0,8}(1[5-9]\d|[2-9]\d{2,})\s*\/\s*(9[5-9]|[1-9]\d{2,})/i, // ≥150/95
+    /hs[- ]?crp[^\d]{0,8}([5-9]|\d{2,})/i,          // hs-CRP ≥ 5
+  ];
+  const highRiskHits = highRiskPatterns.filter(r => r.test(allText)).length;
+  if (highRiskHits >= 1 && labs.trim().length > 0) {
+    // Multiple high-risk biomarkers stacking = serious pattern
+    if (highRiskHits >= 2) return "serious-pattern";
+    return "high-risk-biomarkers";
+  }
+
+  // 3. Repeated moderate warnings (count borderline flags)
+  const moderatePatterns: RegExp[] = [
+    /ldl[^\d]{0,8}(1[3-5]\d)/i,             // LDL 130–159
+    /hba1c[^\d]{0,8}(5\.[7-9]|6\.[0-4])/i,  // HbA1c 5.7–6.4
+    /(bp|blood pressure)[^\d]{0,8}(1[3-4]\d)/i,
+    /resting hr[^\d]{0,8}(8\d|9\d|1\d{2,})/i, // RHR ≥ 80
+    /hrv[^\d]{0,8}([1-2]?\d)\s*ms/i,          // HRV < 30
+    /sleep[^\d]{0,8}([1-5])\s*h/i,            // Sleep ≤ 5h
+    /vo2[^\d]{0,8}([1-2]\d|30|31|32)/i,       // VO2 ≤ 32
+  ];
+  const moderateHits = moderatePatterns.filter(r => r.test(allText)).length;
+  if (moderateHits >= 2) return "repeated-warnings";
+
+  return "none";
+}
 
 const REQUIRED_HEADERS = [
   { id: "summary",    label: "1. Summary",              regex: /^##\s*1\.\s*Summary/im },
@@ -119,6 +186,9 @@ export default function AIDoctorTestMode({ runPrompt }: Props) {
             <Field label="Device data (optional)" value={deviceData} onChange={setDeviceData} placeholder="Sleep: 5h 40m&#10;Steps: 4,200/day" />
           </div>
 
+          {/* Live trigger-condition preview — updates as the user types */}
+          <TriggerPreview trigger={predictTrigger(labs, biometrics, symptoms)} />
+
           <div className="flex items-center gap-2">
             <button
               onClick={handleRun}
@@ -205,5 +275,26 @@ function Field({ label, value, onChange, placeholder }: {
         className="w-full text-[11px] bg-card border border-border/50 rounded-lg px-2 py-1.5 text-foreground placeholder:text-muted-foreground/60 outline-none focus:border-primary/40 transition-colors resize-none"
       />
     </label>
+  );
+}
+
+function TriggerPreview({ trigger }: { trigger: TriggerCondition }) {
+  const meta = TRIGGER_META[trigger];
+  const tone =
+    meta.tone === "danger" ? { bg: "bg-red-500/10",     border: "border-red-500/25",     text: "text-red-400" }
+  : meta.tone === "warn"   ? { bg: "bg-amber-500/10",   border: "border-amber-500/25",   text: "text-amber-400" }
+                           : { bg: "bg-emerald-500/10", border: "border-emerald-500/25", text: "text-emerald-400" };
+  return (
+    <div className={`flex items-start gap-2 px-2.5 py-2 rounded-lg border ${tone.border} ${tone.bg}`}>
+      <Zap className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${tone.text}`} />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Predicted trigger:</span>
+          <span className={`text-[11px] font-semibold ${tone.text}`}>{meta.label}</span>
+        </div>
+        <p className="text-[10.5px] text-muted-foreground leading-tight mt-0.5">{meta.hint}</p>
+      </div>
+      <span className="text-[9.5px] text-muted-foreground/70 italic shrink-0">preview only</span>
+    </div>
   );
 }
