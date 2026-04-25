@@ -3,10 +3,12 @@ import { useHealth } from "@/lib/health-context";
 import { runDiagnosis } from "@/lib/diagnosis-engine";
 import { supabase } from "@/integrations/supabase/client";
 import { useSubstances } from "@/lib/use-substances";
-import { Send, Mic, Bot, User, Stethoscope, Upload, Loader2, Calendar, ExternalLink, MapPin, Paperclip, AlertTriangle, ShieldCheck, Activity, Siren } from "lucide-react";
+import { Send, Mic, Bot, User, Stethoscope, Upload, Loader2, Calendar, ExternalLink, MapPin, Paperclip, AlertTriangle, ShieldCheck, Activity, Siren, CalendarCheck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { pickPartner } from "@/lib/clinic-partners";
+import AIDoctorTestMode from "@/components/AIDoctorTestMode";
 
 interface ChatMsg {
   id: string;
@@ -261,6 +263,56 @@ ${diagnosisSummary}`;
     }
   }, [messages, isStreaming, systemPrompt, toast]);
 
+  /**
+   * Test-mode helper: sends a prompt through the same edge function with
+   * the same systemPrompt as the real chat, but does NOT mutate the
+   * visible message list. Returns the full assistant text (including the
+   * hidden [[SEVERITY:...]] tags) so the test panel can validate it.
+   */
+  const runTestPrompt = useCallback(async (prompt: string): Promise<string> => {
+    const resp = await fetch(CHAT_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+      },
+      body: JSON.stringify({
+        messages: [{ role: "user", content: prompt }],
+        systemPrompt,
+      }),
+    });
+    if (!resp.ok) {
+      const errData = await resp.json().catch(() => null);
+      throw new Error(errData?.error || `Error ${resp.status}`);
+    }
+    if (!resp.body) throw new Error("No response body");
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let full = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let idx: number;
+      while ((idx = buffer.indexOf("\n")) !== -1) {
+        let line = buffer.slice(0, idx);
+        buffer = buffer.slice(idx + 1);
+        if (line.endsWith("\r")) line = line.slice(0, -1);
+        if (!line.startsWith("data: ")) continue;
+        const json = line.slice(6).trim();
+        if (json === "[DONE]") return full;
+        try {
+          const parsed = JSON.parse(json);
+          const c = parsed.choices?.[0]?.delta?.content;
+          if (c) full += c;
+        } catch { /* partial chunk, ignore */ }
+      }
+    }
+    return full;
+  }, [systemPrompt]);
+
   const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !userId) return;
@@ -368,6 +420,10 @@ ${diagnosisSummary}`;
     const Icon = meta.icon;
     const isUrgent = data.severity === "URGENT";
     const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(data.specialty + " near me")}`;
+    // Pick a partner clinic (extensible via src/lib/clinic-partners.ts).
+    // null when severity isn't HIGH/URGENT — shouldn't happen here since
+    // we only inject the card on HIGH/URGENT — but stay defensive.
+    const partner = pickPartner(data.severity);
     return (
       <div className="flex gap-2.5 animate-fade-in">
         <div className={`w-7 h-7 rounded-lg ${meta.bg} flex items-center justify-center shrink-0 mt-1`}>
@@ -377,10 +433,14 @@ ${diagnosisSummary}`;
           <div className={`bg-card border ${meta.border} rounded-2xl px-4 py-3 space-y-3`}>
             <div>
               <p className={`text-xs font-semibold ${meta.text} mb-0.5`}>
-                {isUrgent ? "Urgent care recommended" : "Specialist consultation recommended"}
+                {isUrgent ? "Urgent care recommended" : "Book a medical consultation"}
               </p>
               <p className="text-[11px] text-muted-foreground">
-                Type of doctor: <span className="text-foreground font-medium">{data.specialty}</span>
+                {isUrgent
+                  ? "Your data suggests this may need immediate medical attention."
+                  : <>This may require professional medical attention. Recommended specialist:&nbsp;
+                      <span className="text-foreground font-medium">{data.specialty}</span>.
+                    </>}
               </p>
             </div>
 
@@ -393,25 +453,49 @@ ${diagnosisSummary}`;
                 Call emergency services now
               </a>
             ) : (
-              <a
-                href={mapsUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2.5 p-2.5 bg-secondary/40 border border-border/30 rounded-xl hover:bg-secondary/60 hover:border-primary/30 transition-all group"
-              >
-                <MapPin className="w-4 h-4 text-primary shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-foreground group-hover:text-primary transition-colors">
-                    Find a {data.specialty} near you
-                  </p>
-                  <p className="text-[10px] text-muted-foreground">Opens map search — choose a reputable clinic in your area</p>
-                </div>
-                <ExternalLink className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary shrink-0" />
-              </a>
+              <>
+                {partner && (
+                  <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 space-y-2.5">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                        <CalendarCheck className="w-4 h-4 text-primary" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-foreground truncate">{partner.name}</p>
+                        <p className="text-[10px] text-muted-foreground truncate">{partner.description}</p>
+                      </div>
+                    </div>
+                    <a
+                      href={partner.bookingUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-center gap-1.5 w-full px-3 py-2 bg-primary text-primary-foreground rounded-lg text-xs font-semibold hover:opacity-90 transition-opacity"
+                    >
+                      Book appointment
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                )}
+                <a
+                  href={mapsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2.5 p-2.5 bg-secondary/40 border border-border/30 rounded-xl hover:bg-secondary/60 hover:border-primary/30 transition-all group"
+                >
+                  <MapPin className="w-4 h-4 text-primary shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-foreground group-hover:text-primary transition-colors">
+                      Or find a {data.specialty} near you
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">Opens map search — choose a reputable clinic in your area</p>
+                  </div>
+                  <ExternalLink className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary shrink-0" />
+                </a>
+              </>
             )}
 
             <p className="text-[10px] text-muted-foreground italic">
-              This is not a medical diagnosis. Vitalis AI is not a substitute for a licensed physician.
+              This app does not replace a licensed doctor.
             </p>
           </div>
         </div>
@@ -447,6 +531,9 @@ ${diagnosisSummary}`;
           <p className="text-[11px] text-muted-foreground">Clinical-grade health intelligence</p>
         </div>
       </div>
+
+      {/* Test mode — verify mandatory 5-block structure */}
+      <AIDoctorTestMode runPrompt={runTestPrompt} />
 
       {/* Messages */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 space-y-4">
