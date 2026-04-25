@@ -233,20 +233,19 @@ ${diagnosisSummary}`;
         }
       }
 
-      // After AI response, if it mentions booking/specialist and risk is high, inject booking action
-      if (isHighRisk && assistantContent.toLowerCase().match(/cardiolog|specialist|appointment|book|schedule|consult/)) {
-        const bookingAction: ChatMsg = {
-          id: `booking-${Date.now()}`,
+      // After AI response, parse the severity tag emitted by the model.
+      // If HIGH or URGENT, inject a generic Care Recommendation card.
+      const severity = parseSeverity(assistantContent);
+      const specialty = parseSpecialty(assistantContent) || "General Practitioner";
+      if (severity === "HIGH" || severity === "URGENT") {
+        const careAction: ChatMsg = {
+          id: `care-${Date.now()}`,
           role: "action",
           content: "",
-          actionType: "booking",
-          actionData: {
-            specialty: ROMANIAN_HOSPITALS[0].specialties[systemKey] || "Medicină Internă",
-            severity: diagnosis.severity,
-            category: diagnosis.category,
-          },
+          actionType: "care",
+          actionData: { severity, specialty },
         };
-        setMessages(prev => [...prev, bookingAction]);
+        setMessages(prev => [...prev, careAction]);
       }
     } catch (err: any) {
       const errorMsg = err?.message || "Connection failed";
@@ -260,7 +259,7 @@ ${diagnosisSummary}`;
     } finally {
       setIsStreaming(false);
     }
-  }, [messages, isStreaming, systemPrompt, toast, isHighRisk, systemKey, diagnosis]);
+  }, [messages, isStreaming, systemPrompt, toast]);
 
   const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
