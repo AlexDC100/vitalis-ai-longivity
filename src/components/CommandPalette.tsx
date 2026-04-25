@@ -128,7 +128,7 @@ export default function CommandPalette({
             aria-label="Search commands"
             value={query}
             onValueChange={setQuery}
-            className="h-12 text-[15px] placeholder:text-muted-foreground/50"
+            className="h-12 text-[15px] placeholder:text-muted-foreground/50 focus-visible:ring-0 focus-visible:ring-offset-0"
           />
           <CommandList
             aria-label="Available commands"
