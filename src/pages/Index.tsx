@@ -10,6 +10,7 @@ import BodyScreen from "@/components/screens/BodyScreen";
 import AIDoctorScreen from "@/components/screens/AIDoctorScreen";
 import { Toaster } from "@/components/ui/toaster";
 import { AlertTriangle, Stethoscope, User } from "lucide-react";
+import CommandPalette from "@/components/CommandPalette";
 
 type Screen = "diagnosis" | "body" | "doctor";
 
@@ -20,6 +21,7 @@ function AppShell() {
   const [screen, setScreen] = useState<Screen>("diagnosis");
   const [slideDir, setSlideDir] = useState<"left" | "right">("left");
   const [onboarded, setOnboarded] = useState<boolean | null>(null);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const prevScreenRef = useRef<Screen>("diagnosis");
 
   const screenOrder: Screen[] = ["diagnosis", "body", "doctor"];
@@ -103,15 +105,31 @@ function AppShell() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col max-w-lg mx-auto relative">
+      <CommandPalette
+        open={paletteOpen}
+        onOpenChange={setPaletteOpen}
+        onNavigate={switchScreen}
+        currentScreen={screen}
+      />
       {/* Top Bar */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border/30">
         <span className="text-base font-bold text-foreground tracking-tight">Vitalis</span>
-        <button
-          onClick={async () => { await supabase.auth.signOut(); setSession(null); }}
-          className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-        >
-          Sign out
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setPaletteOpen(true)}
+            className="hidden sm:inline-flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-md border border-border/40"
+            aria-label="Open command palette"
+          >
+            <span>Jump to…</span>
+            <kbd className="text-[10px] font-mono bg-muted/50 px-1 rounded">⌘K</kbd>
+          </button>
+          <button
+            onClick={async () => { await supabase.auth.signOut(); setSession(null); }}
+            className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Sign out
+          </button>
+        </div>
       </div>
 
       {/* Screen */}
