@@ -92,18 +92,36 @@ function AppShell() {
     switch (action) {
       case "upload-document":
         switchScreen("doctor");
-        toast.info("Use the upload button in the chat to add a document.");
+        toast.info("Upload a document", {
+          description: "Use the upload button in the chat to attach a PDF.",
+        });
         break;
       case "start-ai-chat":
         switchScreen("doctor");
+        toast.success("AI Doctor ready", {
+          description: "Ask anything about your health data.",
+        });
+        break;
+      case "continue-chat":
+        switchScreen("doctor");
+        toast.info("Resuming chat");
+        break;
+      case "extract-biomarkers":
+        switchScreen("doctor");
+        toast.info("Extract biomarkers", {
+          description: "Upload a lab report — values will auto-fill your Body screen.",
+        });
         break;
       case "refresh-diagnosis":
         switchScreen("diagnosis");
-        toast.info("Diagnosis refreshed.");
+        toast.success("Diagnosis re-check started", {
+          description: "Re-running analysis on your latest data.",
+        });
         break;
       case "sign-out":
         await supabase.auth.signOut();
         setSession(null);
+        toast.success("Signed out", { description: "See you soon." });
         break;
     }
   };
@@ -152,7 +170,7 @@ function AppShell() {
         <div className="flex items-center gap-3">
           <button
             onClick={() => setPaletteOpen(true)}
-            className="hidden sm:inline-flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-md border border-border/40"
+            className="hidden sm:inline-flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-md border border-border/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             aria-label="Open command palette"
           >
             <span>Jump to…</span>
@@ -201,7 +219,7 @@ function AppShell() {
       {/* Mobile floating palette trigger */}
       <button
         onClick={() => setPaletteOpen(true)}
-        className="sm:hidden fixed bottom-20 right-4 z-50 w-11 h-11 rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 flex items-center justify-center active:scale-95 transition-transform"
+        className="sm:hidden fixed bottom-20 right-4 z-50 w-11 h-11 rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 flex items-center justify-center active:scale-95 transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         aria-label="Open command palette"
       >
         <CommandIcon className="w-5 h-5" />
