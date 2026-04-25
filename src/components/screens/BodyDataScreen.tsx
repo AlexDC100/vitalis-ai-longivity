@@ -477,7 +477,7 @@ export default function BodyDataScreen() {
               />
             </div>
             <button
-              onClick={addSubstance}
+              onClick={handleAddSubstance}
               disabled={!newSub.name.trim()}
               className="w-full py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold disabled:opacity-30 transition-opacity"
             >
@@ -506,7 +506,7 @@ export default function BodyDataScreen() {
                         {sub.dose ? ` · ${sub.dose}` : ""}
                       </p>
                     </div>
-                    <button onClick={() => removeSubstance(i)} className="text-muted-foreground hover:text-foreground">
+                    <button onClick={() => handleRemoveSubstance(i)} className="text-muted-foreground hover:text-foreground">
                       <X className="w-4 h-4" />
                     </button>
                   </div>
