@@ -150,9 +150,9 @@ export default function CommandPalette({
                       onOpenChange(false);
                     }}
                     aria-label={`Go to ${item.label}. ${item.hint}${isActive ? ". Current screen" : ""}`}
-                    className="group gap-3 px-2.5 py-2 rounded-lg data-[selected=true]:bg-gradient-to-r data-[selected=true]:from-accent/60 data-[selected=true]:to-accent/30 data-[selected=true]:ring-0"
+                    className="group gap-3 px-2.5 py-2 rounded-lg aria-selected:bg-foreground/[0.06] data-[selected=true]:bg-foreground/[0.06] data-[selected=true]:text-foreground data-[selected=true]:ring-0"
                   >
-                    <Icon className={`h-4 w-4 ${isActive ? "text-primary" : "text-muted-foreground"}`} />
+                    <Icon className="h-4 w-4 text-muted-foreground/80" />
                     <div className="flex-1 min-w-0 text-left">
                       <div className="text-[13px] font-medium text-foreground leading-tight">
                         {item.label}
@@ -183,9 +183,9 @@ export default function CommandPalette({
                           onOpenChange(false);
                         }}
                         aria-label={`${action.label}. ${action.hint}`}
-                        className="group gap-3 px-2.5 py-2 rounded-lg data-[selected=true]:bg-gradient-to-r data-[selected=true]:from-accent/60 data-[selected=true]:to-accent/30 data-[selected=true]:ring-0"
+                        className="group gap-3 px-2.5 py-2 rounded-lg aria-selected:bg-foreground/[0.06] data-[selected=true]:bg-foreground/[0.06] data-[selected=true]:text-foreground data-[selected=true]:ring-0"
                       >
-                        <Icon className="h-4 w-4 text-muted-foreground" />
+                        <Icon className="h-4 w-4 text-muted-foreground/80" />
                         <div className="flex-1 min-w-0 text-left">
                           <div className="text-[13px] font-medium text-foreground leading-tight">
                             {action.label}
