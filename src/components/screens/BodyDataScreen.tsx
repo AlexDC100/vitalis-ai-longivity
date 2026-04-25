@@ -3,6 +3,7 @@ import { useHealth } from "@/lib/health-context";
 import { SubstanceEntry, SUBSTANCE_CATEGORIES } from "@/lib/diagnosis-engine";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useSubstances } from "@/lib/use-substances";
 import {
   Heart, Droplets, Brain, Moon, Dumbbell, Plus, X,
   Upload, FileText, Loader2, ChevronDown, ChevronUp,
@@ -179,7 +180,8 @@ export default function BodyDataScreen() {
   const { toast } = useToast();
   const [openSection, setOpenSection] = useState<string | null>("cardio");
   const [tab, setTab] = useState<"quick" | "data" | "substances" | "devices">("quick");
-  const [substances, setSubstances] = useState<SubstanceEntry[]>([]);
+  // Substances now persisted to RLS-protected `user_substances` table.
+  const { substances, addSubstance, removeSubstance } = useSubstances();
   const [newSub, setNewSub] = useState({ name: "", category: "supplement" as SubstanceEntry["category"], dose: "" });
   const [uploading, setUploading] = useState(false);
   const [docs, setDocs] = useState<any[]>([]);
@@ -188,28 +190,20 @@ export default function BodyDataScreen() {
   const deviceFileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const saved = localStorage.getItem("vitalis_substances");
-    if (saved) try { setSubstances(JSON.parse(saved)); } catch {}
-  }, []);
-
-  useEffect(() => {
     if (!userId) return;
     supabase.from("medical_documents").select("*").eq("user_id", userId).order("created_at", { ascending: false }).limit(10)
       .then(({ data }) => { if (data) setDocs(data); });
   }, [userId]);
 
-  const saveSubstances = (subs: SubstanceEntry[]) => {
-    setSubstances(subs);
-    localStorage.setItem("vitalis_substances", JSON.stringify(subs));
-  };
-
-  const addSubstance = () => {
+  const handleAddSubstance = () => {
     if (!newSub.name.trim()) return;
-    saveSubstances([...substances, { ...newSub, name: newSub.name.trim() }]);
+    void addSubstance({ ...newSub, name: newSub.name.trim() });
     setNewSub({ name: "", category: "supplement", dose: "" });
   };
 
-  const removeSubstance = (i: number) => saveSubstances(substances.filter((_, idx) => idx !== i));
+  const handleRemoveSubstance = (i: number) => {
+    void removeSubstance(i);
+  };
 
   const handleUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
