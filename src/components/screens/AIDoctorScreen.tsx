@@ -3,7 +3,7 @@ import { useHealth } from "@/lib/health-context";
 import { runDiagnosis } from "@/lib/diagnosis-engine";
 import { supabase } from "@/integrations/supabase/client";
 import { useSubstances } from "@/lib/use-substances";
-import { Send, Mic, Bot, User, Stethoscope, Upload, Loader2, Calendar, ExternalLink, MapPin, Paperclip } from "lucide-react";
+import { Send, Mic, Bot, User, Stethoscope, Upload, Loader2, Calendar, ExternalLink, MapPin, Paperclip, AlertTriangle, ShieldCheck, Activity, Siren } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -12,52 +12,47 @@ interface ChatMsg {
   id: string;
   role: "user" | "assistant" | "action";
   content: string;
-  actionType?: "booking" | "upload-success";
+  actionType?: "booking" | "upload-success" | "care";
   actionData?: any;
 }
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
 
-const ROMANIAN_HOSPITALS = [
-  {
-    name: "Regina Maria",
-    url: "https://www.reginamaria.ro/programari",
-    phone: "+40 21 9268",
-    specialties: {
-      cardiovascular: "Cardiologie", metabolic: "Endocrinologie & Diabet",
-      hormonal: "Endocrinologie", inflammation: "Medicină Internă",
-      recovery: "Neurologie / Somnologie", general: "Medicină Internă",
-    },
-  },
-  {
-    name: "Sanador",
-    url: "https://www.sanador.ro/programari-online",
-    phone: "+40 21 9699",
-    specialties: {
-      cardiovascular: "Cardiologie", metabolic: "Endocrinologie",
-      hormonal: "Endocrinologie", inflammation: "Medicină Internă",
-      recovery: "Neurologie", general: "Medicină Internă",
-    },
-  },
-  {
-    name: "MedLife",
-    url: "https://www.medlife.ro/programare",
-    phone: "+40 21 9646",
-    specialties: {
-      cardiovascular: "Cardiologie", metabolic: "Diabet & Nutriție",
-      hormonal: "Endocrinologie", inflammation: "Medicină Internă",
-      recovery: "Neurologie", general: "Medicină Internă",
-    },
-  },
-];
+type Severity = "LOW" | "MODERATE" | "HIGH" | "URGENT";
 
-function getSystemKey(diagnosisId: string) {
-  if (diagnosisId.includes("cardio")) return "cardiovascular";
-  if (diagnosisId.includes("metabol")) return "metabolic";
-  if (diagnosisId.includes("inflam")) return "inflammation";
-  if (diagnosisId.includes("hormon")) return "hormonal";
-  if (diagnosisId.includes("recov")) return "recovery";
-  return "general";
+const SEVERITY_META: Record<Severity, {
+  label: string; tagline: string; bg: string; border: string; text: string; icon: React.ElementType;
+}> = {
+  LOW:      { label: "Low", tagline: "Monitor — no action needed now",
+              bg: "bg-emerald-500/10", border: "border-emerald-500/25", text: "text-emerald-400", icon: ShieldCheck },
+  MODERATE: { label: "Moderate", tagline: "Improve lifestyle factors",
+              bg: "bg-amber-500/10", border: "border-amber-500/25", text: "text-amber-400", icon: Activity },
+  HIGH:     { label: "High", tagline: "Consult a doctor soon",
+              bg: "bg-orange-500/10", border: "border-orange-500/25", text: "text-orange-400", icon: AlertTriangle },
+  URGENT:   { label: "Urgent", tagline: "Seek medical care immediately",
+              bg: "bg-red-500/10", border: "border-red-500/25", text: "text-red-400", icon: Siren },
+};
+
+function parseSeverity(content: string): Severity | null {
+  // Look for explicit machine-readable tag the model is instructed to emit.
+  const m = content.match(/\[\[SEVERITY:(LOW|MODERATE|HIGH|URGENT)\]\]/i);
+  if (m) return m[1].toUpperCase() as Severity;
+  // Fallback: scan a "Severity Level" line in the markdown
+  const m2 = content.match(/severity[^\n]*?(URGENT|HIGH|MODERATE|LOW)/i);
+  return m2 ? (m2[1].toUpperCase() as Severity) : null;
+}
+
+function parseSpecialty(content: string): string | null {
+  const m = content.match(/\[\[SPECIALTY:([^\]]+)\]\]/i);
+  return m ? m[1].trim() : null;
+}
+
+// Strip the machine-readable tags before rendering markdown
+function stripTags(content: string): string {
+  return content
+    .replace(/\[\[SEVERITY:(LOW|MODERATE|HIGH|URGENT)\]\]/gi, "")
+    .replace(/\[\[SPECIALTY:[^\]]+\]\]/gi, "")
+    .trim();
 }
 
 export default function AIDoctorScreen() {
@@ -83,7 +78,6 @@ export default function AIDoctorScreen() {
   }, [messages]);
 
   const diagnosis = runDiagnosis(profile, substances);
-  const systemKey = getSystemKey(diagnosis.id);
   const isHighRisk = diagnosis.severity === "critical" || diagnosis.severity === "high";
 
   const substanceList = substances.length > 0
@@ -95,17 +89,62 @@ Explanation: ${diagnosis.explanation}
 Top fixes: ${diagnosis.fixes.map(f => f.action).join("; ")}
 Expected impact: ${diagnosis.lifeImpact}`;
 
-  const systemPrompt = `You are Vitalis AI Doctor — an elite longevity medicine physician combining the expertise of Dr. Peter Attia, Dr. Andrew Huberman, and Dr. David Sinclair.
+  const systemPrompt = `You are Vitalis AI Doctor — a longevity medicine assistant. You are NOT a substitute for a licensed physician and must never give a definitive diagnosis. Be clear, decisive, and actionable — never vague.
 
-PERSONALITY & STYLE:
-- Speak like a direct, no-BS longevity physician in a 1-on-1 consultation
-- Be conversational but clinically precise
-- Use the patient's actual numbers in every response
-- When comparing values, ALWAYS use markdown tables
-- Proactively identify cross-system patterns
-- Give specific protocols with dosages, timelines, and expected outcomes
+========================
+MANDATORY RESPONSE FORMAT
+========================
+EVERY substantive answer MUST follow this exact structure, in this exact order, using these exact ## headers:
 
-PATIENT DATA:
+## 1. Summary
+1–3 sentences in plain language. What is likely going on, based on the data?
+
+## 2. Severity Level
+Pick exactly ONE of: **LOW**, **MODERATE**, **HIGH**, **URGENT**.
+Definitions:
+- LOW — monitor, no action needed now
+- MODERATE — improve lifestyle factors
+- HIGH — consult a doctor soon
+- URGENT — seek medical care immediately (or call emergency services if symptoms suggest acute danger)
+State the chosen level in **bold** and add a one-line justification.
+
+## 3. Key Findings
+A bulleted list of MAX 3 issues, each one short line. Reference the patient's actual numbers when relevant.
+
+## 4. Recommended Actions
+A numbered list of concrete next steps. Mix:
+- lifestyle changes (specific, with dose/duration)
+- follow-up tests (which biomarker, when to retest)
+- doctor consultation (only when truly indicated)
+
+## 5. Care Recommendation
+- If severity is LOW or MODERATE: a single line such as "No specialist visit required at this time."
+- If severity is HIGH or URGENT: name the TYPE of doctor (e.g., cardiologist, endocrinologist, GP, emergency care) and the general action ("book an appointment within X days" or "go to emergency care now"). Do NOT name specific hospitals or clinics.
+
+At the very end of your response, on its own line, append two machine-readable tags:
+[[SEVERITY:LOW|MODERATE|HIGH|URGENT]]
+[[SPECIALTY:<doctor type or "none">]]
+(Replace with the chosen value. These tags are required so the UI can render the right card. Do not wrap them in code blocks.)
+
+========================
+SAFETY RULES
+========================
+- Never give a definitive diagnosis — use phrases like "the data suggests" or "this pattern is consistent with".
+- Always include a brief disclaimer in the Summary or Care Recommendation when severity is HIGH or URGENT, e.g. "This is not a medical diagnosis — please confirm with a licensed physician."
+- If symptoms suggest a true emergency (chest pain with shortness of breath, signs of stroke, suicidal ideation, severe allergic reaction, etc.), severity MUST be URGENT and the action MUST be "seek emergency care now / call your local emergency number".
+- Do NOT recommend specific brand-name hospitals or clinics. Speak generically (e.g. "a reputable cardiology clinic in your area").
+
+========================
+STYLE
+========================
+- Be scannable in 5 seconds. Short sentences. No filler.
+- Use markdown tables ONLY when comparing 3+ biomarkers vs optimal ranges; otherwise prefer bullets.
+- Always reference the patient's actual numbers when discussing them.
+- Avoid hedging language like "you might want to consider possibly". Be decisive.
+
+========================
+PATIENT DATA
+========================
 - Name: ${profile.full_name || "Patient"} | Age: ${chronologicalAge} | Biological Age: ${biologicalAge} | Sex: ${profile.sex || "Unknown"}
 - Height: ${profile.height_cm}cm | Weight: ${profile.weight_kg}kg | Body Fat: ${profile.body_fat_pct}% | Waist: ${profile.waist_cm}cm
 
@@ -131,21 +170,8 @@ SLEEP & RECOVERY:
 
 SUBSTANCES: ${substanceList}
 
-CURRENT DIAGNOSIS:
-${diagnosisSummary}
-
-IMPORTANT CONTEXT:
-- The patient is based in Romania. When suggesting specialist consultations, recommend specific hospitals: Regina Maria, Sanador, or MedLife.
-- For critical or high-risk findings, explicitly recommend scheduling an appointment.
-
-RESPONSE FORMAT RULES:
-- Use **markdown tables** when comparing biomarkers (columns: Biomarker | Your Value | Optimal Range | Status | Action)
-- Use **headers** (##) to organize multi-topic responses
-- Use **bold** for critical findings and key numbers
-- Give numbered action steps with specific protocols
-- Always end substantive responses with a "## Priority Actions" section
-- Reference landmark trials (SPRINT, REDUCE-IT, etc.)
-- Cross-reference biomarkers — don't analyze in isolation`;
+CURRENT INTERNAL DIAGNOSIS (for your context — synthesize, don't quote verbatim):
+${diagnosisSummary}`;
 
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || isStreaming) return;
@@ -207,20 +233,19 @@ RESPONSE FORMAT RULES:
         }
       }
 
-      // After AI response, if it mentions booking/specialist and risk is high, inject booking action
-      if (isHighRisk && assistantContent.toLowerCase().match(/cardiolog|specialist|appointment|book|schedule|consult/)) {
-        const bookingAction: ChatMsg = {
-          id: `booking-${Date.now()}`,
+      // After AI response, parse the severity tag emitted by the model.
+      // If HIGH or URGENT, inject a generic Care Recommendation card.
+      const severity = parseSeverity(assistantContent);
+      const specialty = parseSpecialty(assistantContent) || "General Practitioner";
+      if (severity === "HIGH" || severity === "URGENT") {
+        const careAction: ChatMsg = {
+          id: `care-${Date.now()}`,
           role: "action",
           content: "",
-          actionType: "booking",
-          actionData: {
-            specialty: ROMANIAN_HOSPITALS[0].specialties[systemKey] || "Medicină Internă",
-            severity: diagnosis.severity,
-            category: diagnosis.category,
-          },
+          actionType: "care",
+          actionData: { severity, specialty },
         };
-        setMessages(prev => [...prev, bookingAction]);
+        setMessages(prev => [...prev, careAction]);
       }
     } catch (err: any) {
       const errorMsg = err?.message || "Connection failed";
@@ -234,7 +259,7 @@ RESPONSE FORMAT RULES:
     } finally {
       setIsStreaming(false);
     }
-  }, [messages, isStreaming, systemPrompt, toast, isHighRisk, systemKey, diagnosis]);
+  }, [messages, isStreaming, systemPrompt, toast]);
 
   const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -323,7 +348,7 @@ RESPONSE FORMAT RULES:
   };
 
   const handleBookSpecialist = () => {
-    sendMessage("What specialist should I see for my current health risks? Please recommend specific hospitals in Romania and tell me exactly what to ask the doctor.");
+    sendMessage("Based on my data, what type of specialist should I see, and how soon? Be specific and practical.");
   };
 
   const quickPrompts = [
@@ -333,41 +358,61 @@ RESPONSE FORMAT RULES:
     "What labs should I retest and when?",
   ];
 
-  // Render inline booking card
-  const renderBookingCard = (msg: ChatMsg) => {
-    const data = msg.actionData;
-    const specialty = data?.specialty || "Medicină Internă";
+  // Render generic Care Recommendation card (no hard-coded providers).
+  // Uses the severity + specialty parsed from the model's response and
+  // links to a generic Google Maps search so the user can find a real
+  // provider near them.
+  const renderCareCard = (msg: ChatMsg) => {
+    const data = msg.actionData as { severity: Severity; specialty: string };
+    const meta = SEVERITY_META[data.severity];
+    const Icon = meta.icon;
+    const isUrgent = data.severity === "URGENT";
+    const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(data.specialty + " near me")}`;
     return (
       <div className="flex gap-2.5 animate-fade-in">
-        <div className="w-7 h-7 rounded-lg bg-red-500/10 flex items-center justify-center shrink-0 mt-1">
-          <Calendar className="w-4 h-4 text-red-400" />
+        <div className={`w-7 h-7 rounded-lg ${meta.bg} flex items-center justify-center shrink-0 mt-1`}>
+          <Icon className={`w-4 h-4 ${meta.text}`} />
         </div>
-        <div className="max-w-[85%] space-y-2">
-          <div className="bg-card border border-red-500/20 rounded-2xl px-4 py-3">
-            <p className="text-xs font-semibold text-red-400 mb-1">
-              ⚕️ Specialist Recommended — {specialty}
-            </p>
-            <p className="text-[11px] text-muted-foreground mb-3">
-              Based on your {data?.severity} {data?.category} findings:
-            </p>
-            <div className="space-y-1.5">
-              {ROMANIAN_HOSPITALS.map((h, i) => (
-                <a
-                  key={i}
-                  href={h.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2.5 p-2 bg-secondary/30 border border-border/30 rounded-xl hover:bg-secondary/50 hover:border-primary/30 transition-all group"
-                >
-                  <MapPin className="w-3.5 h-3.5 text-primary shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold text-foreground group-hover:text-primary transition-colors">{h.name}</p>
-                    <p className="text-[10px] text-muted-foreground">{h.specialties[systemKey] || specialty} · {h.phone}</p>
-                  </div>
-                  <ExternalLink className="w-3 h-3 text-muted-foreground group-hover:text-primary shrink-0" />
-                </a>
-              ))}
+        <div className="max-w-[85%] w-full">
+          <div className={`bg-card border ${meta.border} rounded-2xl px-4 py-3 space-y-3`}>
+            <div>
+              <p className={`text-xs font-semibold ${meta.text} mb-0.5`}>
+                {isUrgent ? "Urgent care recommended" : "Specialist consultation recommended"}
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                Type of doctor: <span className="text-foreground font-medium">{data.specialty}</span>
+              </p>
             </div>
+
+            {isUrgent ? (
+              <a
+                href="tel:112"
+                className={`flex items-center justify-center gap-2 w-full px-3 py-2.5 ${meta.bg} border ${meta.border} rounded-xl ${meta.text} text-xs font-semibold hover:opacity-90 transition-opacity`}
+              >
+                <Siren className="w-4 h-4" />
+                Call emergency services now
+              </a>
+            ) : (
+              <a
+                href={mapsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2.5 p-2.5 bg-secondary/40 border border-border/30 rounded-xl hover:bg-secondary/60 hover:border-primary/30 transition-all group"
+              >
+                <MapPin className="w-4 h-4 text-primary shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-foreground group-hover:text-primary transition-colors">
+                    Find a {data.specialty} near you
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">Opens map search — choose a reputable clinic in your area</p>
+                </div>
+                <ExternalLink className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary shrink-0" />
+              </a>
+            )}
+
+            <p className="text-[10px] text-muted-foreground italic">
+              This is not a medical diagnosis. Vitalis AI is not a substitute for a licensed physician.
+            </p>
           </div>
         </div>
       </div>
@@ -458,8 +503,15 @@ RESPONSE FORMAT RULES:
         )}
 
         {messages.map(msg => {
-          if (msg.role === "action" && msg.actionType === "booking") return <div key={msg.id}>{renderBookingCard(msg)}</div>;
+          if (msg.role === "action" && msg.actionType === "care") return <div key={msg.id}>{renderCareCard(msg)}</div>;
           if (msg.role === "action") return <div key={msg.id}>{renderUploadAction(msg)}</div>;
+
+          // For assistant messages, parse severity inline so we can render
+          // a compact, color-coded badge above the structured response.
+          const severity = msg.role === "assistant" ? parseSeverity(msg.content) : null;
+          const cleanContent = msg.role === "assistant" ? stripTags(msg.content) : msg.content;
+          const sevMeta = severity ? SEVERITY_META[severity] : null;
+          const SevIcon = sevMeta?.icon;
 
           return (
             <div key={msg.id} className={`flex gap-2.5 ${msg.role === "user" ? "justify-end" : ""} animate-fade-in`}>
@@ -468,16 +520,27 @@ RESPONSE FORMAT RULES:
                   <Bot className="w-4 h-4 text-primary" />
                 </div>
               )}
-              <div className={`max-w-[85%] rounded-2xl px-4 py-3 ${
-                msg.role === "user" ? "bg-primary text-primary-foreground" : "bg-card border border-border/50"
-              }`}>
-                {msg.role === "assistant" ? (
-                  <div className="prose prose-sm prose-invert max-w-none text-[13px] leading-relaxed [&_p]:mb-2 [&_ul]:mb-2 [&_ol]:mb-2 [&_li]:mb-0.5 [&_strong]:text-foreground [&_h2]:text-base [&_h2]:font-bold [&_h2]:mb-2 [&_h2]:mt-3 [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mb-1 [&_table]:w-full [&_table]:text-[11px] [&_th]:bg-secondary/50 [&_th]:px-2 [&_th]:py-1.5 [&_th]:text-left [&_th]:font-semibold [&_th]:border-b [&_th]:border-border/50 [&_td]:px-2 [&_td]:py-1.5 [&_td]:border-t [&_td]:border-border/30 [&_code]:bg-secondary/50 [&_code]:px-1 [&_code]:rounded [&_table]:border [&_table]:border-border/30 [&_table]:rounded-lg [&_table]:overflow-hidden">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content || "..."}</ReactMarkdown>
+              <div className={`max-w-[85%] ${msg.role === "user" ? "" : "w-full"}`}>
+                {sevMeta && SevIcon && (
+                  <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full ${sevMeta.bg} border ${sevMeta.border} mb-1.5`}>
+                    <SevIcon className={`w-3 h-3 ${sevMeta.text}`} />
+                    <span className={`text-[10px] font-bold uppercase tracking-wide ${sevMeta.text}`}>
+                      {sevMeta.label}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">· {sevMeta.tagline}</span>
                   </div>
-                ) : (
-                  <p className="text-[13px] leading-relaxed">{msg.content}</p>
                 )}
+                <div className={`rounded-2xl px-4 py-3 ${
+                  msg.role === "user" ? "bg-primary text-primary-foreground inline-block" : "bg-card border border-border/50"
+                }`}>
+                  {msg.role === "assistant" ? (
+                    <div className="prose prose-sm prose-invert max-w-none text-[13px] leading-relaxed [&_p]:mb-2 [&_ul]:mb-2 [&_ol]:mb-2 [&_li]:mb-0.5 [&_strong]:text-foreground [&_h2]:text-sm [&_h2]:font-bold [&_h2]:mb-1.5 [&_h2]:mt-3 [&_h2]:text-foreground [&_h2:first-child]:mt-0 [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mb-1 [&_table]:w-full [&_table]:text-[11px] [&_th]:bg-secondary/50 [&_th]:px-2 [&_th]:py-1.5 [&_th]:text-left [&_th]:font-semibold [&_th]:border-b [&_th]:border-border/50 [&_td]:px-2 [&_td]:py-1.5 [&_td]:border-t [&_td]:border-border/30 [&_code]:bg-secondary/50 [&_code]:px-1 [&_code]:rounded [&_table]:border [&_table]:border-border/30 [&_table]:rounded-lg [&_table]:overflow-hidden">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{cleanContent || "..."}</ReactMarkdown>
+                    </div>
+                  ) : (
+                    <p className="text-[13px] leading-relaxed">{cleanContent}</p>
+                  )}
+                </div>
               </div>
               {msg.role === "user" && (
                 <div className="w-7 h-7 rounded-lg bg-secondary flex items-center justify-center shrink-0 mt-1">
