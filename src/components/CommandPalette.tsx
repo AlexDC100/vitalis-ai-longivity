@@ -11,7 +11,7 @@ import {
   FileSearch,
 } from "lucide-react";
 import {
-  CommandDialog,
+  Command,
   CommandEmpty,
   CommandGroup,
   CommandInput,
@@ -20,7 +20,12 @@ import {
   CommandShortcut,
   CommandSeparator,
 } from "@/components/ui/command";
-import { DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 
 export type PaletteScreen = "diagnosis" | "body" | "doctor";
 export type PaletteAction =
@@ -101,67 +106,97 @@ export default function CommandPalette({
   );
 
   return (
-    <CommandDialog open={open} onOpenChange={onOpenChange}>
-      <DialogTitle className="sr-only">Command palette</DialogTitle>
-      <DialogDescription className="sr-only">
-        Quickly navigate between screens or trigger common actions. Use arrow keys to move, Enter to select, Escape to close.
-      </DialogDescription>
-      <CommandInput
-        placeholder="Jump to a screen or run an action…"
-        aria-label="Search commands"
-        value={query}
-        onValueChange={setQuery}
-      />
-      <CommandList aria-label="Available commands">
-        <CommandEmpty>No results.</CommandEmpty>
-        <CommandGroup heading="Navigate">
-          {items.map((item, idx) => {
-            const Icon = item.icon;
-            const isActive = item.id === currentScreen;
-            return (
-              <CommandItem
-                key={item.id}
-                value={`${item.label} ${item.hint}`}
-                onSelect={() => {
-                  onNavigate(item.id);
-                  onOpenChange(false);
-                }}
-                aria-label={`Go to ${item.label}. ${item.hint}${isActive ? ". Current screen" : ""}`}
-              >
-                <Icon className={isActive ? "text-primary" : "text-muted-foreground"} />
-                <span className="flex-1">{item.label}</span>
-                <span className="text-xs text-muted-foreground mr-2">{item.hint}</span>
-                <CommandShortcut>⌘{idx + 1}</CommandShortcut>
-              </CommandItem>
-            );
-          })}
-        </CommandGroup>
-        {visibleActions.length > 0 && (
-          <>
-            <CommandSeparator />
-            <CommandGroup heading="Quick actions">
-              {visibleActions.map((action, idx) => {
-                const Icon = action.icon;
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="top-[20%] translate-y-0 max-w-[640px] w-[calc(100%-2rem)] gap-0 p-0 rounded-2xl border border-border/50 bg-popover/95 backdrop-blur-xl shadow-2xl shadow-black/40 ring-1 ring-white/5 [&>button]:hidden"
+      >
+        <DialogTitle className="sr-only">Command palette</DialogTitle>
+        <DialogDescription className="sr-only">
+          Quickly navigate between screens or trigger common actions. Use arrow keys to move, Enter to select, Escape to close.
+        </DialogDescription>
+        <Command
+          className="bg-transparent [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:pt-3 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:text-[10px] [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wider [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground/70 [&_[cmdk-group]]:px-2 [&_[cmdk-input-wrapper]]:border-b [&_[cmdk-input-wrapper]]:border-border/40 [&_[cmdk-input-wrapper]]:px-4 [&_[cmdk-input-wrapper]_svg]:h-4 [&_[cmdk-input-wrapper]_svg]:w-4 [&_[cmdk-input-wrapper]_svg]:opacity-40"
+        >
+          <CommandInput
+            placeholder="Search or run an action…"
+            aria-label="Search commands"
+            value={query}
+            onValueChange={setQuery}
+            className="h-12 text-[15px] placeholder:text-muted-foreground/50"
+          />
+          <CommandList
+            aria-label="Available commands"
+            className="max-h-[420px] py-1"
+          >
+            <CommandEmpty className="py-8 text-center text-sm text-muted-foreground">
+              No results.
+            </CommandEmpty>
+            <CommandGroup heading="Navigation">
+              {items.map((item, idx) => {
+                const Icon = item.icon;
+                const isActive = item.id === currentScreen;
                 return (
                   <CommandItem
-                    key={`${action.id}-${idx}`}
-                    value={`${action.label} ${action.hint}`}
+                    key={item.id}
+                    value={`${item.label} ${item.hint}`}
                     onSelect={() => {
-                      onAction(action.id);
+                      onNavigate(item.id);
                       onOpenChange(false);
                     }}
-                    aria-label={`${action.label}. ${action.hint}`}
+                    aria-label={`Go to ${item.label}. ${item.hint}${isActive ? ". Current screen" : ""}`}
+                    className="group gap-3 px-2.5 py-2 rounded-lg data-[selected=true]:bg-gradient-to-r data-[selected=true]:from-accent/60 data-[selected=true]:to-accent/30 data-[selected=true]:ring-0"
                   >
-                    <Icon className="text-muted-foreground" />
-                    <span className="flex-1">{action.label}</span>
-                    <span className="text-xs text-muted-foreground mr-2">{action.hint}</span>
+                    <Icon className={`h-4 w-4 ${isActive ? "text-primary" : "text-muted-foreground"}`} />
+                    <div className="flex-1 min-w-0 text-left">
+                      <div className="text-[13px] font-medium text-foreground leading-tight">
+                        {item.label}
+                      </div>
+                      <div className="text-[11px] text-muted-foreground/70 leading-tight mt-0.5">
+                        {item.hint}
+                      </div>
+                    </div>
+                    <CommandShortcut className="text-[10px] tracking-normal text-muted-foreground/60">
+                      ⌘{idx + 1}
+                    </CommandShortcut>
                   </CommandItem>
                 );
               })}
             </CommandGroup>
-          </>
-        )}
-      </CommandList>
-    </CommandDialog>
+            {visibleActions.length > 0 && (
+              <>
+                <CommandSeparator className="my-1 bg-border/30" />
+                <CommandGroup heading="Actions">
+                  {visibleActions.map((action, idx) => {
+                    const Icon = action.icon;
+                    return (
+                      <CommandItem
+                        key={`${action.id}-${idx}`}
+                        value={`${action.label} ${action.hint}`}
+                        onSelect={() => {
+                          onAction(action.id);
+                          onOpenChange(false);
+                        }}
+                        aria-label={`${action.label}. ${action.hint}`}
+                        className="group gap-3 px-2.5 py-2 rounded-lg data-[selected=true]:bg-gradient-to-r data-[selected=true]:from-accent/60 data-[selected=true]:to-accent/30 data-[selected=true]:ring-0"
+                      >
+                        <Icon className="h-4 w-4 text-muted-foreground" />
+                        <div className="flex-1 min-w-0 text-left">
+                          <div className="text-[13px] font-medium text-foreground leading-tight">
+                            {action.label}
+                          </div>
+                          <div className="text-[11px] text-muted-foreground/70 leading-tight mt-0.5">
+                            {action.hint}
+                          </div>
+                        </div>
+                      </CommandItem>
+                    );
+                  })}
+                </CommandGroup>
+              </>
+            )}
+          </CommandList>
+        </Command>
+      </DialogContent>
+    </Dialog>
   );
 }
