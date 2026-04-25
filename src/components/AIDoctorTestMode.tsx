@@ -186,6 +186,9 @@ export default function AIDoctorTestMode({ runPrompt }: Props) {
             <Field label="Device data (optional)" value={deviceData} onChange={setDeviceData} placeholder="Sleep: 5h 40m&#10;Steps: 4,200/day" />
           </div>
 
+          {/* Live trigger-condition preview — updates as the user types */}
+          <TriggerPreview trigger={predictTrigger(labs, biometrics, symptoms)} />
+
           <div className="flex items-center gap-2">
             <button
               onClick={handleRun}
