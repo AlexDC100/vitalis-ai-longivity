@@ -277,3 +277,24 @@ function Field({ label, value, onChange, placeholder }: {
     </label>
   );
 }
+
+function TriggerPreview({ trigger }: { trigger: TriggerCondition }) {
+  const meta = TRIGGER_META[trigger];
+  const tone =
+    meta.tone === "danger" ? { bg: "bg-red-500/10",     border: "border-red-500/25",     text: "text-red-400" }
+  : meta.tone === "warn"   ? { bg: "bg-amber-500/10",   border: "border-amber-500/25",   text: "text-amber-400" }
+                           : { bg: "bg-emerald-500/10", border: "border-emerald-500/25", text: "text-emerald-400" };
+  return (
+    <div className={`flex items-start gap-2 px-2.5 py-2 rounded-lg border ${tone.border} ${tone.bg}`}>
+      <Zap className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${tone.text}`} />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Predicted trigger:</span>
+          <span className={`text-[11px] font-semibold ${tone.text}`}>{meta.label}</span>
+        </div>
+        <p className="text-[10.5px] text-muted-foreground leading-tight mt-0.5">{meta.hint}</p>
+      </div>
+      <span className="text-[9.5px] text-muted-foreground/70 italic shrink-0">preview only</span>
+    </div>
+  );
+}
