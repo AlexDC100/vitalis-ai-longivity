@@ -169,12 +169,6 @@ function AppShell() {
         <span className="text-base font-bold text-foreground tracking-tight">Vitalis</span>
         <div className="flex items-center gap-3">
           <button
-            onClick={async () => { await supabase.auth.signOut(); setSession(null); }}
-            className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Sign out
-          </button>
-          <button
             onClick={() => setPaletteOpen(true)}
             className="inline-flex items-center justify-center w-8 h-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             aria-label="Open menu"
