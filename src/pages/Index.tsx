@@ -35,11 +35,31 @@ function AppShell() {
 
   const screenOrder: Screen[] = ["diagnosis", "body", "doctor"];
 
+  // Sensitive client-side keys that must be wiped on sign-out so the next
+  // user on a shared device cannot see the previous user's medical data.
+  const SENSITIVE_LOCAL_KEYS = [
+    "vitalis_substances",
+    "vitalis_family_history",
+    "vitalis_prev_diagnosis",
+    "vitalis_action_log",
+  ];
+  const clearSensitiveLocalData = () => {
+    try {
+      for (const k of SENSITIVE_LOCAL_KEYS) localStorage.removeItem(k);
+    } catch {
+      /* ignore storage errors */
+    }
+  };
+
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
       setSession(s);
       if (s) { setIsGuest(false); setUserId(s.user.id); } else { setUserId(null); }
       setLoading(false);
+
+      if (event === "SIGNED_OUT") {
+        clearSensitiveLocalData();
+      }
 
       // Fire a single, reliable success event covering email + OAuth flows.
       if (event === "SIGNED_IN" && s) {
@@ -120,6 +140,7 @@ function AppShell() {
         break;
       case "sign-out":
         await supabase.auth.signOut();
+        clearSensitiveLocalData();
         setSession(null);
         toast.success("Signed out", { description: "See you soon." });
         break;
