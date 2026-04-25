@@ -9,20 +9,29 @@ import DiagnosisScreen from "@/components/screens/DiagnosisScreen";
 import BodyScreen from "@/components/screens/BodyScreen";
 import AIDoctorScreen from "@/components/screens/AIDoctorScreen";
 import { Toaster } from "@/components/ui/toaster";
-import { AlertTriangle, Stethoscope, User } from "lucide-react";
-import CommandPalette from "@/components/CommandPalette";
+import { AlertTriangle, Stethoscope, User, Command as CommandIcon } from "lucide-react";
+import CommandPalette, { type PaletteAction } from "@/components/CommandPalette";
+import { toast } from "sonner";
 
 type Screen = "diagnosis" | "body" | "doctor";
+
+const SCREEN_STORAGE_KEY = "vitalis_last_screen";
+const isScreen = (v: unknown): v is Screen =>
+  v === "diagnosis" || v === "body" || v === "doctor";
 
 function AppShell() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const { setIsGuest, setUserId, dataCompleteness } = useHealth();
-  const [screen, setScreen] = useState<Screen>("diagnosis");
+  const [screen, setScreen] = useState<Screen>(() => {
+    if (typeof window === "undefined") return "diagnosis";
+    const saved = window.localStorage.getItem(SCREEN_STORAGE_KEY);
+    return isScreen(saved) ? saved : "diagnosis";
+  });
   const [slideDir, setSlideDir] = useState<"left" | "right">("left");
   const [onboarded, setOnboarded] = useState<boolean | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const prevScreenRef = useRef<Screen>("diagnosis");
+  const prevScreenRef = useRef<Screen>(screen);
 
   const screenOrder: Screen[] = ["diagnosis", "body", "doctor"];
 
@@ -72,6 +81,31 @@ function AppShell() {
     setSlideDir(nextIdx >= prevIdx ? "left" : "right");
     prevScreenRef.current = next;
     setScreen(next);
+    try {
+      window.localStorage.setItem(SCREEN_STORAGE_KEY, next);
+    } catch {
+      /* ignore storage errors (private mode, quota) */
+    }
+  };
+
+  const handlePaletteAction = async (action: PaletteAction) => {
+    switch (action) {
+      case "upload-document":
+        switchScreen("doctor");
+        toast.info("Use the upload button in the chat to add a document.");
+        break;
+      case "start-ai-chat":
+        switchScreen("doctor");
+        break;
+      case "refresh-diagnosis":
+        switchScreen("diagnosis");
+        toast.info("Diagnosis refreshed.");
+        break;
+      case "sign-out":
+        await supabase.auth.signOut();
+        setSession(null);
+        break;
+    }
   };
 
   if (loading || onboarded === null && session) {
@@ -110,6 +144,7 @@ function AppShell() {
         onOpenChange={setPaletteOpen}
         onNavigate={switchScreen}
         currentScreen={screen}
+        onAction={handlePaletteAction}
       />
       {/* Top Bar */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border/30">
@@ -162,6 +197,15 @@ function AppShell() {
           })}
         </div>
       </div>
+
+      {/* Mobile floating palette trigger */}
+      <button
+        onClick={() => setPaletteOpen(true)}
+        className="sm:hidden fixed bottom-20 right-4 z-50 w-11 h-11 rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 flex items-center justify-center active:scale-95 transition-transform"
+        aria-label="Open command palette"
+      >
+        <CommandIcon className="w-5 h-5" />
+      </button>
     </div>
   );
 }
