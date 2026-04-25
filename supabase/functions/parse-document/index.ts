@@ -41,11 +41,30 @@ serve(async (req) => {
       });
     }
 
-    const { documentId, filePath } = await req.json();
+    const { documentId } = await req.json();
 
-    if (!documentId || !filePath) {
-      throw new Error("Missing documentId or filePath");
+    if (!documentId || typeof documentId !== "string") {
+      return new Response(JSON.stringify({ error: "Missing documentId" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
+
+    // Resolve the file path from the DB scoped to the authenticated user.
+    // Never trust a client-supplied filePath — that would allow IDOR against
+    // the storage bucket via the service-role download below.
+    const { data: docRow, error: docErr } = await supabase
+      .from("medical_documents")
+      .select("file_path")
+      .eq("id", documentId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (docErr || !docRow?.file_path) {
+      return new Response(JSON.stringify({ error: "Document not found" }), {
+        status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const filePath: string = docRow.file_path;
 
     // Update status to processing
     await supabase.from("medical_documents").update({ status: "processing" }).eq("id", documentId).eq("user_id", user.id);
