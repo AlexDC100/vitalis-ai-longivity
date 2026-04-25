@@ -326,15 +326,7 @@ export default function BodyScreen() {
   }, [userId, fetchInsights]);
 
   const toggleFamilyCondition = (condition: string) => {
-    setFamilyHistory(prev => {
-      const next = condition === "None"
-        ? ["None"]
-        : prev.includes(condition)
-          ? prev.filter(c => c !== condition)
-          : [...prev.filter(c => c !== "None"), condition];
-      localStorage.setItem("vitalis_family_history", JSON.stringify(next));
-      return next;
-    });
+    void toggleCondition(condition);
   };
 
   // ─── Chat ──────────────────────────────────────────────────
