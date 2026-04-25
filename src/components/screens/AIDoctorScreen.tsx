@@ -187,11 +187,18 @@ ${diagnosisSummary}`;
     const assistantId = (Date.now() + 1).toString();
 
     try {
+      // The chat edge function validates the caller via supabase.auth.getUser(),
+      // so we MUST send the user's session JWT — not the anon publishable key.
+      const { data: { session } } = await supabase.auth.getSession();
+      const accessToken = session?.access_token;
+      if (!accessToken) throw new Error("Not signed in. Please refresh and sign in again.");
+
       const resp = await fetch(CHAT_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          Authorization: `Bearer ${accessToken}`,
+          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
         },
         body: JSON.stringify({
           messages: allMessages.map(m => ({ role: m.role, content: m.content })),
@@ -270,11 +277,16 @@ ${diagnosisSummary}`;
    * hidden [[SEVERITY:...]] tags) so the test panel can validate it.
    */
   const runTestPrompt = useCallback(async (prompt: string): Promise<string> => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const accessToken = session?.access_token;
+    if (!accessToken) throw new Error("Not signed in.");
+
     const resp = await fetch(CHAT_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        Authorization: `Bearer ${accessToken}`,
+        apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
       },
       body: JSON.stringify({
         messages: [{ role: "user", content: prompt }],
