@@ -9,7 +9,7 @@ import DiagnosisScreen from "@/components/screens/DiagnosisScreen";
 import BodyScreen from "@/components/screens/BodyScreen";
 import AIDoctorScreen from "@/components/screens/AIDoctorScreen";
 import { Toaster } from "@/components/ui/toaster";
-import { AlertTriangle, Stethoscope, User, Command as CommandIcon } from "lucide-react";
+import { AlertTriangle, Stethoscope, User, Menu } from "lucide-react";
 import CommandPalette, { type PaletteAction } from "@/components/CommandPalette";
 import { toast } from "sonner";
 
@@ -169,18 +169,17 @@ function AppShell() {
         <span className="text-base font-bold text-foreground tracking-tight">Vitalis</span>
         <div className="flex items-center gap-3">
           <button
-            onClick={() => setPaletteOpen(true)}
-            className="hidden sm:inline-flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-md border border-border/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-            aria-label="Open command palette"
-          >
-            <span>Jump to…</span>
-            <kbd className="text-[10px] font-mono bg-muted/50 px-1 rounded">⌘K</kbd>
-          </button>
-          <button
             onClick={async () => { await supabase.auth.signOut(); setSession(null); }}
             className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
           >
             Sign out
+          </button>
+          <button
+            onClick={() => setPaletteOpen(true)}
+            className="inline-flex items-center justify-center w-8 h-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            aria-label="Open menu"
+          >
+            <Menu className="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -216,14 +215,6 @@ function AppShell() {
         </div>
       </div>
 
-      {/* Mobile floating palette trigger */}
-      <button
-        onClick={() => setPaletteOpen(true)}
-        className="sm:hidden fixed bottom-20 right-4 z-50 w-11 h-11 rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 flex items-center justify-center active:scale-95 transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-        aria-label="Open command palette"
-      >
-        <CommandIcon className="w-5 h-5" />
-      </button>
     </div>
   );
 }
