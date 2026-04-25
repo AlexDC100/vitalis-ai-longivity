@@ -503,8 +503,15 @@ ${diagnosisSummary}`;
         )}
 
         {messages.map(msg => {
-          if (msg.role === "action" && msg.actionType === "booking") return <div key={msg.id}>{renderBookingCard(msg)}</div>;
+          if (msg.role === "action" && msg.actionType === "care") return <div key={msg.id}>{renderCareCard(msg)}</div>;
           if (msg.role === "action") return <div key={msg.id}>{renderUploadAction(msg)}</div>;
+
+          // For assistant messages, parse severity inline so we can render
+          // a compact, color-coded badge above the structured response.
+          const severity = msg.role === "assistant" ? parseSeverity(msg.content) : null;
+          const cleanContent = msg.role === "assistant" ? stripTags(msg.content) : msg.content;
+          const sevMeta = severity ? SEVERITY_META[severity] : null;
+          const SevIcon = sevMeta?.icon;
 
           return (
             <div key={msg.id} className={`flex gap-2.5 ${msg.role === "user" ? "justify-end" : ""} animate-fade-in`}>
@@ -513,16 +520,27 @@ ${diagnosisSummary}`;
                   <Bot className="w-4 h-4 text-primary" />
                 </div>
               )}
-              <div className={`max-w-[85%] rounded-2xl px-4 py-3 ${
-                msg.role === "user" ? "bg-primary text-primary-foreground" : "bg-card border border-border/50"
-              }`}>
-                {msg.role === "assistant" ? (
-                  <div className="prose prose-sm prose-invert max-w-none text-[13px] leading-relaxed [&_p]:mb-2 [&_ul]:mb-2 [&_ol]:mb-2 [&_li]:mb-0.5 [&_strong]:text-foreground [&_h2]:text-base [&_h2]:font-bold [&_h2]:mb-2 [&_h2]:mt-3 [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mb-1 [&_table]:w-full [&_table]:text-[11px] [&_th]:bg-secondary/50 [&_th]:px-2 [&_th]:py-1.5 [&_th]:text-left [&_th]:font-semibold [&_th]:border-b [&_th]:border-border/50 [&_td]:px-2 [&_td]:py-1.5 [&_td]:border-t [&_td]:border-border/30 [&_code]:bg-secondary/50 [&_code]:px-1 [&_code]:rounded [&_table]:border [&_table]:border-border/30 [&_table]:rounded-lg [&_table]:overflow-hidden">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content || "..."}</ReactMarkdown>
+              <div className={`max-w-[85%] ${msg.role === "user" ? "" : "w-full"}`}>
+                {sevMeta && SevIcon && (
+                  <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full ${sevMeta.bg} border ${sevMeta.border} mb-1.5`}>
+                    <SevIcon className={`w-3 h-3 ${sevMeta.text}`} />
+                    <span className={`text-[10px] font-bold uppercase tracking-wide ${sevMeta.text}`}>
+                      {sevMeta.label}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">· {sevMeta.tagline}</span>
                   </div>
-                ) : (
-                  <p className="text-[13px] leading-relaxed">{msg.content}</p>
                 )}
+                <div className={`rounded-2xl px-4 py-3 ${
+                  msg.role === "user" ? "bg-primary text-primary-foreground inline-block" : "bg-card border border-border/50"
+                }`}>
+                  {msg.role === "assistant" ? (
+                    <div className="prose prose-sm prose-invert max-w-none text-[13px] leading-relaxed [&_p]:mb-2 [&_ul]:mb-2 [&_ol]:mb-2 [&_li]:mb-0.5 [&_strong]:text-foreground [&_h2]:text-sm [&_h2]:font-bold [&_h2]:mb-1.5 [&_h2]:mt-3 [&_h2]:text-foreground [&_h2:first-child]:mt-0 [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mb-1 [&_table]:w-full [&_table]:text-[11px] [&_th]:bg-secondary/50 [&_th]:px-2 [&_th]:py-1.5 [&_th]:text-left [&_th]:font-semibold [&_th]:border-b [&_th]:border-border/50 [&_td]:px-2 [&_td]:py-1.5 [&_td]:border-t [&_td]:border-border/30 [&_code]:bg-secondary/50 [&_code]:px-1 [&_code]:rounded [&_table]:border [&_table]:border-border/30 [&_table]:rounded-lg [&_table]:overflow-hidden">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{cleanContent || "..."}</ReactMarkdown>
+                    </div>
+                  ) : (
+                    <p className="text-[13px] leading-relaxed">{cleanContent}</p>
+                  )}
+                </div>
               </div>
               {msg.role === "user" && (
                 <div className="w-7 h-7 rounded-lg bg-secondary flex items-center justify-center shrink-0 mt-1">
