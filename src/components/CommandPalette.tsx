@@ -108,7 +108,13 @@ export default function CommandPalette({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="top-[20%] translate-y-0 max-w-[640px] w-[calc(100%-2rem)] gap-0 p-0 rounded-2xl border border-border/50 bg-popover/95 backdrop-blur-xl shadow-2xl shadow-black/40 ring-1 ring-white/5 [&>button]:hidden"
+        className="top-[10%] sm:top-[20%] translate-y-0 max-w-[640px] w-[calc(100%-1rem)] sm:w-[calc(100%-2rem)] gap-0 p-0 rounded-2xl border border-border/50 bg-popover/95 backdrop-blur-xl shadow-2xl shadow-black/40 ring-1 ring-white/5 [&>button]:hidden"
+        style={{
+          paddingTop: "env(safe-area-inset-top, 0px)",
+          paddingBottom: "env(safe-area-inset-bottom, 0px)",
+          paddingLeft: "env(safe-area-inset-left, 0px)",
+          paddingRight: "env(safe-area-inset-right, 0px)",
+        }}
       >
         <DialogTitle className="sr-only">Command palette</DialogTitle>
         <DialogDescription className="sr-only">
