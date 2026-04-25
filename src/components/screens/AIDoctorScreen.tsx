@@ -1,7 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useHealth } from "@/lib/health-context";
-import { runDiagnosis, SubstanceEntry } from "@/lib/diagnosis-engine";
+import { runDiagnosis } from "@/lib/diagnosis-engine";
 import { supabase } from "@/integrations/supabase/client";
+import { useSubstances } from "@/lib/use-substances";
 import { Send, Mic, Bot, User, Stethoscope, Upload, Loader2, Calendar, ExternalLink, MapPin, Paperclip } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from "react-markdown";
