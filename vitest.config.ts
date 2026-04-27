@@ -5,7 +5,10 @@ import path from "path";
 export default defineConfig({
   plugins: [react()],
   test: {
-    environment: "jsdom",
+    // Default to node — jsdom 20 pulls in `canvas` native bindings which
+    // aren't available in the build sandbox. Tests that need a DOM should
+    // opt-in with `// @vitest-environment jsdom` at the top of the file.
+    environment: "node",
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
     include: ["src/**/*.{test,spec}.{ts,tsx}"],

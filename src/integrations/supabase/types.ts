@@ -50,6 +50,51 @@ export type Database = {
         }
         Relationships: []
       }
+      consultation_requests: {
+        Row: {
+          created_at: string
+          email: string
+          full_name: string
+          id: string
+          notes: string | null
+          partner_id: string
+          phone: string | null
+          preferred_time: string | null
+          severity: string | null
+          specialty: string
+          status: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          full_name: string
+          id?: string
+          notes?: string | null
+          partner_id: string
+          phone?: string | null
+          preferred_time?: string | null
+          severity?: string | null
+          specialty: string
+          status?: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          full_name?: string
+          id?: string
+          notes?: string | null
+          partner_id?: string
+          phone?: string | null
+          preferred_time?: string | null
+          severity?: string | null
+          specialty?: string
+          status?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       health_profiles: {
         Row: {
           apob: number | null
