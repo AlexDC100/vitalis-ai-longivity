@@ -9,8 +9,9 @@ import DiagnosisScreen from "@/components/screens/DiagnosisScreen";
 import BodyScreen from "@/components/screens/BodyScreen";
 import AIDoctorScreen from "@/components/screens/AIDoctorScreen";
 import { Toaster } from "@/components/ui/toaster";
-import { AlertTriangle, Stethoscope, User, Menu } from "lucide-react";
+import { AlertTriangle, Stethoscope, User, Menu, Settings as SettingsIcon } from "lucide-react";
 import CommandPalette, { type PaletteAction } from "@/components/CommandPalette";
+import SettingsSheet from "@/components/SettingsSheet";
 import { toast } from "sonner";
 
 type Screen = "diagnosis" | "body" | "doctor";
@@ -31,6 +32,7 @@ function AppShell() {
   const [slideDir, setSlideDir] = useState<"left" | "right">("left");
   const [onboarded, setOnboarded] = useState<boolean | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const prevScreenRef = useRef<Screen>(screen);
 
   const screenOrder: Screen[] = ["diagnosis", "body", "doctor"];
@@ -108,6 +110,13 @@ function AppShell() {
     }
   };
 
+  const signOut = async () => {
+    await supabase.auth.signOut();
+    clearSensitiveLocalData();
+    setSession(null);
+    toast.success("Signed out", { description: "See you soon." });
+  };
+
   const handlePaletteAction = async (action: PaletteAction) => {
     switch (action) {
       case "upload-document":
@@ -138,11 +147,11 @@ function AppShell() {
           description: "Re-running analysis on your latest data.",
         });
         break;
+      case "open-settings":
+        setSettingsOpen(true);
+        break;
       case "sign-out":
-        await supabase.auth.signOut();
-        clearSensitiveLocalData();
-        setSession(null);
-        toast.success("Signed out", { description: "See you soon." });
+        await signOut();
         break;
     }
   };
@@ -185,16 +194,30 @@ function AppShell() {
         currentScreen={screen}
         onAction={handlePaletteAction}
       />
+      <SettingsSheet
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        onSignOut={signOut}
+      />
       {/* Top Bar */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border/30">
         <span className="text-base font-bold text-foreground tracking-tight">Vitalis</span>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1">
           <button
             onClick={() => setPaletteOpen(true)}
             className="inline-flex items-center justify-center w-8 h-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-            aria-label="Open menu"
+            aria-label="Open quick actions"
+            title="Quick actions (⌘K)"
           >
             <Menu className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => setSettingsOpen(true)}
+            className="inline-flex items-center justify-center w-8 h-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            aria-label="Open settings"
+            title="Settings"
+          >
+            <SettingsIcon className="w-4 h-4" />
           </button>
         </div>
       </div>
