@@ -329,6 +329,30 @@ export type Database = {
         }
         Relationships: []
       }
+      user_privacy_settings: {
+        Row: {
+          keep_documents: boolean
+          keep_snapshots: boolean
+          retention_days: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          keep_documents?: boolean
+          keep_snapshots?: boolean
+          retention_days?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          keep_documents?: boolean
+          keep_snapshots?: boolean
+          retention_days?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_substances: {
         Row: {
           category: string
