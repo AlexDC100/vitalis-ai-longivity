@@ -27,7 +27,15 @@ export type AnalyticsEvent =
   | { name: "password_reset_email_sent" }
   | { name: "password_reset_email_error"; message?: string }
   | { name: "password_reset_token_invalid"; reason?: string }
-  | { name: "password_reset_completed" };
+  | { name: "password_reset_completed" }
+  // Booking funnel
+  | { name: "booking_sheet_open"; specialty: string; severity: string }
+  | { name: "booking_partner_select"; partnerId: string; specialty: string }
+  | { name: "booking_click"; partnerId: string; specialty: string; url: string; method: "popup" | "top" | "anchor" }
+  | { name: "booking_click_blocked"; partnerId: string; specialty: string; url: string; reason: string }
+  | { name: "booking_request_submit"; partnerId: string; specialty: string }
+  | { name: "booking_request_success"; partnerId: string; specialty: string }
+  | { name: "booking_request_error"; partnerId: string; specialty: string; message?: string };
 
 declare global {
   interface Window {
