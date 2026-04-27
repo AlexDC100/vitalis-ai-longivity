@@ -14,6 +14,8 @@ export interface ClinicPartner {
   name: string;
   /** Where the user lands when they click "Book appointment". */
   bookingUrl: string;
+  /** Optional builder that returns a deep-link with the specialty pre-filled. */
+  buildBookingUrl?: (specialty: string) => string;
   /** Optional country / region scope — used in the future for location filtering. */
   region?: string;
   /** Severities this partner is appropriate for. */
@@ -27,9 +29,21 @@ export const CLINIC_PARTNERS: ClinicPartner[] = [
     id: "regina-maria",
     name: "Regina Maria",
     bookingUrl: "https://www.reginamaria.ro/programari",
+    buildBookingUrl: (specialty: string) =>
+      `https://www.reginamaria.ro/programari?specialitate=${encodeURIComponent(specialty)}`,
     region: "RO",
-    severities: ["HIGH", "URGENT"],
+    severities: ["MODERATE", "HIGH", "URGENT"],
     description: "Private medical network — book a specialist consultation online.",
+  },
+  {
+    id: "sanador",
+    name: "Sanador",
+    bookingUrl: "https://www.sanador.ro/programari-online",
+    buildBookingUrl: (specialty: string) =>
+      `https://www.sanador.ro/programari-online?specialitate=${encodeURIComponent(specialty)}`,
+    region: "RO",
+    severities: ["MODERATE", "HIGH", "URGENT"],
+    description: "Top private hospital — multispecialty consultations across Bucharest.",
   },
 ];
 
@@ -40,4 +54,9 @@ export const CLINIC_PARTNERS: ClinicPartner[] = [
  */
 export function pickPartner(severity: Severity): ClinicPartner | null {
   return CLINIC_PARTNERS.find(p => p.severities.includes(severity)) ?? null;
+}
+
+/** Return all partners appropriate for a given severity. */
+export function pickPartners(severity: Severity): ClinicPartner[] {
+  return CLINIC_PARTNERS.filter(p => p.severities.includes(severity));
 }
