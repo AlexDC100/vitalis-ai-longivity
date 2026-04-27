@@ -1,0 +1,323 @@
+import { useEffect, useState } from "react";
+import { z } from "zod";
+import { toast } from "sonner";
+import { CalendarCheck, ExternalLink, Loader2, CheckCircle2, ChevronRight } from "lucide-react";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
+import { CLINIC_PARTNERS, type ClinicPartner, type Severity } from "@/lib/clinic-partners";
+import { track } from "@/lib/analytics";
+import { supabase } from "@/integrations/supabase/client";
+
+/**
+ * Mobile-friendly in-app booking flow.
+ *
+ * - Step 1: Pick a partner and either open the deep-link in a new tab, or
+ *   request that we contact them.
+ * - Step 2: Validated request form (zod). Persists to `consultation_requests`.
+ * - Step 3: Confirmation state.
+ *
+ * The `Sheet` component renders as a bottom sheet on small viewports and a
+ * side sheet on desktop, so a single component covers both.
+ */
+
+export interface BookingSheetProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  specialty: string;
+  severity: Severity;
+  /** Pre-select a partner — defaults to the first one. */
+  defaultPartnerId?: string;
+  /** Optional list of partners to display; defaults to all configured. */
+  partners?: ClinicPartner[];
+}
+
+const requestSchema = z.object({
+  fullName: z.string().trim().min(2, "Please enter your full name").max(100),
+  email: z.string().trim().email("Enter a valid email").max(255),
+  phone: z
+    .string()
+    .trim()
+    .max(40)
+    .regex(/^[+\d\s().-]{6,}$/, "Enter a valid phone number")
+    .optional()
+    .or(z.literal("")),
+  preferredTime: z.string().trim().max(120).optional().or(z.literal("")),
+  notes: z.string().trim().max(1000).optional().or(z.literal("")),
+});
+
+type Step = "choose" | "form" | "confirmed";
+
+export function BookingSheet({
+  open,
+  onOpenChange,
+  specialty,
+  severity,
+  defaultPartnerId,
+  partners = CLINIC_PARTNERS,
+}: BookingSheetProps) {
+  const [step, setStep] = useState<Step>("choose");
+  const [partnerId, setPartnerId] = useState<string>(defaultPartnerId ?? partners[0]?.id);
+  const [submitting, setSubmitting] = useState(false);
+  const [form, setForm] = useState({ fullName: "", email: "", phone: "", preferredTime: "", notes: "" });
+  const [errors, setErrors] = useState<Partial<Record<keyof typeof form, string>>>({});
+
+  const partner = partners.find(p => p.id === partnerId) ?? partners[0];
+
+  useEffect(() => {
+    if (open) {
+      setStep("choose");
+      setErrors({});
+      track({ name: "booking_sheet_open", specialty, severity });
+    }
+  }, [open, specialty, severity]);
+
+  // Hydrate email from current session if available
+  useEffect(() => {
+    if (!open) return;
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user?.email && !form.email) {
+        setForm(f => ({ ...f, email: data.user!.email! }));
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  const buildUrl = (p: ClinicPartner) =>
+    p.buildBookingUrl ? p.buildBookingUrl(specialty) : p.bookingUrl;
+
+  const openDeepLink = (p: ClinicPartner) => {
+    const url = buildUrl(p);
+    track({ name: "booking_partner_select", partnerId: p.id, specialty });
+    try {
+      const win = window.open(url, "_blank", "noopener,noreferrer");
+      if (win) {
+        track({ name: "booking_click", partnerId: p.id, specialty, url, method: "popup" });
+        return;
+      }
+      // Popup blocked (common inside iframes) — escape to top
+      if (window.top && window.top !== window.self) {
+        window.top.location.href = url;
+        track({ name: "booking_click", partnerId: p.id, specialty, url, method: "top" });
+        return;
+      }
+      // Last resort: same-tab navigation
+      window.location.href = url;
+      track({ name: "booking_click", partnerId: p.id, specialty, url, method: "anchor" });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      track({ name: "booking_click_blocked", partnerId: p.id, specialty, url, reason: message });
+      toast.error("Couldn't open the booking page", {
+        description: `${p.name} link was blocked: ${message}. Try the in-app request instead.`,
+      });
+    }
+  };
+
+  const submitRequest = async () => {
+    if (!partner) return;
+    const parsed = requestSchema.safeParse(form);
+    if (!parsed.success) {
+      const fieldErrors: typeof errors = {};
+      for (const issue of parsed.error.issues) {
+        const key = issue.path[0] as keyof typeof form;
+        if (!fieldErrors[key]) fieldErrors[key] = issue.message;
+      }
+      setErrors(fieldErrors);
+      return;
+    }
+    setErrors({});
+    setSubmitting(true);
+    track({ name: "booking_request_submit", partnerId: partner.id, specialty });
+    try {
+      const { data: userRes } = await supabase.auth.getUser();
+      const { error } = await supabase.from("consultation_requests").insert({
+        user_id: userRes.user?.id ?? null,
+        partner_id: partner.id,
+        specialty,
+        severity,
+        full_name: parsed.data.fullName,
+        email: parsed.data.email,
+        phone: parsed.data.phone || null,
+        preferred_time: parsed.data.preferredTime || null,
+        notes: parsed.data.notes || null,
+      });
+      if (error) throw error;
+      track({ name: "booking_request_success", partnerId: partner.id, specialty });
+      setStep("confirmed");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      track({ name: "booking_request_error", partnerId: partner.id, specialty, message });
+      toast.error("Couldn't submit request", { description: message });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent
+        side="bottom"
+        className="rounded-t-2xl max-h-[92vh] overflow-y-auto sm:max-w-lg sm:mx-auto"
+      >
+        <SheetHeader className="text-left">
+          <SheetTitle className="flex items-center gap-2">
+            <CalendarCheck className="w-5 h-5 text-primary" />
+            Book a {specialty}
+          </SheetTitle>
+          <SheetDescription>
+            {step === "confirmed"
+              ? "Your request was received."
+              : "Open a partner's booking page or request a callback."}
+          </SheetDescription>
+        </SheetHeader>
+
+        {step === "choose" && (
+          <div className="space-y-3 mt-4">
+            {partners.map(p => {
+              const url = buildUrl(p);
+              return (
+                <div
+                  key={p.id}
+                  className="rounded-xl border border-border/40 bg-card/50 p-3 space-y-2"
+                >
+                  <div className="flex items-start gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                      <CalendarCheck className="w-4 h-4 text-primary" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-foreground">{p.name}</p>
+                      <p className="text-xs text-muted-foreground">{p.description}</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => openDeepLink(p)}
+                    >
+                      Open booking <ExternalLink className="w-3.5 h-3.5 ml-1.5" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      className="flex-1"
+                      onClick={() => {
+                        setPartnerId(p.id);
+                        track({ name: "booking_partner_select", partnerId: p.id, specialty });
+                        setStep("form");
+                      }}
+                    >
+                      Request callback <ChevronRight className="w-3.5 h-3.5 ml-1" />
+                    </Button>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground break-all">{url}</p>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {step === "form" && partner && (
+          <div className="space-y-3 mt-4">
+            <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-foreground">
+              Requesting <span className="font-semibold">{specialty}</span> consultation with{" "}
+              <span className="font-semibold">{partner.name}</span>.
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="bk-name">Full name</Label>
+              <Input
+                id="bk-name"
+                value={form.fullName}
+                onChange={e => setForm({ ...form, fullName: e.target.value })}
+                aria-invalid={!!errors.fullName}
+                maxLength={100}
+              />
+              {errors.fullName && <p className="text-xs text-destructive">{errors.fullName}</p>}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="bk-email">Email</Label>
+              <Input
+                id="bk-email"
+                type="email"
+                value={form.email}
+                onChange={e => setForm({ ...form, email: e.target.value })}
+                aria-invalid={!!errors.email}
+                maxLength={255}
+              />
+              {errors.email && <p className="text-xs text-destructive">{errors.email}</p>}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="bk-phone">Phone (optional)</Label>
+              <Input
+                id="bk-phone"
+                type="tel"
+                inputMode="tel"
+                value={form.phone}
+                onChange={e => setForm({ ...form, phone: e.target.value })}
+                aria-invalid={!!errors.phone}
+                maxLength={40}
+              />
+              {errors.phone && <p className="text-xs text-destructive">{errors.phone}</p>}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="bk-time">Preferred time (optional)</Label>
+              <Input
+                id="bk-time"
+                value={form.preferredTime}
+                onChange={e => setForm({ ...form, preferredTime: e.target.value })}
+                placeholder="e.g. Weekdays after 5pm"
+                maxLength={120}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="bk-notes">Notes (optional)</Label>
+              <Textarea
+                id="bk-notes"
+                rows={3}
+                value={form.notes}
+                onChange={e => setForm({ ...form, notes: e.target.value })}
+                maxLength={1000}
+              />
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <Button variant="ghost" className="flex-1" onClick={() => setStep("choose")} disabled={submitting}>
+                Back
+              </Button>
+              <Button className="flex-1" onClick={submitRequest} disabled={submitting}>
+                {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : "Submit request"}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {step === "confirmed" && partner && (
+          <div className="mt-6 flex flex-col items-center text-center space-y-3">
+            <div className="w-14 h-14 rounded-full bg-emerald-500/15 flex items-center justify-center">
+              <CheckCircle2 className="w-8 h-8 text-emerald-400" />
+            </div>
+            <div>
+              <p className="text-base font-semibold text-foreground">Request sent</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                We've logged your {specialty} consultation request with {partner.name}.
+                You'll receive a confirmation at {form.email}.
+              </p>
+            </div>
+            <Button className="w-full mt-2" onClick={() => onOpenChange(false)}>
+              Done
+            </Button>
+          </div>
+        )}
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+export default BookingSheet;
