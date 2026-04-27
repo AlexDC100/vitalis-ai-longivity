@@ -81,6 +81,11 @@ export default function AIDoctorScreen() {
   const inputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<any>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [bookingSheet, setBookingSheet] = useState<{ open: boolean; specialty: string; severity: Severity }>({
+    open: false,
+    specialty: "",
+    severity: "MODERATE",
+  });
 
   // Substances now sourced from RLS-protected `user_substances` table
   // (was previously `localStorage["vitalis_substances"]`).
