@@ -3,7 +3,7 @@ import { useHealth } from "@/lib/health-context";
 import { runDiagnosis } from "@/lib/diagnosis-engine";
 import { supabase } from "@/integrations/supabase/client";
 import { useSubstances } from "@/lib/use-substances";
-import { Send, Mic, Bot, User, Stethoscope, Upload, Loader2, Calendar, ExternalLink, MapPin, Paperclip, AlertTriangle, ShieldCheck, Activity, Siren, CalendarCheck } from "lucide-react";
+import { Send, Mic, Bot, User, Stethoscope, Upload, Loader2, Calendar, ExternalLink, MapPin, Paperclip, AlertTriangle, ShieldCheck, Activity, Siren, CalendarCheck, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -60,7 +60,17 @@ function stripTags(content: string): string {
 export default function AIDoctorScreen() {
   const { profile, updateField, longevityScore, biologicalAge, chronologicalAge, userId } = useHealth();
   const { toast } = useToast();
-  const [messages, setMessages] = useState<ChatMsg[]>([]);
+  const storageKey = userId ? `vitalis_ai_doctor_chat_${userId}` : null;
+  const [messages, setMessages] = useState<ChatMsg[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      // Best-effort hydrate from any prior user (re-keyed in effect when userId resolves).
+      const keys = Object.keys(localStorage).filter(k => k.startsWith("vitalis_ai_doctor_chat_"));
+      if (keys.length === 0) return [];
+      const raw = localStorage.getItem(keys[0]);
+      return raw ? (JSON.parse(raw) as ChatMsg[]) : [];
+    } catch { return []; }
+  });
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [isHolding, setIsHolding] = useState(false);
@@ -78,6 +88,33 @@ export default function AIDoctorScreen() {
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages]);
+
+  // Load this user's chat history when userId becomes available.
+  useEffect(() => {
+    if (!storageKey) return;
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (raw) setMessages(JSON.parse(raw) as ChatMsg[]);
+    } catch { /* ignore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storageKey]);
+
+  // Persist chat history per user. Survives tab switches and reloads
+  // until the user explicitly clears it.
+  useEffect(() => {
+    if (!storageKey) return;
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(messages));
+    } catch { /* quota — ignore */ }
+  }, [messages, storageKey]);
+
+  const clearChat = useCallback(() => {
+    if (!confirm("Clear AI Doctor chat history? This cannot be undone.")) return;
+    setMessages([]);
+    if (storageKey) {
+      try { localStorage.removeItem(storageKey); } catch { /* ignore */ }
+    }
+  }, [storageKey]);
 
   const diagnosis = runDiagnosis(profile, substances);
   const isHighRisk = diagnosis.severity === "critical" || diagnosis.severity === "high";
@@ -538,10 +575,20 @@ ${diagnosisSummary}`;
         <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center">
           <Stethoscope className="w-5 h-5 text-primary" />
         </div>
-        <div>
+        <div className="flex-1">
           <h1 className="text-lg font-bold text-foreground">AI Doctor</h1>
           <p className="text-[11px] text-muted-foreground">Clinical-grade health intelligence</p>
         </div>
+        {messages.length > 0 && (
+          <button
+            onClick={clearChat}
+            className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
+            aria-label="Clear chat history"
+            title="Clear chat history"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        )}
       </div>
 
       {/* Persistent safety disclaimer */}
