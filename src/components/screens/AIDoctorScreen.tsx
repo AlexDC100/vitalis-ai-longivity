@@ -7,7 +7,7 @@ import { Send, Mic, Bot, User, Stethoscope, Upload, Loader2, Calendar, ExternalL
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { pickPartner } from "@/lib/clinic-partners";
+import { pickPartners } from "@/lib/clinic-partners";
 import AIDoctorTestMode from "@/components/AIDoctorTestMode";
 
 interface ChatMsg {
