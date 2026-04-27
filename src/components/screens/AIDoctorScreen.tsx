@@ -764,6 +764,12 @@ ${diagnosisSummary}`;
           </button>
         </div>
       </div>
+      <BookingSheet
+        open={bookingSheet.open}
+        onOpenChange={(open) => setBookingSheet(s => ({ ...s, open }))}
+        specialty={bookingSheet.specialty}
+        severity={bookingSheet.severity}
+      />
     </div>
   );
 }
