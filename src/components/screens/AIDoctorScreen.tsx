@@ -469,10 +469,8 @@ ${diagnosisSummary}`;
     const Icon = meta.icon;
     const isUrgent = data.severity === "URGENT";
     const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(data.specialty + " near me")}`;
-    // Pick a partner clinic (extensible via src/lib/clinic-partners.ts).
-    // null when severity isn't HIGH/URGENT — shouldn't happen here since
-    // we only inject the card on HIGH/URGENT — but stay defensive.
-    const partner = pickPartner(data.severity);
+    // Pick partner clinics (extensible via src/lib/clinic-partners.ts).
+    const partners = pickPartners(data.severity);
     return (
       <div className="flex gap-2.5 animate-fade-in">
         <div className={`w-7 h-7 rounded-lg ${meta.bg} flex items-center justify-center shrink-0 mt-1`}>
@@ -503,28 +501,43 @@ ${diagnosisSummary}`;
               </a>
             ) : (
               <>
-                {partner && (
-                  <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 space-y-2.5">
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                        <CalendarCheck className="w-4 h-4 text-primary" />
+                {partners.map((partner) => {
+                  const href = partner.buildBookingUrl
+                    ? partner.buildBookingUrl(data.specialty)
+                    : partner.bookingUrl;
+                  return (
+                    <div key={partner.id} className="rounded-xl border border-primary/20 bg-primary/5 p-3 space-y-2.5">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                          <CalendarCheck className="w-4 h-4 text-primary" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold text-foreground truncate">{partner.name}</p>
+                          <p className="text-[10px] text-muted-foreground truncate">{partner.description}</p>
+                        </div>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold text-foreground truncate">{partner.name}</p>
-                        <p className="text-[10px] text-muted-foreground truncate">{partner.description}</p>
-                      </div>
+                      <a
+                        href={href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => {
+                          // Guarantee a new-tab navigation even inside iframes / embedded previews
+                          // where target="_blank" can be blocked by the parent frame.
+                          e.preventDefault();
+                          const win = window.open(href, "_blank", "noopener,noreferrer");
+                          if (!win) {
+                            // Popup blocked — fall back to top-level navigation.
+                            window.top!.location.href = href;
+                          }
+                        }}
+                        className="flex items-center justify-center gap-1.5 w-full px-3 py-2 bg-primary text-primary-foreground rounded-lg text-xs font-semibold hover:opacity-90 transition-opacity"
+                      >
+                        Book {data.specialty} at {partner.name}
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
                     </div>
-                    <a
-                      href={partner.bookingUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center justify-center gap-1.5 w-full px-3 py-2 bg-primary text-primary-foreground rounded-lg text-xs font-semibold hover:opacity-90 transition-opacity"
-                    >
-                      Book appointment
-                      <ExternalLink className="w-3 h-3" />
-                    </a>
-                  </div>
-                )}
+                  );
+                })}
                 <a
                   href={mapsUrl}
                   target="_blank"
