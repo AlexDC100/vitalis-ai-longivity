@@ -1,14 +1,12 @@
 import { useEffect, useState } from "react";
 import {
-  AlertTriangle,
-  Stethoscope,
-  User,
   Upload,
   RefreshCw,
   LogOut,
   MessageCircle,
   Activity,
   FileSearch,
+  Settings as SettingsIcon,
 } from "lucide-react";
 import {
   Command,
@@ -17,7 +15,6 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-  CommandShortcut,
   CommandSeparator,
 } from "@/components/ui/command";
 import {
@@ -34,6 +31,7 @@ export type PaletteAction =
   | "refresh-diagnosis"
   | "continue-chat"
   | "extract-biomarkers"
+  | "open-settings"
   | "sign-out";
 
 interface CommandPaletteProps {
@@ -43,12 +41,6 @@ interface CommandPaletteProps {
   currentScreen: PaletteScreen;
   onAction: (action: PaletteAction) => void;
 }
-
-const items: { id: PaletteScreen; label: string; hint: string; icon: React.ElementType }[] = [
-  { id: "diagnosis", label: "Diagnosis", hint: "Primary health problem", icon: AlertTriangle },
-  { id: "body", label: "Body", hint: "Biomarkers & inputs", icon: User },
-  { id: "doctor", label: "AI Doctor", hint: "Chat & document upload", icon: Stethoscope },
-];
 
 type QuickAction = {
   id: PaletteAction;
@@ -65,6 +57,7 @@ const quickActions: QuickAction[] = [
   { id: "upload-document", label: "Upload medical document", hint: "Add a PDF to your record", icon: Upload, screens: ["body"] },
   { id: "continue-chat", label: "Continue AI Doctor chat", hint: "Jump back into the conversation", icon: Activity, screens: ["doctor"] },
   { id: "upload-document", label: "Attach document to chat", hint: "Share a PDF with the AI", icon: Upload, screens: ["doctor"] },
+  { id: "open-settings", label: "Open Settings", hint: "Account, preferences, data, privacy", icon: SettingsIcon, screens: "all" },
   { id: "sign-out", label: "Sign out", hint: "End your session", icon: LogOut, screens: "all" },
 ];
 
@@ -137,41 +130,8 @@ export default function CommandPalette({
             <CommandEmpty className="py-8 text-center text-sm text-muted-foreground">
               No results.
             </CommandEmpty>
-            <CommandGroup heading="Navigation">
-              {items.map((item, idx) => {
-                const Icon = item.icon;
-                const isActive = item.id === currentScreen;
-                return (
-                  <CommandItem
-                    key={item.id}
-                    value={`${item.label} ${item.hint}`}
-                    onSelect={() => {
-                      onNavigate(item.id);
-                      onOpenChange(false);
-                    }}
-                    aria-label={`Go to ${item.label}. ${item.hint}${isActive ? ". Current screen" : ""}`}
-                    className="group gap-3 px-2.5 py-2 rounded-lg aria-selected:bg-foreground/[0.06] data-[selected=true]:bg-foreground/[0.06] data-[selected=true]:text-foreground data-[selected=true]:ring-0"
-                  >
-                    <Icon className="h-4 w-4 text-muted-foreground/80" />
-                    <div className="flex-1 min-w-0 text-left">
-                      <div className="text-[13px] font-medium text-foreground leading-tight">
-                        {item.label}
-                      </div>
-                      <div className="text-[11px] text-muted-foreground/70 leading-tight mt-0.5">
-                        {item.hint}
-                      </div>
-                    </div>
-                    <CommandShortcut className="text-[10px] tracking-normal text-muted-foreground/60">
-                      ⌘{idx + 1}
-                    </CommandShortcut>
-                  </CommandItem>
-                );
-              })}
-            </CommandGroup>
             {visibleActions.length > 0 && (
-              <>
-                <CommandSeparator className="my-1 bg-border/30" />
-                <CommandGroup heading="Actions">
+              <CommandGroup heading="Actions">
                   {visibleActions.map((action, idx) => {
                     const Icon = action.icon;
                     return (
@@ -197,8 +157,7 @@ export default function CommandPalette({
                       </CommandItem>
                     );
                   })}
-                </CommandGroup>
-              </>
+              </CommandGroup>
             )}
           </CommandList>
         </Command>
