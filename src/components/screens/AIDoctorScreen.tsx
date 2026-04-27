@@ -575,10 +575,20 @@ ${diagnosisSummary}`;
         <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center">
           <Stethoscope className="w-5 h-5 text-primary" />
         </div>
-        <div>
+        <div className="flex-1">
           <h1 className="text-lg font-bold text-foreground">AI Doctor</h1>
           <p className="text-[11px] text-muted-foreground">Clinical-grade health intelligence</p>
         </div>
+        {messages.length > 0 && (
+          <button
+            onClick={clearChat}
+            className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
+            aria-label="Clear chat history"
+            title="Clear chat history"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        )}
       </div>
 
       {/* Persistent safety disclaimer */}
