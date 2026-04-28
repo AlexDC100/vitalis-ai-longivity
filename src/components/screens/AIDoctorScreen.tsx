@@ -239,8 +239,7 @@ export default function AIDoctorScreen() {
         console.log(`[AIDoctor.tapAudit] PASS ✅ all controls ≥ 44×44 on screen "${screen}"`);
       }
     });
-    return () => cancelreqAnimationFrame(raf);
-    function cancelreqAnimationFrame(id: number) { cancelAnimationFrame(id); }
+    return () => cancelAnimationFrame(raf);
   }, [screen, latestResult, chat.length]);
 
   /**
