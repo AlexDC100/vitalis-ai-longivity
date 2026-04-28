@@ -517,6 +517,14 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
               Choose file
             </button>
             <p className="text-[10px] text-muted-foreground/70 mt-3">or drag and drop here</p>
+            <p id="aidoctor-drop-instructions" className="sr-only">
+              Drop a PDF, JPG, or PNG health report onto this area, or press Enter or Space to open the file picker. Keyboard users can also use the Choose file button below.
+            </p>
+            {lastFileName && (
+              <p className="text-[10px] text-muted-foreground/60 mt-2">
+                Last uploaded: {lastFileName}
+              </p>
+            )}
             <input
               ref={fileRef}
               type="file"
