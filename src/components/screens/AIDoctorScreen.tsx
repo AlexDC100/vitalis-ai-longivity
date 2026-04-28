@@ -88,14 +88,31 @@ function extractSummary(md: string): { title: string; explanation: string } {
 
 interface ChatMsg { id: string; role: "user" | "assistant"; content: string; }
 
+/** Session-storage keys to persist upload context across navigation. */
+const SS_FILENAME = "vitalis.aidoctor.fileName";
+const SS_BIOMARKERS = "vitalis.aidoctor.biomarkers";
+const SS_RESULT = "vitalis.aidoctor.latestResult";
+const SS_SCREEN = "vitalis.aidoctor.screen";
+
 export default function AIDoctorScreen() {
   const { profile, updateField, longevityScore, biologicalAge, chronologicalAge, userId } = useHealth();
   const { toast } = useToast();
   const { substances } = useSubstances();
 
-  const [screen, setScreen] = useState<ScreenState>("idle");
+  const [screen, setScreen] = useState<ScreenState>(() => {
+    if (typeof window === "undefined") return "idle";
+    const s = sessionStorage.getItem(SS_SCREEN) as ScreenState | null;
+    return s === "result" ? "result" : "idle"; // never restore "analyzing"
+  });
   const [analyzingLabel, setAnalyzingLabel] = useState("Analyzing your report");
-  const [latestResult, setLatestResult] = useState<string>("");        // last full assistant message
+  const [latestResult, setLatestResult] = useState<string>(() => {
+    if (typeof window === "undefined") return "";
+    return sessionStorage.getItem(SS_RESULT) || "";
+  });
+  const [lastFileName, setLastFileName] = useState<string>(() => {
+    if (typeof window === "undefined") return "";
+    return sessionStorage.getItem(SS_FILENAME) || "";
+  });
   const [chat, setChat] = useState<ChatMsg[]>([]);                     // follow-up Q&A only
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
@@ -109,7 +126,10 @@ export default function AIDoctorScreen() {
   const [actionConfirm, setActionConfirm] = useState<{ index: number; text: string } | null>(null);
   // Track a snapshot of biomarkers extracted from the most recent upload,
   // used to contextualize follow-up chat questions.
-  const [extractedBiomarkers, setExtractedBiomarkers] = useState<Record<string, number>>({});
+  const [extractedBiomarkers, setExtractedBiomarkers] = useState<Record<string, number>>(() => {
+    if (typeof window === "undefined") return {};
+    try { return JSON.parse(sessionStorage.getItem(SS_BIOMARKERS) || "{}"); } catch { return {}; }
+  });
 
   const fileRef = useRef<HTMLInputElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
