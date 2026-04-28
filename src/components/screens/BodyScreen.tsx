@@ -88,6 +88,14 @@ function Skeleton({ className = "" }: { className?: string }) {
   return <div className={`rounded-md bg-muted animate-pulse ${className}`} />;
 }
 
+/**
+ * Single source of truth for the shared skeleton reveal duration.
+ * Metrics, Profile, Labs, and the Longevity Score all wait for this
+ * minimum window before flipping to real content so sections never
+ * "pop" independently. Set to 0 when prefers-reduced-motion is on.
+ */
+const SKELETON_MIN_REVEAL_MS = 280;
+
 export default function BodyScreen() {
   const {
     profile, updateField, userId, dataCompleteness,
@@ -120,13 +128,55 @@ export default function BodyScreen() {
    * they don't pop in independently as each query resolves.
    */
   const [sectionsReady, setSectionsReady] = useState(false);
+  // Bump to force the shared skeleton gate to re-arm (used by "Retry scoring").
+  const [revealNonce, setRevealNonce] = useState(0);
+  // Mark when the skeleton phase started, so we can measure time-to-first-content.
+  const skeletonStartedAtRef = useRef<number>(performance.now());
   useEffect(() => {
-    const minRevealMs = reduceMotion ? 0 : 280;
+    setSectionsReady(false);
+    skeletonStartedAtRef.current = performance.now();
+    const minRevealMs = reduceMotion ? 0 : SKELETON_MIN_REVEAL_MS;
     const t = setTimeout(() => {
-      if (userId !== undefined && !documentsLoading) setSectionsReady(true);
+      if (userId !== undefined && !documentsLoading) {
+        setSectionsReady(true);
+        const elapsed = Math.round(performance.now() - skeletonStartedAtRef.current);
+        // Instrument: time-to-first-content for the synchronized section reveal.
+        // eslint-disable-next-line no-console
+        console.info("[BodyScreen.metrics] sections.tfc", {
+          minRevealMs,
+          elapsedMs: elapsed,
+          sections: ["longevity", "metrics", "profile", "labs"],
+        });
+        try {
+          performance.mark?.("body:sections-ready");
+          performance.measure?.(
+            "body:sections-skeleton",
+            { start: skeletonStartedAtRef.current } as any,
+            "body:sections-ready"
+          );
+        } catch { /* noop */ }
+      }
     }, minRevealMs);
     return () => clearTimeout(t);
-  }, [userId, documentsLoading, reduceMotion]);
+  }, [userId, documentsLoading, reduceMotion, revealNonce]);
+
+  /**
+   * "Retry scoring" — re-arms the shared skeleton gate (so the Longevity
+   * Score and the synchronized sections all show their loading state)
+   * and re-fetches AI insights. The skeleton stays visible until the new
+   * result is ready (gate flips back to true after `SKELETON_MIN_REVEAL_MS`
+   * once data settles).
+   */
+  const retryScoring = useCallback(() => {
+    setSectionsReady(false);
+    setRevealNonce(n => n + 1);
+    // Re-fetch AI insights in parallel — the score itself is derived from
+    // `profile` synchronously, so the recompute happens on next render.
+    if (userId) fetchInsightsRef.current?.();
+  }, [userId]);
+  // Forward-ref hack: fetchInsights is declared below. Wired via ref so we
+  // can reference it without re-ordering the entire file.
+  const fetchInsightsRef = useRef<(() => void) | null>(null);
 
   // Family history (RLS-protected `user_family_history` table)
   const { conditions: familyHistory, toggleCondition } = useFamilyHistory();
@@ -286,6 +336,7 @@ export default function BodyScreen() {
       setInsightsLoading(false);
     }
   }, [userId, profile, longevityScore, biologicalAge, chronologicalAge, systemHealth, completions]);
+  useEffect(() => { fetchInsightsRef.current = fetchInsights; }, [fetchInsights]);
 
   // Auto-fetch insights once on mount when we have a user + meaningful data
   const insightsFetchedRef = useRef(false);
@@ -445,6 +496,17 @@ export default function BodyScreen() {
             <Skeleton className="h-2.5 w-40" />
           </div>
           <span className="sr-only">Loading longevity score</span>
+          {userId && (
+            <button
+              type="button"
+              onClick={retryScoring}
+              className={`mt-1 inline-flex items-center justify-center gap-1.5 min-h-[44px] min-w-[44px] px-4 py-2.5 rounded-full text-xs font-medium text-muted-foreground hover:text-foreground border border-border bg-card ${pressTight} transition-colors`}
+              aria-label="Retry computing longevity score"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Retry scoring
+            </button>
+          )}
         </section>
       ) : (
         <section className={`flex flex-col items-center gap-3 ${fadeInDelayed("animate-[scale-in_0.4s_ease-out_0.1s_both] [will-change:transform]")}`}>

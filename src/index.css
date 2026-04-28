@@ -161,4 +161,9 @@
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
   }
+  /* Suppress press/hover transforms (e.g. active:scale-95, hover:-translate-y-px)
+     so reveal/scale interactions don't fire under reduced-motion. */
+  *:active, *:hover, *:focus {
+    transform: none !important;
+  }
 }
