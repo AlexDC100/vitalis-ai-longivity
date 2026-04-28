@@ -559,7 +559,7 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
       {/* ════════ CHAT INPUT (always at the bottom) ════════ */}
       <div className="sticky bottom-0 mt-6 pt-3 bg-gradient-to-t from-background via-background to-background/0">
         <form
-          onSubmit={(e) => { e.preventDefault(); sendFollowUp(); }}
+          onSubmit={(e) => { e.preventDefault(); void sendFollowUp(); }}
           className="flex items-center gap-2 max-w-md mx-auto bg-card border border-border rounded-full pl-4 pr-1.5 py-1.5 focus-within:border-primary/60 transition-colors"
         >
           <input
