@@ -723,6 +723,44 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
               </section>
             )}
 
+            {/* ── Structured report + download ── */}
+            <section className="rounded-2xl border border-border bg-card p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-primary" />
+                <h3 className="text-sm font-semibold text-foreground">Your report</h3>
+              </div>
+              {findings.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Key biomarkers
+                  </p>
+                  <ul className="space-y-1.5">
+                    {findings.map((f, i) => (
+                      <li key={i} className="flex gap-2 text-xs text-foreground leading-relaxed">
+                        <span className="text-primary mt-0.5">•</span>
+                        <span className="flex-1">{f}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {sevMeta && (
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Risk level</span>
+                  <span className={`font-semibold ${sevMeta.tone}`}>{sevMeta.label}</span>
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={handleDownloadReport}
+                className="w-full inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2.5 rounded-xl border border-border bg-background hover:bg-muted/50 text-sm font-medium text-foreground active:scale-[0.99] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                aria-label="Download full health report"
+              >
+                <Download className="w-4 h-4" />
+                Download report
+              </button>
+            </section>
+
             {/* Quiet "start over" — single secondary action */}
             <div className="flex justify-center pt-1">
               <button
