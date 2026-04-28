@@ -39,7 +39,7 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <AuthDialog open={authOpen} onOpenChange={setAuthOpen} initialMode={authMode} />
+      <AuthDialog open={authOpen} onOpenChange={setAuthOpen} defaultMode={authMode} />
 
       {/* ── Top bar ─────────────────────────────────────────────── */}
       <header className="sticky top-0 z-30 backdrop-blur-md bg-background/80 border-b border-border/40">
