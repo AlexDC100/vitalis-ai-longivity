@@ -76,6 +76,7 @@ export default function BodyScreen() {
 
   // Vault state
   const [documents, setDocuments] = useState<any[]>([]);
+  const [documentsLoading, setDocumentsLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
 
@@ -115,7 +116,8 @@ export default function BodyScreen() {
 
   // ─── Load documents ────────────────────────────────────────
   useEffect(() => {
-    if (!userId) return;
+    if (!userId) { setDocumentsLoading(false); return; }
+    setDocumentsLoading(true);
     (async () => {
       const { data } = await supabase
         .from("medical_documents")
@@ -124,6 +126,7 @@ export default function BodyScreen() {
         .order("created_at", { ascending: false })
         .limit(5);
       if (data) setDocuments(data);
+      setDocumentsLoading(false);
     })();
   }, [userId]);
 
