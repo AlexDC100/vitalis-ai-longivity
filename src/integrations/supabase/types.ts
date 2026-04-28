@@ -52,55 +52,76 @@ export type Database = {
       }
       clinic_cases: {
         Row: {
+          assigned_doctor: string | null
+          case_ref: string | null
           case_type: string
+          confidence: number | null
           created_at: string
           explanation: string | null
           file_name: string
           file_path: string | null
           id: string
           insight: string | null
+          key_findings: Json | null
           mime_type: string | null
+          missing_info: string | null
           priority: string
           raw_ai: Json | null
           recommendation: string | null
           reviewed_at: string | null
           status: string
+          suggested_specialist: string | null
+          suspected_area: string | null
           updated_at: string
           urgency_label: string | null
           user_id: string
         }
         Insert: {
+          assigned_doctor?: string | null
+          case_ref?: string | null
           case_type?: string
+          confidence?: number | null
           created_at?: string
           explanation?: string | null
           file_name: string
           file_path?: string | null
           id?: string
           insight?: string | null
+          key_findings?: Json | null
           mime_type?: string | null
+          missing_info?: string | null
           priority?: string
           raw_ai?: Json | null
           recommendation?: string | null
           reviewed_at?: string | null
           status?: string
+          suggested_specialist?: string | null
+          suspected_area?: string | null
           updated_at?: string
           urgency_label?: string | null
           user_id: string
         }
         Update: {
+          assigned_doctor?: string | null
+          case_ref?: string | null
           case_type?: string
+          confidence?: number | null
           created_at?: string
           explanation?: string | null
           file_name?: string
           file_path?: string | null
           id?: string
           insight?: string | null
+          key_findings?: Json | null
           mime_type?: string | null
+          missing_info?: string | null
           priority?: string
           raw_ai?: Json | null
           recommendation?: string | null
           reviewed_at?: string | null
           status?: string
+          suggested_specialist?: string | null
+          suspected_area?: string | null
           updated_at?: string
           urgency_label?: string | null
           user_id?: string
