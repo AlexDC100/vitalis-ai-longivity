@@ -142,6 +142,22 @@ export default function AIDoctorScreen() {
     followUpEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [chat]);
 
+  // ─── Persist upload context across navigation ─────────────────────
+  // Snapshot of file name + biomarkers + latest result is saved to
+  // sessionStorage so the user can navigate away (Body, Diagnosis) and
+  // come back without re-uploading. Cleared on "Upload another report".
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      if (latestResult) sessionStorage.setItem(SS_RESULT, latestResult);
+      else sessionStorage.removeItem(SS_RESULT);
+      sessionStorage.setItem(SS_BIOMARKERS, JSON.stringify(extractedBiomarkers));
+      if (lastFileName) sessionStorage.setItem(SS_FILENAME, lastFileName);
+      else sessionStorage.removeItem(SS_FILENAME);
+      sessionStorage.setItem(SS_SCREEN, screen);
+    } catch { /* quota / private mode — ignore */ }
+  }, [latestResult, extractedBiomarkers, lastFileName, screen]);
+
   /**
    * Runtime invariant: the AI Doctor screen must show exactly ONE primary
    * action at a time. Every primary CTA in the JSX is tagged with
