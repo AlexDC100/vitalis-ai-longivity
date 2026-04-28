@@ -50,6 +50,63 @@ export type Database = {
         }
         Relationships: []
       }
+      clinic_cases: {
+        Row: {
+          case_type: string
+          created_at: string
+          explanation: string | null
+          file_name: string
+          file_path: string | null
+          id: string
+          insight: string | null
+          mime_type: string | null
+          priority: string
+          raw_ai: Json | null
+          recommendation: string | null
+          reviewed_at: string | null
+          status: string
+          updated_at: string
+          urgency_label: string | null
+          user_id: string
+        }
+        Insert: {
+          case_type?: string
+          created_at?: string
+          explanation?: string | null
+          file_name: string
+          file_path?: string | null
+          id?: string
+          insight?: string | null
+          mime_type?: string | null
+          priority?: string
+          raw_ai?: Json | null
+          recommendation?: string | null
+          reviewed_at?: string | null
+          status?: string
+          updated_at?: string
+          urgency_label?: string | null
+          user_id: string
+        }
+        Update: {
+          case_type?: string
+          created_at?: string
+          explanation?: string | null
+          file_name?: string
+          file_path?: string | null
+          id?: string
+          insight?: string | null
+          mime_type?: string | null
+          priority?: string
+          raw_ai?: Json | null
+          recommendation?: string | null
+          reviewed_at?: string | null
+          status?: string
+          updated_at?: string
+          urgency_label?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       consultation_requests: {
         Row: {
           created_at: string
