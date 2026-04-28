@@ -127,6 +127,7 @@ interface TriageCase {
   reviewed_at: string | null;
 }
 const SS_HOSPITAL_MODE = "vitalis.aidoctor.hospitalMode";
+const LS_UPLOAD_CONSENT = "vitalis.aidoctor.uploadConsent.v1";
 const PRIORITY_META: Record<Priority, { label: string; tone: string; bg: string; border: string; dot: string; window: string }> = {
   HIGH:   { label: "High",   tone: "text-red-400",     bg: "bg-red-500/10",     border: "border-red-500/25",     dot: "bg-red-400",     window: "Review within 24–48h" },
   MEDIUM: { label: "Medium", tone: "text-amber-400",   bg: "bg-amber-500/10",   border: "border-amber-500/25",   dot: "bg-amber-400",   window: "Routine review" },
@@ -589,8 +590,30 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     const file = e.dataTransfer.files?.[0];
-    if (file) handleFile(file);
-  }, [handleFile]);
+    if (file) requestFileWithConsent(file);
+  }, []); // handler defined below; ref keeps deps stable
+
+  // ─── Pre-upload consent / disclaimer ──────────────────────────────
+  // Required acknowledgment before any medical file is analyzed. Stored
+  // in localStorage so we don't nag returning users on the same device.
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [pendingPickerAfterConsent, setPendingPickerAfterConsent] = useState(false);
+  const hasConsented = useCallback(() => {
+    try { return localStorage.getItem(LS_UPLOAD_CONSENT) === "1"; } catch { return false; }
+  }, []);
+  const recordConsent = useCallback(() => {
+    try { localStorage.setItem(LS_UPLOAD_CONSENT, "1"); } catch { /* ignore */ }
+  }, []);
+  /** Gate any upload (drop, file picker, or programmatic) behind consent. */
+  const requestFileWithConsent = useCallback((file: File) => {
+    if (hasConsented()) { void handleFile(file); return; }
+    setPendingFile(file);
+  }, [hasConsented, handleFile]);
+  /** Gate the file picker itself — opening the chooser requires consent. */
+  const openFilePicker = useCallback(() => {
+    if (hasConsented()) { fileRef.current?.click(); return; }
+    setPendingPickerAfterConsent(true);
+  }, [hasConsented]);
 
   // ─── Follow-up question (chat at bottom) ──────────────────────────
   const sendFollowUp = useCallback(async (override?: string) => {
