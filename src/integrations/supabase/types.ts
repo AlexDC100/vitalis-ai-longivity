@@ -350,6 +350,33 @@ export type Database = {
         }
         Relationships: []
       }
+      share_token_lookups: {
+        Row: {
+          created_at: string
+          id: string
+          ip: string | null
+          outcome: string
+          token_prefix: string
+          user_agent: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          ip?: string | null
+          outcome: string
+          token_prefix: string
+          user_agent?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          ip?: string | null
+          outcome?: string
+          token_prefix?: string
+          user_agent?: string | null
+        }
+        Relationships: []
+      }
       shared_health_reports: {
         Row: {
           created_at: string
