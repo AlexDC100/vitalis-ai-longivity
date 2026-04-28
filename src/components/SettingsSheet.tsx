@@ -31,6 +31,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { useHealth } from "@/lib/health-context";
 import { toast } from "sonner";
 import JSZip from "jszip";
+import { downloadHealthReport } from "@/lib/health-report";
+import { useSubstances } from "@/lib/use-substances";
+import MyConsultationsSheet from "@/components/MyConsultationsSheet";
+import { FileText, Calendar } from "lucide-react";
 
 interface SettingsSheetProps {
   open: boolean;
@@ -101,10 +105,12 @@ export default function SettingsSheet({
   onSignOut,
 }: SettingsSheetProps) {
   const { profile, userId } = useHealth();
+  const { substances } = useSubstances();
   const [email, setEmail] = useState<string>("");
   const [units, setUnits] = useState<Units>("metric");
   const [notifications, setNotifications] = useState<boolean>(true);
   const [busy, setBusy] = useState(false);
+  const [showConsultations, setShowConsultations] = useState(false);
 
   // Change password
   const [showPwForm, setShowPwForm] = useState(false);
@@ -118,6 +124,20 @@ export default function SettingsSheet({
 
   // Privacy
   const [privacy, setPrivacy] = useState<PrivacySettings>(DEFAULT_PRIVACY);
+
+  // ------- Data: HTML health report export -------
+  const exportHtmlReport = () => {
+    try {
+      downloadHealthReport({ profile, substances, email });
+      toast.success("HTML report downloaded", {
+        description: "Open it in any browser or print to PDF.",
+      });
+    } catch (e) {
+      toast.error("Couldn't generate report", {
+        description: (e as Error).message,
+      });
+    }
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -382,6 +402,7 @@ export default function SettingsSheet({
   };
 
   return (
+    <>
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
@@ -583,6 +604,32 @@ export default function SettingsSheet({
               variant="vitalis-outline"
               size="sm"
               className="w-full justify-start gap-2"
+              onClick={exportHtmlReport}
+              disabled={busy}
+            >
+              <FileText className="w-4 h-4" />
+              Export HTML health report
+            </Button>
+            <p className="text-[11px] text-muted-foreground leading-relaxed -mt-1">
+              A printable summary of your diagnosis, biomarkers, and
+              recommended actions.
+            </p>
+
+            <Button
+              variant="vitalis-outline"
+              size="sm"
+              className="w-full justify-start gap-2"
+              onClick={() => setShowConsultations(true)}
+              disabled={busy}
+            >
+              <Calendar className="w-4 h-4" />
+              My consultation requests
+            </Button>
+
+            <Button
+              variant="vitalis-outline"
+              size="sm"
+              className="w-full justify-start gap-2"
               onClick={exportData}
               disabled={busy}
             >
@@ -700,6 +747,12 @@ export default function SettingsSheet({
         </div>
       </SheetContent>
     </Sheet>
+
+    <MyConsultationsSheet
+      open={showConsultations}
+      onOpenChange={setShowConsultations}
+    />
+    </>
   );
 }
 
