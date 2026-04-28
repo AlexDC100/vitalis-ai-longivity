@@ -1,34 +1,31 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
 import { extractTextFromFile } from "@/lib/pdf-utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-} from "@/components/ui/sheet";
-import {
   AlertOctagon,
   AlertTriangle,
   CheckCircle2,
+  ClipboardCheck,
+  Clock,
   FileText,
+  Filter,
   Loader2,
-  Plus,
-  Trash2,
+  ShieldAlert,
+  Sparkles,
   Upload,
-  X,
 } from "lucide-react";
 import { toast } from "sonner";
 
-type Priority = "high" | "medium" | "low";
+type Priority = "critical" | "high" | "medium" | "low";
 type Status = "pending" | "analyzing" | "ready" | "reviewed" | "error";
 
 interface ClinicCase {
   id: string;
+  case_ref: string | null;
   case_type: string;
   file_name: string;
   file_path: string | null;
@@ -39,41 +36,63 @@ interface ClinicCase {
   insight: string | null;
   explanation: string | null;
   recommendation: string | null;
+  suspected_area: string | null;
+  confidence: number | null;
+  suggested_specialist: string | null;
+  key_findings: Json | null;
+  missing_info: string | null;
+  assigned_doctor: string | null;
   created_at: string;
   reviewed_at: string | null;
 }
 
-const PRIORITY_ORDER: Priority[] = ["high", "medium", "low"];
+const PRIORITY_ORDER: Priority[] = ["critical", "high", "medium", "low"];
 
-const priorityMeta: Record<Priority, { label: string; icon: React.ElementType; tone: string; ring: string }> = {
-  high: {
-    label: "High priority",
-    icon: AlertOctagon,
+const priorityMeta: Record<
+  Priority,
+  { label: string; icon: React.ElementType; tone: string; ring: string; window: string }
+> = {
+  critical: {
+    label: "Critical",
+    icon: ShieldAlert,
     tone: "text-destructive",
-    ring: "border-destructive/40 bg-destructive/5",
+    ring: "border-destructive/50 bg-destructive/5",
+    window: "Immediate review",
+  },
+  high: {
+    label: "High",
+    icon: AlertOctagon,
+    tone: "text-amber-500",
+    ring: "border-amber-500/40 bg-amber-500/5",
+    window: "Within 24–48h",
   },
   medium: {
-    label: "Medium priority",
+    label: "Medium",
     icon: AlertTriangle,
-    tone: "text-amber-500",
-    ring: "border-amber-500/30 bg-amber-500/5",
-  },
-  low: {
-    label: "Low priority",
-    icon: CheckCircle2,
     tone: "text-primary",
     ring: "border-primary/30 bg-primary/5",
+    window: "Routine review",
+  },
+  low: {
+    label: "Low",
+    icon: CheckCircle2,
+    tone: "text-muted-foreground",
+    ring: "border-border bg-card",
+    window: "Archive / monitor",
   },
 };
 
+type Filt = "all" | "awaiting" | "reviewed" | Priority;
+
 export default function ClinicDashboardScreen() {
+  const navigate = useNavigate();
   const [cases, setCases] = useState<ClinicCase[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
-  const [activeId, setActiveId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
+  const [filter, setFilter] = useState<Filt>("awaiting");
 
-  /* ── Load session + cases ─────────────────────────────────────── */
+  /* Load + realtime */
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -100,7 +119,6 @@ export default function ClinicDashboardScreen() {
     return () => { cancelled = true; };
   }, []);
 
-  /* ── Realtime updates ─────────────────────────────────────────── */
   useEffect(() => {
     if (!userId) return;
     const ch = supabase
@@ -130,28 +148,42 @@ export default function ClinicDashboardScreen() {
     return () => { supabase.removeChannel(ch); };
   }, [userId]);
 
-  const counts = useMemo(() => {
-    const pending = cases.filter((c) => c.status !== "reviewed");
+  /* Metrics */
+  const metrics = useMemo(() => {
+    const awaiting = cases.filter((c) => c.status !== "reviewed");
+    const reviewed = cases.filter((c) => c.status === "reviewed");
+    const aiReviewed = cases.filter((c) => c.status === "ready" || c.status === "reviewed").length;
+    const critical = awaiting.filter((c) => c.priority === "critical").length;
+    const urgent = awaiting.filter((c) => c.priority === "critical" || c.priority === "high").length;
     return {
-      total: pending.length,
-      high: pending.filter((c) => c.priority === "high").length,
-      medium: pending.filter((c) => c.priority === "medium").length,
-      low: pending.filter((c) => c.priority === "low").length,
+      pending: awaiting.length,
+      critical,
+      urgent,
+      aiReviewed,
+      reviewedCount: reviewed.length,
+      high: awaiting.filter((c) => c.priority === "high").length,
+      medium: awaiting.filter((c) => c.priority === "medium").length,
+      low: awaiting.filter((c) => c.priority === "low").length,
     };
   }, [cases]);
 
+  /* Filter + group */
+  const filtered = useMemo(() => {
+    if (filter === "all") return cases;
+    if (filter === "awaiting") return cases.filter((c) => c.status !== "reviewed");
+    if (filter === "reviewed") return cases.filter((c) => c.status === "reviewed");
+    return cases.filter((c) => c.priority === filter && c.status !== "reviewed");
+  }, [cases, filter]);
+
   const grouped = useMemo(() => {
-    const g: Record<Priority, ClinicCase[]> = { high: [], medium: [], low: [] };
-    for (const c of cases) {
-      if (c.status === "reviewed") continue;
+    const g: Record<Priority, ClinicCase[]> = { critical: [], high: [], medium: [], low: [] };
+    for (const c of filtered) {
       g[c.priority].push(c);
     }
     return g;
-  }, [cases]);
+  }, [filtered]);
 
-  const reviewed = useMemo(() => cases.filter((c) => c.status === "reviewed"), [cases]);
-
-  /* ── Upload + triage ──────────────────────────────────────────── */
+  /* Upload */
   const handleFiles = useCallback(async (files: FileList | File[]) => {
     if (!userId) {
       toast.error("Sign in required");
@@ -164,11 +196,9 @@ export default function ClinicDashboardScreen() {
     for (const file of list) {
       const filePath = `${userId}/clinic/${Date.now()}-${file.name}`;
       try {
-        // Upload original
         const up = await supabase.storage.from("medical-documents").upload(filePath, file);
         if (up.error) throw up.error;
 
-        // Insert pending row
         const { data: row, error: insErr } = await supabase
           .from("clinic_cases")
           .insert({
@@ -184,7 +214,6 @@ export default function ClinicDashboardScreen() {
           .single();
         if (insErr || !row) throw insErr ?? new Error("Insert failed");
 
-        // Extract text / image
         let payload: { text?: string; base64?: string; mimeType?: string; fileName: string } = {
           fileName: file.name,
         };
@@ -217,6 +246,11 @@ export default function ClinicDashboardScreen() {
           insight: string;
           explanation: string;
           recommendation: string;
+          suspected_area?: string;
+          confidence?: number;
+          suggested_specialist?: string;
+          key_findings?: string[];
+          missing_info?: string;
         };
 
         await supabase
@@ -229,6 +263,11 @@ export default function ClinicDashboardScreen() {
             insight: result.insight,
             explanation: result.explanation,
             recommendation: result.recommendation,
+            suspected_area: result.suspected_area ?? null,
+            confidence: typeof result.confidence === "number" ? result.confidence : null,
+            suggested_specialist: result.suggested_specialist ?? null,
+            key_findings: (result.key_findings ?? []) as unknown as Json,
+            missing_info: result.missing_info ?? null,
             raw_ai: result as unknown as Json,
           })
           .eq("id", row.id);
@@ -237,7 +276,6 @@ export default function ClinicDashboardScreen() {
         toast.error(`Failed to process ${file.name}`, {
           description: e instanceof Error ? e.message : undefined,
         });
-        // Best-effort error mark — find latest row matching this file
         await supabase
           .from("clinic_cases")
           .update({ status: "error" })
@@ -255,54 +293,39 @@ export default function ClinicDashboardScreen() {
     e.target.value = "";
   };
 
-  const markReviewed = async (id: string) => {
-    await supabase
-      .from("clinic_cases")
-      .update({ status: "reviewed", reviewed_at: new Date().toISOString() })
-      .eq("id", id);
-    setActiveId(null);
-    toast.success("Marked as reviewed");
-  };
-
-  const deleteCase = async (id: string) => {
-    await supabase.from("clinic_cases").delete().eq("id", id);
-    setActiveId(null);
-  };
-
-  const active = activeId ? cases.find((c) => c.id === activeId) ?? null : null;
-
-  /* ── Render ───────────────────────────────────────────────────── */
+  /* Render */
   return (
     <div className="pb-32">
       {/* Header */}
       <header className="mb-6">
         <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1">
-          Clinic dashboard
+          AI Diagnostic Review
         </p>
-        <h1 className="text-3xl font-bold text-foreground tracking-tight">
-          Diagnostic backlog
-        </h1>
+        <h1 className="text-3xl font-bold tracking-tight">Diagnostic queue</h1>
         <p className="text-sm text-muted-foreground mt-2">
           {loading ? "Loading…" : (
             <>
-              <span className="text-foreground font-semibold">{counts.total}</span>
+              <span className="text-foreground font-semibold">{metrics.pending}</span>
               {" cases pending — "}
-              <span className="text-destructive font-semibold">{counts.high}</span>
+              <span className="text-destructive font-semibold">{metrics.critical}</span>
+              {" critical · "}
+              <span className="text-amber-500 font-semibold">{metrics.high}</span>
               {" high priority"}
             </>
           )}
         </p>
       </header>
 
-      {/* Counts */}
-      <div className="grid grid-cols-3 gap-2 mb-5">
-        <CountTile label="High" value={counts.high} tone="destructive" />
-        <CountTile label="Medium" value={counts.medium} tone="amber" />
-        <CountTile label="Low" value={counts.low} tone="primary" />
+      {/* Top metrics */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-5">
+        <Metric icon={ClipboardCheck} label="Pending" value={metrics.pending} />
+        <Metric icon={ShieldAlert} label="Critical" value={metrics.critical} tone="destructive" />
+        <Metric icon={Sparkles} label="AI pre-reviewed" value={metrics.aiReviewed} tone="primary" />
+        <Metric icon={Clock} label="Reviewed" value={metrics.reviewedCount} tone="muted" />
       </div>
 
       {/* Upload */}
-      <div className="mb-6">
+      <div className="mb-5">
         <label className="block">
           <input
             type="file"
@@ -320,10 +343,48 @@ export default function ClinicDashboardScreen() {
             {uploading ? (
               <><Loader2 className="w-4 h-4 animate-spin" /> Processing…</>
             ) : (
-              <><Upload className="w-4 h-4" /> Add cases (PDF, image, scan)</>
+              <><Upload className="w-4 h-4" /> Upload case (PDF, image, scan, lab report)</>
             )}
           </span>
         </label>
+      </div>
+
+      {/* AI insights side panel (mobile = top strip) */}
+      {(metrics.urgent > 0 || metrics.low > 0) && !loading && (
+        <div className="mb-5 rounded-xl border border-border bg-card p-3">
+          <div className="flex items-center gap-2 mb-2">
+            <Sparkles className="w-3.5 h-3.5 text-primary" />
+            <span className="text-[11px] uppercase tracking-wider font-semibold">
+              Today's AI insights
+            </span>
+          </div>
+          <ul className="space-y-1 text-xs text-muted-foreground">
+            {metrics.urgent > 0 && (
+              <li>• <span className="text-foreground font-medium">{metrics.urgent}</span> case{metrics.urgent === 1 ? "" : "s"} require urgent specialist review</li>
+            )}
+            {metrics.low > 0 && (
+              <li>• <span className="text-foreground font-medium">{metrics.low}</span> low-risk case{metrics.low === 1 ? "" : "s"} can be reviewed later</li>
+            )}
+          </ul>
+        </div>
+      )}
+
+      {/* Filters */}
+      <div className="mb-4 flex items-center gap-1.5 overflow-x-auto -mx-1 px-1 pb-1">
+        <Filter className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+        {(["awaiting", "critical", "high", "medium", "low", "reviewed", "all"] as Filt[]).map((f) => (
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            className={`px-3 h-7 text-[11px] uppercase tracking-wider rounded-md border transition-colors whitespace-nowrap ${
+              filter === f
+                ? "bg-primary text-primary-foreground border-primary"
+                : "border-border text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {f}
+          </button>
+        ))}
       </div>
 
       {/* Lists */}
@@ -331,8 +392,8 @@ export default function ClinicDashboardScreen() {
         <div className="flex items-center justify-center py-16">
           <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
         </div>
-      ) : counts.total === 0 ? (
-        <EmptyState />
+      ) : filtered.length === 0 ? (
+        <EmptyState filter={filter} />
       ) : (
         <div className="space-y-6">
           {PRIORITY_ORDER.map((p) =>
@@ -341,63 +402,49 @@ export default function ClinicDashboardScreen() {
                 key={p}
                 priority={p}
                 items={grouped[p]}
-                onOpen={(id) => setActiveId(id)}
+                onOpen={(id) => navigate(`/case/${id}`)}
               />
             ),
           )}
         </div>
       )}
 
-      {reviewed.length > 0 && (
-        <details className="mt-8 group">
-          <summary className="cursor-pointer text-xs uppercase tracking-wider text-muted-foreground select-none">
-            Reviewed ({reviewed.length})
-          </summary>
-          <ul className="mt-3 space-y-1.5">
-            {reviewed.map((c) => (
-              <li
-                key={c.id}
-                className="flex items-center justify-between text-xs text-muted-foreground p-2 rounded-md hover:bg-card cursor-pointer"
-                onClick={() => setActiveId(c.id)}
-              >
-                <span className="truncate">{c.case_type} · {c.file_name}</span>
-                <CheckCircle2 className="w-3.5 h-3.5 text-primary shrink-0" />
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
-
-      {/* Detail sheet */}
-      <Sheet open={!!active} onOpenChange={(o) => !o && setActiveId(null)}>
-        <SheetContent side="bottom" className="h-[85vh] overflow-y-auto p-0">
-          {active && (
-            <CaseDetail
-              c={active}
-              onClose={() => setActiveId(null)}
-              onReviewed={() => markReviewed(active.id)}
-              onDelete={() => deleteCase(active.id)}
-            />
-          )}
-        </SheetContent>
-      </Sheet>
+      {/* Disclaimer */}
+      <p className="mt-10 text-[11px] text-muted-foreground border-t border-border/40 pt-4">
+        AI-assisted review only. Final diagnosis must be confirmed by a licensed clinician.
+      </p>
     </div>
   );
 }
 
 /* ── Subcomponents ──────────────────────────────────────────────── */
 
-function CountTile({ label, value, tone }: { label: string; value: number; tone: "destructive" | "amber" | "primary" }) {
-  const toneCls =
+function Metric({
+  label,
+  value,
+  tone = "default",
+  icon: Icon,
+}: {
+  label: string;
+  value: number;
+  tone?: "default" | "destructive" | "primary" | "muted";
+  icon: React.ElementType;
+}) {
+  const cls =
     tone === "destructive"
       ? "text-destructive"
-      : tone === "amber"
-      ? "text-amber-500"
-      : "text-primary";
+      : tone === "primary"
+      ? "text-primary"
+      : tone === "muted"
+      ? "text-muted-foreground"
+      : "text-foreground";
   return (
     <div className="rounded-xl border border-border bg-card p-3">
-      <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</p>
-      <p className={`text-2xl font-bold mt-1 ${toneCls}`}>{value}</p>
+      <div className="flex items-center gap-1.5 mb-1">
+        <Icon className="w-3 h-3 text-muted-foreground" />
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</p>
+      </div>
+      <p className={`text-2xl font-bold ${cls}`}>{value}</p>
     </div>
   );
 }
@@ -417,10 +464,10 @@ function PriorityGroup({
     <section>
       <div className="flex items-center gap-2 mb-2">
         <Icon className={`w-4 h-4 ${meta.tone}`} />
-        <h2 className="text-xs uppercase tracking-wider font-semibold text-foreground">
+        <h2 className="text-xs uppercase tracking-wider font-semibold">
           {meta.label}
         </h2>
-        <span className="text-xs text-muted-foreground">· {items.length}</span>
+        <span className="text-xs text-muted-foreground">· {items.length} · {meta.window}</span>
       </div>
       <ul className="space-y-2">
         {items.map((c) => (
@@ -431,30 +478,40 @@ function PriorityGroup({
               className={`w-full text-left rounded-xl border p-3.5 transition-colors hover:bg-card/80 ${meta.ring}`}
             >
               <div className="flex items-start justify-between gap-3 mb-1.5">
-                <div className="flex items-center gap-2 min-w-0">
+                <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                  <span className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">
+                    {c.case_ref ?? "C-" + c.id.slice(0, 6).toUpperCase()}
+                  </span>
                   <FileText className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                  <span className="text-[11px] uppercase tracking-wider font-semibold text-foreground">
+                  <span className="text-[11px] uppercase tracking-wider font-semibold">
                     {c.case_type}
                   </span>
-                  <span className="text-[11px] text-muted-foreground truncate">
+                  <span className="text-[11px] text-muted-foreground truncate max-w-[180px]">
                     · {c.file_name}
                   </span>
                 </div>
                 {c.status === "analyzing" ? (
-                  <Badge variant="outline" className="text-[10px] gap-1">
+                  <Badge variant="outline" className="text-[10px] gap-1 shrink-0">
                     <Loader2 className="w-2.5 h-2.5 animate-spin" /> analyzing
                   </Badge>
                 ) : c.status === "error" ? (
-                  <Badge variant="destructive" className="text-[10px]">error</Badge>
+                  <Badge variant="destructive" className="text-[10px] shrink-0">error</Badge>
                 ) : c.urgency_label ? (
-                  <Badge variant="outline" className={`text-[10px] ${meta.tone} border-current/40`}>
+                  <Badge variant="outline" className={`text-[10px] shrink-0 ${meta.tone} border-current/40`}>
                     {c.urgency_label}
                   </Badge>
                 ) : null}
               </div>
-              <p className="text-sm text-foreground leading-snug">
-                {c.insight ?? (c.status === "analyzing" ? "Generating AI-assisted insight…" : "Awaiting review")}
+              <p className="text-sm leading-snug">
+                {c.insight ?? (c.status === "analyzing" ? "Generating AI-assisted assessment…" : "Awaiting review")}
               </p>
+              {(c.suspected_area || c.suggested_specialist) && (
+                <p className="text-[11px] text-muted-foreground mt-1.5">
+                  {c.suspected_area ? <>Area: <span className="text-foreground">{c.suspected_area}</span></> : null}
+                  {c.suspected_area && c.suggested_specialist ? " · " : null}
+                  {c.suggested_specialist ? <>Suggest: <span className="text-foreground">{c.suggested_specialist}</span></> : null}
+                </p>
+              )}
             </button>
           </li>
         ))}
@@ -463,163 +520,20 @@ function PriorityGroup({
   );
 }
 
-function EmptyState() {
+function EmptyState({ filter }: { filter: Filt }) {
   return (
     <div className="text-center py-16 px-6">
       <div className="w-12 h-12 rounded-full bg-primary/10 mx-auto mb-3 flex items-center justify-center">
-        <Plus className="w-5 h-5 text-primary" />
+        <ClipboardCheck className="w-5 h-5 text-primary" />
       </div>
-      <h3 className="text-base font-semibold text-foreground">Backlog is clear</h3>
+      <h3 className="text-base font-semibold">
+        {filter === "reviewed" ? "No reviewed cases yet" : "Backlog is clear"}
+      </h3>
       <p className="text-sm text-muted-foreground mt-1">
-        Add a case to start triage.
+        {filter === "reviewed"
+          ? "Cases marked reviewed will appear here."
+          : "Upload a case to start triage."}
       </p>
-    </div>
-  );
-}
-
-function CaseDetail({
-  c,
-  onClose,
-  onReviewed,
-  onDelete,
-}: {
-  c: ClinicCase;
-  onClose: () => void;
-  onReviewed: () => void;
-  onDelete: () => void;
-}) {
-  const meta = priorityMeta[c.priority];
-  const Icon = meta.icon;
-  const [docUrl, setDocUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      if (!c.file_path) return;
-      const { data } = await supabase.storage
-        .from("medical-documents")
-        .createSignedUrl(c.file_path, 600);
-      if (!cancelled) setDocUrl(data?.signedUrl ?? null);
-    })();
-    return () => { cancelled = true; };
-  }, [c.file_path]);
-
-  return (
-    <div className="px-5 py-4">
-      <SheetHeader className="px-0 mb-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 mb-1">
-              <Icon className={`w-4 h-4 ${meta.tone}`} />
-              <span className={`text-[11px] uppercase tracking-wider font-semibold ${meta.tone}`}>
-                {meta.label}
-              </span>
-              {c.urgency_label && (
-                <Badge variant="outline" className="text-[10px]">
-                  {c.urgency_label}
-                </Badge>
-              )}
-            </div>
-            <SheetTitle className="text-xl">{c.case_type}</SheetTitle>
-            <SheetDescription className="truncate">{c.file_name}</SheetDescription>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="p-1.5 rounded-md hover:bg-card text-muted-foreground"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      </SheetHeader>
-
-      {c.status === "analyzing" ? (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground py-8 justify-center">
-          <Loader2 className="w-4 h-4 animate-spin" /> Generating AI-assisted insight…
-        </div>
-      ) : c.status === "error" ? (
-        <div className="rounded-xl border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
-          Could not process this file. Try re-uploading.
-        </div>
-      ) : (
-        <div className="space-y-5">
-          <Section label="AI-assisted insight">
-            <p className="text-base font-semibold text-foreground leading-snug">
-              {c.insight ?? "—"}
-            </p>
-          </Section>
-          {c.explanation && (
-            <Section label="Explanation">
-              <p className="text-sm text-foreground/90 leading-relaxed whitespace-pre-wrap">
-                {c.explanation}
-              </p>
-            </Section>
-          )}
-          {c.recommendation && (
-            <Section label="Suggested review">
-              <div className="rounded-xl border border-primary/30 bg-primary/5 p-3.5">
-                <p className="text-sm text-foreground leading-relaxed">{c.recommendation}</p>
-              </div>
-            </Section>
-          )}
-        </div>
-      )}
-
-      {docUrl && (
-        <Section label="Uploaded document" className="mt-6">
-          <a
-            href={docUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 text-sm text-primary hover:underline"
-          >
-            <FileText className="w-4 h-4" /> Open original
-          </a>
-        </Section>
-      )}
-
-      <div className="flex items-center gap-2 mt-8 sticky bottom-0 bg-background pt-4 pb-2 -mx-5 px-5 border-t border-border/30">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onDelete}
-          className="text-destructive hover:text-destructive"
-        >
-          <Trash2 className="w-4 h-4" />
-          Remove
-        </Button>
-        <div className="flex-1" />
-        {c.status !== "reviewed" && (
-          <Button variant="vitalis" size="sm" onClick={onReviewed} disabled={c.status === "analyzing"}>
-            <CheckCircle2 className="w-4 h-4" />
-            Mark reviewed
-          </Button>
-        )}
-      </div>
-
-      <p className="text-[10px] text-muted-foreground mt-4 text-center">
-        AI-assisted insight only — not a diagnosis. Final judgment rests with the clinician.
-      </p>
-    </div>
-  );
-}
-
-function Section({
-  label,
-  children,
-  className,
-}: {
-  label: string;
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <div className={className}>
-      <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">
-        {label}
-      </p>
-      {children}
     </div>
   );
 }
