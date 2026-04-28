@@ -627,9 +627,8 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
                 if (!actionConfirm) return;
                 const text = `Help me actually do this: "${actionConfirm.text}". Give me a concrete 7-day plan with specific doses, timing, and what to track. Reference my actual numbers.`;
                 setActionConfirm(null);
-                setInput(text);
-                // Defer one tick so the input value is in state before send.
-                setTimeout(() => sendFollowUp(), 0);
+                // Pass directly to avoid stale-closure issues with `input` state.
+                sendFollowUp(text);
               }}
             >
               Get my plan
