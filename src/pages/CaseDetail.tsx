@@ -325,8 +325,21 @@ export default function CaseDetail() {
           <section className="rounded-xl border border-destructive/40 bg-destructive/5 p-5 mb-4">
             <p className="text-sm font-semibold text-destructive">Processing failed</p>
             <p className="text-xs text-muted-foreground mt-1">
-              We couldn't generate an AI-assisted assessment for this file. You can delete and re-upload it from the queue.
+              We couldn't generate an AI-assisted assessment for this file. You can regenerate the assessment or delete and re-upload it from the queue.
             </p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="mt-3"
+              onClick={regenerate}
+              disabled={regenerating}
+            >
+              {regenerating ? (
+                <><Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> Regenerating…</>
+              ) : (
+                <><RefreshCw className="w-3.5 h-3.5 mr-2" /> Regenerate AI assessment</>
+              )}
+            </Button>
           </section>
         )}
 
