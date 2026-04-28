@@ -347,6 +347,36 @@ export type Database = {
         }
         Relationships: []
       }
+      shared_health_reports: {
+        Row: {
+          created_at: string
+          expires_at: string
+          html: string
+          id: string
+          share_token: string
+          title: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at?: string
+          html: string
+          id?: string
+          share_token?: string
+          title?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          html?: string
+          id?: string
+          share_token?: string
+          title?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_family_history: {
         Row: {
           condition: string

@@ -1,3 +1,17 @@
 project_id = "ozjqtaqpokexsghzgegg"
 [functions.delete-account]
 verify_jwt = true
+
+# The chat function performs its own JWT validation (supabase.auth.getUser),
+# so disable the gateway's JWT verification to avoid double-auth 401s.
+[functions.chat]
+verify_jwt = false
+
+[functions.intake-chat]
+verify_jwt = false
+
+[functions.body-insights]
+verify_jwt = false
+
+[functions.parse-document]
+verify_jwt = false

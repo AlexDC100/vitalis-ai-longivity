@@ -10,7 +10,8 @@ import remarkGfm from "remark-gfm";
 import { pickPartners } from "@/lib/clinic-partners";
 import AIDoctorTestMode from "@/components/AIDoctorTestMode";
 import BookingSheet from "@/components/BookingSheet";
-import { downloadAIDoctorReport, previewAIDoctorReport } from "@/lib/ai-doctor-report";
+import { downloadAIDoctorReport } from "@/lib/ai-doctor-report";
+import ReportViewerSheet from "@/components/ReportViewerSheet";
 
 interface ChatMsg {
   id: string;
@@ -87,6 +88,12 @@ export default function AIDoctorScreen() {
     specialty: "",
     severity: "MODERATE",
   });
+  const [reportOpen, setReportOpen] = useState(false);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setUserEmail(data?.user?.email ?? null));
+  }, []);
 
   // Substances now sourced from RLS-protected `user_substances` table
   // (was previously `localStorage["vitalis_substances"]`).
@@ -125,13 +132,15 @@ export default function AIDoctorScreen() {
 
   const generateReport = useCallback((mode: "preview" | "download") => {
     try {
-      const fn = mode === "preview" ? previewAIDoctorReport : downloadAIDoctorReport;
-      fn({ profile, substances });
+      if (mode === "preview") {
+        // Open the in-app mobile-optimized viewer (preview, share, PDF, HTML).
+        setReportOpen(true);
+        return;
+      }
+      downloadAIDoctorReport({ profile, substances });
       toast({
-        title: mode === "preview" ? "Report ready" : "Report downloaded",
-        description: mode === "preview"
-          ? "Opened your AI Doctor report in a new tab."
-          : "Saved as an HTML file you can open, print, or email.",
+        title: "Report downloaded",
+        description: "Saved as an HTML file you can open, print, or email.",
       });
     } catch (err: any) {
       toast({ title: "Could not generate report", description: err?.message || "Please try again.", variant: "destructive" });
@@ -804,6 +813,13 @@ ${diagnosisSummary}`;
         onOpenChange={(open) => setBookingSheet(s => ({ ...s, open }))}
         specialty={bookingSheet.specialty}
         severity={bookingSheet.severity}
+      />
+      <ReportViewerSheet
+        open={reportOpen}
+        onOpenChange={setReportOpen}
+        input={reportOpen ? { profile, substances } : null}
+        userId={userId}
+        userEmail={userEmail}
       />
     </div>
   );
