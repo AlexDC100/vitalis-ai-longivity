@@ -82,21 +82,42 @@ export default function SharedReport() {
       // Use a SECURITY DEFINER RPC so the table itself is not publicly readable.
       // The function only returns a row when the caller supplies the exact token
       // AND the report has not expired — preventing enumeration of all shares.
-      const { data: rows, error } = await supabase
-        .rpc("get_shared_report", { _token: token });
-      const data = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+      // We wrap the call in a 10s timeout so a hung network never leaves the
+      // viewer on a perpetual loading state, and we ALWAYS surface the same
+      // generic message regardless of failure mode.
+      let rows: Array<{ title: string | null; html: string; expires_at: string }> | null = null;
+      let lookupError: unknown = null;
+      try {
+        const timeoutMs = 10_000;
+        const result = await Promise.race([
+          supabase.rpc("get_shared_report", { _token: token }),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("rpc_timeout")), timeoutMs)
+          ),
+        ]);
+        // Narrow Supabase response shape
+        const r = result as { data: typeof rows; error: { message: string } | null };
+        if (r.error) {
+          lookupError = r.error;
+        } else {
+          rows = r.data;
+        }
+      } catch (e) {
+        lookupError = e;
+      }
 
       if (cancelled) return;
-      if (error) {
-        // Never leak raw DB errors (table names, RLS messages, UUID parse errors)
-        // to anonymous viewers. Log details server/console-side only.
-        console.error("[SharedReport] lookup error:", error.message);
+      if (lookupError) {
+        // Never leak raw DB errors (table names, RLS messages, UUID parse errors,
+        // timeouts, network details) to anonymous viewers. Log server/console-side only.
+        console.error("[SharedReport] lookup error:", lookupError);
         setState({
           kind: "error",
           message: "Something went wrong loading this report. Please try again.",
         });
         return;
       }
+      const data = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
       if (!data) { clearCachedExpiry(token); setState({ kind: "missing" }); return; }
       const expired = new Date(data.expires_at).getTime() < Date.now();
       if (expired) {
