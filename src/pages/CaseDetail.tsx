@@ -394,12 +394,15 @@ export default function CaseDetail() {
           >
             <ArrowLeft className="w-4 h-4" /> Queue
           </button>
-          <div className="flex items-center gap-2">
-            <VitalisLogo variant="icon" size={18} />
-            <span className="text-[12px] font-semibold tracking-tight">Vitalis</span>
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground border-l border-border/50 pl-2 ml-1">
-              Clinic
-            </span>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <VitalisLogo variant="icon" size={18} />
+              <span className="text-[12px] font-semibold tracking-tight">Vitalis</span>
+              <span className="text-[10px] uppercase tracking-wider text-muted-foreground border-l border-border/50 pl-2 ml-1">
+                Clinic
+              </span>
+            </div>
+            <NotificationBell size="sm" />
           </div>
         </div>
       </header>
