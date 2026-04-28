@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import type { Json } from "@/integrations/supabase/types";
 import { extractTextFromFile } from "@/lib/pdf-utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
