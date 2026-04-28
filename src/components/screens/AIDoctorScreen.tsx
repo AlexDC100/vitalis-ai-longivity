@@ -754,7 +754,12 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
               onClick={() => {
                 if (!actionConfirm) return;
                 const text = `Help me actually do this: "${actionConfirm.text}". Give me a concrete 7-day plan with specific doses, timing, and what to track. Reference my actual numbers.`;
+                const idx = actionConfirm.index + 1;
                 setActionConfirm(null);
+                toast({
+                  title: `Action ${idx} confirmed`,
+                  description: "Generating your tailored 7-day plan…",
+                });
                 // Pass directly to avoid stale-closure issues with `input` state.
                 sendFollowUp(text);
               }}
