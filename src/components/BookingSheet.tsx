@@ -423,8 +423,19 @@ export function BookingSheet({
               <Button variant="ghost" className="flex-1" onClick={() => setStep("choose")} disabled={submitting}>
                 Back
               </Button>
-              <Button className="flex-1" onClick={submitRequest} disabled={submitting}>
-                {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : "Submit request"}
+              <Button
+                className="flex-1"
+                onClick={submitRequest}
+                disabled={submitting || lockSeconds > 0}
+                aria-disabled={submitting || lockSeconds > 0}
+              >
+                {submitting ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : lockSeconds > 0 ? (
+                  `Wait ${lockSeconds}s`
+                ) : (
+                  "Submit request"
+                )}
               </Button>
             </div>
           </div>
