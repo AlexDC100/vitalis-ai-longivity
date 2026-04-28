@@ -950,6 +950,82 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
           </div>
         )}
 
+        {/* ── Upload queue (hospital mode multi-file) ── */}
+        {screen === "idle" && uploadQueue.length > 0 && (
+          <section className="w-full max-w-md mx-auto mt-6 animate-fade-in">
+            <div className="flex items-center justify-between mb-2 px-1">
+              <div className="flex items-center gap-2">
+                <Upload className="w-4 h-4 text-primary" />
+                <h3 className="text-sm font-semibold text-foreground">
+                  Upload queue
+                </h3>
+                <span className="text-[10px] text-muted-foreground">
+                  {uploadQueue.filter(q => q.status === "completed").length}/{uploadQueue.length}
+                </span>
+              </div>
+              {!isBatchProcessing && uploadQueue.every(q => q.status === "completed" || q.status === "error") && (
+                <button
+                  type="button"
+                  onClick={() => setUploadQueue([])}
+                  className="inline-flex items-center gap-1 min-h-[32px] px-2 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                  aria-label="Clear upload queue"
+                >
+                  <X className="w-3 h-3" /> Clear
+                </button>
+              )}
+            </div>
+            <ul className="space-y-1.5">
+              {/* Sort: analyzing first, then queued, then completed/error; within completed sort by priority */}
+              {[...uploadQueue]
+                .sort((a, b) => {
+                  const order: Record<QueueStatus, number> = { analyzing: 0, queued: 1, completed: 2, error: 3 };
+                  if (order[a.status] !== order[b.status]) return order[a.status] - order[b.status];
+                  if (a.status === "completed" && b.status === "completed") {
+                    const p: Record<Priority, number> = { HIGH: 0, MEDIUM: 1, LOW: 2 };
+                    return p[a.priority || "LOW"] - p[b.priority || "LOW"];
+                  }
+                  return 0;
+                })
+                .map(q => {
+                  const meta = q.priority ? PRIORITY_META[q.priority] : null;
+                  return (
+                    <li
+                      key={q.id}
+                      className="flex items-center gap-2.5 rounded-xl border border-border bg-card/60 px-3 py-2"
+                    >
+                      <span className="shrink-0">
+                        {q.status === "queued" && <Clock className="w-3.5 h-3.5 text-muted-foreground" />}
+                        {q.status === "analyzing" && <Loader2 className="w-3.5 h-3.5 text-primary animate-spin" />}
+                        {q.status === "completed" && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />}
+                        {q.status === "error" && <AlertCircle className="w-3.5 h-3.5 text-red-400" />}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-foreground truncate">{q.file.name}</p>
+                        {q.status === "error" && q.error && (
+                          <p className="text-[10px] text-red-400 truncate">{q.error}</p>
+                        )}
+                        {q.status === "completed" && q.mainFinding && (
+                          <p className="text-[10px] text-muted-foreground truncate">{q.mainFinding}</p>
+                        )}
+                      </div>
+                      <span className={`text-[10px] font-semibold uppercase tracking-wider shrink-0 ${
+                        q.status === "completed" && meta ? meta.tone
+                        : q.status === "error" ? "text-red-400"
+                        : q.status === "analyzing" ? "text-primary"
+                        : "text-muted-foreground"
+                      }`}>
+                        {q.status === "completed" && meta ? meta.label : q.status}
+                      </span>
+                    </li>
+                  );
+                })}
+            </ul>
+            <p className="text-[10px] text-center text-muted-foreground/70 mt-2">
+              AI-assisted analysis. Does not replace a licensed physician.
+            </p>
+          </section>
+        )}
+
         {/* ── Triage list (visible on idle when ≥2 processed cases exist) ──
             Hospital mode: groups by priority, dims reviewed cases, and
             highlights the FIRST pending item in the queue (the next thing
