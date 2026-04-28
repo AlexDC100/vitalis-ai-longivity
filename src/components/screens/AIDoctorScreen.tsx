@@ -1125,6 +1125,7 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
                   setExtractedBiomarkers({});
                   setLastFileName("");
                   setLatestCase(null);
+                  setActiveCaseId(null);
                   setScreen("idle");
                   try {
                     sessionStorage.removeItem(SS_RESULT);
