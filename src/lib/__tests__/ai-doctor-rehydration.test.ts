@@ -153,5 +153,77 @@ describe.each(VIEWPORTS)(
       expect(LS_ACTIVE_CASE).toBe("vitalis.aidoctor.activeCaseId");
       expect(caseChatKey("xyz")).toBe("vitalis.aidoctor.chat.xyz");
     });
+
+    it(`[${label} ${width}×${height}] switching cases updates the header label and loads the correct per-case chat after a refresh`, () => {
+      // Seed two distinct chat threads on disk.
+      writeActiveCaseId("case-A");
+      writeCaseChat("case-A", [
+        { id: "a1", role: "user", content: "Question about blood panel" },
+        { id: "a2", role: "assistant", content: "Here is what I see…" },
+      ]);
+      writeCaseChat("case-B", [
+        { id: "b1", role: "user", content: "Is the X-ray clear?" },
+      ]);
+
+      // Initial mount → A is active.
+      const first = rehydrateActiveCase(TRIAGE);
+      expect(first.header!.title).toBe("Blood Test · blood-panel.pdf");
+      expect(first.chat.map(m => m.id)).toEqual(["a1", "a2"]);
+
+      // User switches to B (carrying their A draft into storage).
+      switchActiveCase({
+        fromCaseId: "case-A",
+        toCaseId: "case-B",
+        fromChat: first.chat,
+      });
+
+      // Simulate a hard refresh — fresh rehydration from disk only.
+      const afterRefresh = rehydrateActiveCase(TRIAGE);
+      expect(afterRefresh.activeCaseId).toBe("case-B");
+      expect(afterRefresh.header!.title).toBe("X-Ray · chest-xray.png");
+      expect(afterRefresh.chat.map(m => m.id)).toEqual(["b1"]);
+
+      // And A's thread is still independently intact.
+      expect(readCaseChat("case-A").map(m => m.id)).toEqual(["a1", "a2"]);
+    });
+
+    it(`[${label} ${width}×${height}] never crashes when activeCaseId is missing or unknown and hides the header`, () => {
+      // 1) No id stored.
+      let result = rehydrateActiveCase(TRIAGE);
+      expect(() => resolveChatHeader(TRIAGE, result.activeCaseId)).not.toThrow();
+      expect(result.header).toBeNull();
+      expect(result.chat).toEqual([]);
+
+      // 2) Unknown id stored.
+      writeActiveCaseId("does-not-exist");
+      result = rehydrateActiveCase(TRIAGE);
+      expect(result.header).toBeNull();
+      expect(result.chat).toEqual([]);
+
+      // 3) Garbage chat payload — must not throw.
+      g.sessionStorage.setItem(caseChatKey("does-not-exist"), "{not json");
+      expect(() => readCaseChat("does-not-exist")).not.toThrow();
+      expect(readCaseChat("does-not-exist")).toEqual([]);
+
+      // 4) Empty triage list (e.g. account just signed in) — header stays null.
+      expect(resolveChatHeader([], "case-A")).toBeNull();
+    });
+
+    it(`[${label} ${width}×${height}] locks every storage key name to prevent silent rehydration regressions`, () => {
+      // If any of these literals change, rehydration silently breaks for
+      // existing users. Force a deliberate, reviewed update.
+      expect(LS_ACTIVE_CASE).toBe("vitalis.aidoctor.activeCaseId");
+      expect(caseChatKey("case-A")).toBe("vitalis.aidoctor.chat.case-A");
+      expect(caseChatKey("anything-else")).toBe("vitalis.aidoctor.chat.anything-else");
+
+      // Round-trip via the real Storage API to catch any helper drift.
+      writeActiveCaseId("case-A");
+      expect(g.localStorage.getItem("vitalis.aidoctor.activeCaseId")).toBe("case-A");
+
+      writeCaseChat("case-A", [{ id: "x", role: "user", content: "hi" }]);
+      const raw = g.sessionStorage.getItem("vitalis.aidoctor.chat.case-A");
+      expect(raw).not.toBeNull();
+      expect(JSON.parse(raw!)).toEqual([{ id: "x", role: "user", content: "hi" }]);
+    });
   },
 );
