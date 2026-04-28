@@ -3,13 +3,14 @@ import { useHealth } from "@/lib/health-context";
 import { runDiagnosis } from "@/lib/diagnosis-engine";
 import { supabase } from "@/integrations/supabase/client";
 import { useSubstances } from "@/lib/use-substances";
-import { Send, Mic, Bot, User, Stethoscope, Upload, Loader2, Calendar, ExternalLink, MapPin, Paperclip, AlertTriangle, ShieldCheck, Activity, Siren, CalendarCheck, Trash2 } from "lucide-react";
+import { Send, Mic, Bot, User, Stethoscope, Upload, Loader2, Calendar, ExternalLink, MapPin, Paperclip, AlertTriangle, ShieldCheck, Activity, Siren, CalendarCheck, Trash2, FileText, Download } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { pickPartners } from "@/lib/clinic-partners";
 import AIDoctorTestMode from "@/components/AIDoctorTestMode";
 import BookingSheet from "@/components/BookingSheet";
+import { downloadAIDoctorReport, previewAIDoctorReport } from "@/lib/ai-doctor-report";
 
 interface ChatMsg {
   id: string;
@@ -121,6 +122,21 @@ export default function AIDoctorScreen() {
       try { localStorage.removeItem(storageKey); } catch { /* ignore */ }
     }
   }, [storageKey]);
+
+  const generateReport = useCallback((mode: "preview" | "download") => {
+    try {
+      const fn = mode === "preview" ? previewAIDoctorReport : downloadAIDoctorReport;
+      fn({ profile, substances });
+      toast({
+        title: mode === "preview" ? "Report ready" : "Report downloaded",
+        description: mode === "preview"
+          ? "Opened your AI Doctor report in a new tab."
+          : "Saved as an HTML file you can open, print, or email.",
+      });
+    } catch (err: any) {
+      toast({ title: "Could not generate report", description: err?.message || "Please try again.", variant: "destructive" });
+    }
+  }, [profile, substances, toast]);
 
   const diagnosis = runDiagnosis(profile, substances);
   const isHighRisk = diagnosis.severity === "critical" || diagnosis.severity === "high";
@@ -582,6 +598,14 @@ ${diagnosisSummary}`;
             <Trash2 className="w-4 h-4" />
           </button>
         )}
+        <button
+          onClick={() => generateReport("preview")}
+          className="p-2 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+          aria-label="Generate health report"
+          title="Generate health report"
+        >
+          <FileText className="w-4 h-4" />
+        </button>
       </div>
 
       {/* Persistent safety disclaimer */}
@@ -624,6 +648,17 @@ ${diagnosisSummary}`;
                   </div>
                 </button>
               )}
+              <button
+                onClick={() => generateReport("preview")}
+                className="w-full flex items-center gap-3 p-3 bg-emerald-500/5 border border-emerald-500/20 rounded-2xl hover:bg-emerald-500/10 transition-colors text-left"
+              >
+                <FileText className="w-5 h-5 text-emerald-400 shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-foreground">Generate health report</p>
+                  <p className="text-[11px] text-muted-foreground">Your values vs normal · underlying issues · which doctor to see</p>
+                </div>
+                <Download className="w-4 h-4 text-muted-foreground shrink-0" onClick={(e) => { e.stopPropagation(); generateReport("download"); }} />
+              </button>
               <button
                 onClick={() => fileRef.current?.click()}
                 className="w-full flex items-center gap-3 p-3 bg-primary/5 border border-primary/20 rounded-2xl hover:bg-primary/10 transition-colors text-left"
