@@ -361,7 +361,10 @@ export default function BodyScreen() {
                              `Score ${trend.deltaScore >= 0 ? "+" : ""}${trend.deltaScore} pts over 30 days`;
 
   return (
-    <div className="space-y-7 sm:space-y-8 pb-28 animate-fade-in">
+    <div
+      className="space-y-7 sm:space-y-8 animate-fade-in"
+      style={{ paddingBottom: "calc(7rem + env(safe-area-inset-bottom, 0px))" }}
+    >
 
       {/* ══════════ 1. HERO ══════════ */}
       <header className="text-center pt-1 sm:pt-2 space-y-2.5 sm:space-y-3 animate-[fade-in_0.5s_ease-out]">
@@ -376,7 +379,7 @@ export default function BodyScreen() {
       </header>
 
       {/* ══════════ 2. LONGEVITY SCORE ══════════ */}
-      <section className="flex flex-col items-center gap-3 animate-[scale-in_0.4s_ease-out_0.1s_both]">
+      <section className="flex flex-col items-center gap-3 animate-[scale-in_0.4s_ease-out_0.1s_both] [will-change:transform]">
         <div className="sm:hidden"><ScoreRing score={longevityScore} size={184} strokeWidth={12} /></div>
         <div className="hidden sm:block"><ScoreRing score={longevityScore} size={220} strokeWidth={14} /></div>
         <div className="text-center">
@@ -433,7 +436,7 @@ export default function BodyScreen() {
             <button
               onClick={fetchInsights}
               disabled={insightsLoading}
-              className="text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors"
+              className="min-h-[44px] min-w-[44px] -m-2 p-2 flex items-center justify-center text-muted-foreground hover:text-foreground active:scale-95 disabled:opacity-50 transition-all"
               aria-label="Refresh insights"
             >
               {insightsLoading
@@ -448,9 +451,18 @@ export default function BodyScreen() {
           )}
         </section>
       ) : insightsLoading ? (
-        <section className="bg-card border border-border rounded-2xl p-5 flex items-center gap-3 animate-pulse">
-          <Loader2 className="w-4 h-4 text-primary animate-spin" />
-          <p className="text-xs text-muted-foreground">Analyzing your data with AI…</p>
+        // Skeleton — hints at the layout of the upcoming "Main issue" card
+        // so the transition feels instant when it arrives.
+        <section className="bg-card border border-border rounded-2xl p-4 sm:p-5 space-y-3 animate-[fade-in_0.3s_ease-out]">
+          <div className="flex items-center gap-2">
+            <div className="h-3 w-20 rounded-full bg-muted animate-pulse" />
+            <Loader2 className="w-3 h-3 text-primary animate-spin" />
+          </div>
+          <div className="h-5 w-3/4 rounded-md bg-muted animate-pulse" />
+          <div className="space-y-1.5">
+            <div className="h-2.5 w-full rounded-full bg-muted animate-pulse" />
+            <div className="h-2.5 w-5/6 rounded-full bg-muted animate-pulse" />
+          </div>
         </section>
       ) : null}
 
@@ -474,7 +486,7 @@ export default function BodyScreen() {
                 <button
                   key={fixKey}
                   onClick={() => toggleFixStatus(fix.action)}
-                  className={`w-full text-left bg-card border rounded-xl p-3 sm:p-3.5 flex items-start gap-3 transition-all active:scale-[0.99] ${
+                  className={`w-full min-h-[64px] text-left bg-card border rounded-xl p-3 sm:p-3.5 flex items-start gap-3 transition-all duration-200 ease-out active:scale-[0.985] hover:-translate-y-px ${
                     isDone     ? "border-emerald-500/30 bg-emerald-500/5"
                     : isStarted ? "border-primary/40 bg-primary/5"
                     :             "border-border hover:border-primary/30"
