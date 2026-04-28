@@ -396,13 +396,10 @@ export default function BodyScreen() {
                              `Score ${trend.deltaScore >= 0 ? "+" : ""}${trend.deltaScore} pts over 30 days`;
 
   return (
-    <div
-      className="space-y-7 sm:space-y-8 animate-fade-in"
-      style={{ paddingBottom: "calc(7rem + env(safe-area-inset-bottom, 0px))" }}
-    >
+    <div className={`space-y-7 sm:space-y-8 safe-area-pb ${fadeIn}`}>
 
       {/* ══════════ 1. HERO ══════════ */}
-      <header className="text-center pt-1 sm:pt-2 space-y-2.5 sm:space-y-3 animate-[fade-in_0.5s_ease-out]">
+      <header className={`text-center pt-1 sm:pt-2 space-y-2.5 sm:space-y-3 ${fadeInDelayed("animate-[fade-in_0.5s_ease-out]")}`}>
         <h1 className="text-[28px] leading-tight sm:text-4xl font-bold text-foreground tracking-tight">Your Body</h1>
         <div className="flex flex-col sm:flex-row items-center justify-center gap-1.5 sm:gap-2 px-4">
           <span className={`inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-full border ${trendMeta.tone}`}>
