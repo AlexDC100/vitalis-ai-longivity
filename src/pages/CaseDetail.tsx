@@ -274,9 +274,28 @@ export default function CaseDetail() {
       toast.error("Original file not found");
       return;
     }
+    if (onCooldown) {
+      toast.error(`Please wait ${cooldownSec}s before retrying`);
+      return;
+    }
     setRegenerating(true);
+    setLastRegenAt(Date.now());
+    const { data: { user } } = await supabase.auth.getUser();
+    const actorName = userDisplayName(user);
     try {
       await supabase.from("clinic_cases").update({ status: "analyzing" }).eq("id", row.id);
+      if (user?.id) {
+        await supabase.from("clinic_case_events").insert({
+          user_id: user.id,
+          case_id: row.id,
+          event_type: "ai_regenerated",
+          from_status: row.status,
+          to_status: "analyzing",
+          actor_email: user.email ?? null,
+          actor_name: actorName,
+          note: "Clinician requested AI regeneration",
+        });
+      }
       const { data: blob, error: dlErr } = await supabase.storage
         .from("medical-documents")
         .download(row.file_path);
