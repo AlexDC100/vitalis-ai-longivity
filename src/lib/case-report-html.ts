@@ -25,6 +25,9 @@ export interface CaseReportInput {
   key_findings: unknown;
   missing_info: string | null;
   created_at: string;
+  detected_category?: string | null;
+  reviewed_at?: string | null;
+  reviewed_by_email?: string | null;
 }
 
 const REVIEW_WINDOW: Record<Priority, string> = {
@@ -53,6 +56,10 @@ export function buildCaseReportHtml(row: CaseReportInput): string {
         (f): f is string => typeof f === "string",
       )
     : [];
+  const reviewedAt = row.reviewed_at ? new Date(row.reviewed_at).toLocaleString() : null;
+  const reviewerLine = reviewedAt
+    ? `<section class="block"><h3>Clinician review history</h3><p>Marked reviewed by <strong>${esc(row.reviewed_by_email ?? "Clinician")}</strong> on ${esc(reviewedAt)}.</p></section>`
+    : "";
 
   const sections: string[] = [];
   const section = (label: string, value: string | null) => {
@@ -138,6 +145,7 @@ export function buildCaseReportHtml(row: CaseReportInput): string {
 
     <section class="summary">
       <div><small>Document type</small><p>${esc(row.case_type)}</p></div>
+      <div><small>Detected category</small><p>${esc(row.detected_category ?? "—")}</p></div>
       <div><small>Uploaded</small><p>${esc(created)}</p></div>
       <div><small>Status</small><p>${esc(row.status)}</p></div>
       <div><small>Review window</small><p>${esc(REVIEW_WINDOW[row.priority])}</p></div>
@@ -150,6 +158,7 @@ export function buildCaseReportHtml(row: CaseReportInput): string {
     </div>
 
     ${sections.join("\n")}
+    ${reviewerLine}
 
     <div class="signoff">
       <div><small>Reviewing clinician</small><div class="line"></div><div class="hint">Name &amp; signature</div></div>

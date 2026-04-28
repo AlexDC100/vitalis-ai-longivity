@@ -57,6 +57,7 @@ export type Database = {
           case_type: string
           confidence: number | null
           created_at: string
+          detected_category: string | null
           explanation: string | null
           file_name: string
           file_path: string | null
@@ -69,6 +70,8 @@ export type Database = {
           raw_ai: Json | null
           recommendation: string | null
           reviewed_at: string | null
+          reviewed_by_email: string | null
+          reviewed_by_user_id: string | null
           status: string
           suggested_specialist: string | null
           suspected_area: string | null
@@ -82,6 +85,7 @@ export type Database = {
           case_type?: string
           confidence?: number | null
           created_at?: string
+          detected_category?: string | null
           explanation?: string | null
           file_name: string
           file_path?: string | null
@@ -94,6 +98,8 @@ export type Database = {
           raw_ai?: Json | null
           recommendation?: string | null
           reviewed_at?: string | null
+          reviewed_by_email?: string | null
+          reviewed_by_user_id?: string | null
           status?: string
           suggested_specialist?: string | null
           suspected_area?: string | null
@@ -107,6 +113,7 @@ export type Database = {
           case_type?: string
           confidence?: number | null
           created_at?: string
+          detected_category?: string | null
           explanation?: string | null
           file_name?: string
           file_path?: string | null
@@ -119,11 +126,52 @@ export type Database = {
           raw_ai?: Json | null
           recommendation?: string | null
           reviewed_at?: string | null
+          reviewed_by_email?: string | null
+          reviewed_by_user_id?: string | null
           status?: string
           suggested_specialist?: string | null
           suspected_area?: string | null
           updated_at?: string
           urgency_label?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      clinic_notifications: {
+        Row: {
+          body: string | null
+          case_id: string | null
+          case_ref: string | null
+          created_at: string
+          delivered_email: boolean
+          id: string
+          priority: string
+          read_at: string | null
+          title: string
+          user_id: string
+        }
+        Insert: {
+          body?: string | null
+          case_id?: string | null
+          case_ref?: string | null
+          created_at?: string
+          delivered_email?: boolean
+          id?: string
+          priority: string
+          read_at?: string | null
+          title: string
+          user_id: string
+        }
+        Update: {
+          body?: string | null
+          case_id?: string | null
+          case_ref?: string | null
+          created_at?: string
+          delivered_email?: boolean
+          id?: string
+          priority?: string
+          read_at?: string | null
+          title?: string
           user_id?: string
         }
         Relationships: []

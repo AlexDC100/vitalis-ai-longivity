@@ -14,11 +14,15 @@ import {
   FileText,
   Loader2,
   Printer,
+  RefreshCw,
   ShieldAlert,
   Trash2,
+  UserCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { downloadCaseReportHtml } from "@/lib/case-report-html";
+import { extractTextFromFile } from "@/lib/pdf-utils";
+import type { Json } from "@/integrations/supabase/types";
 
 type Priority = "critical" | "high" | "medium" | "low";
 
@@ -41,6 +45,9 @@ interface Row {
   key_findings: unknown;
   missing_info: string | null;
   assigned_doctor: string | null;
+  detected_category: string | null;
+  reviewed_by_user_id: string | null;
+  reviewed_by_email: string | null;
   created_at: string;
   reviewed_at: string | null;
 }
@@ -67,6 +74,7 @@ export default function CaseDetail() {
   const [loading, setLoading] = useState(true);
   const [docUrl, setDocUrl] = useState<string | null>(null);
   const [authed, setAuthed] = useState<boolean | null>(null);
+  const [regenerating, setRegenerating] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -149,9 +157,15 @@ export default function CaseDetail() {
   const isError = row.status === "error";
 
   const markReviewed = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
     await supabase
       .from("clinic_cases")
-      .update({ status: "reviewed", reviewed_at: new Date().toISOString() })
+      .update({
+        status: "reviewed",
+        reviewed_at: new Date().toISOString(),
+        reviewed_by_user_id: user?.id ?? null,
+        reviewed_by_email: user?.email ?? null,
+      })
       .eq("id", row.id);
     toast.success("Marked as reviewed");
     navigate("/");
@@ -161,6 +175,79 @@ export default function CaseDetail() {
     if (!confirm("Delete this case? This cannot be undone.")) return;
     await supabase.from("clinic_cases").delete().eq("id", row.id);
     navigate("/");
+  };
+
+  const regenerate = async () => {
+    if (!row.file_path) {
+      toast.error("Original file not found");
+      return;
+    }
+    setRegenerating(true);
+    try {
+      await supabase.from("clinic_cases").update({ status: "analyzing" }).eq("id", row.id);
+      const { data: blob, error: dlErr } = await supabase.storage
+        .from("medical-documents")
+        .download(row.file_path);
+      if (dlErr || !blob) throw dlErr ?? new Error("Could not download original file");
+      const file = new File([blob], row.file_name, { type: row.mime_type ?? blob.type });
+
+      let payload: { text?: string; base64?: string; mimeType?: string; fileName: string } = {
+        fileName: file.name,
+      };
+      if ((file.type || "").startsWith("image/")) {
+        const buf = await file.arrayBuffer();
+        const u8 = new Uint8Array(buf);
+        let bin = "";
+        for (let i = 0; i < u8.length; i += 8192) bin += String.fromCharCode(...u8.slice(i, i + 8192));
+        payload = { fileName: file.name, base64: btoa(bin), mimeType: file.type };
+      } else {
+        const ex = await extractTextFromFile(file);
+        payload = { fileName: file.name, text: ex.text, base64: ex.base64, mimeType: ex.mimeType };
+      }
+
+      const { data: ai, error: aiErr } = await supabase.functions.invoke("clinic-triage", {
+        body: payload,
+      });
+      if (aiErr) throw aiErr;
+      if ((ai as { error?: string })?.error) throw new Error((ai as { error: string }).error);
+
+      const r = ai as Record<string, unknown>;
+      const validPriorities = ["critical", "high", "medium", "low"] as const;
+      const newPriority = validPriorities.includes(r.priority as Priority)
+        ? (r.priority as Priority)
+        : "medium";
+
+      const { data: updated } = await supabase
+        .from("clinic_cases")
+        .update({
+          status: "ready",
+          case_type: (r.case_type as string) ?? row.case_type,
+          priority: newPriority,
+          urgency_label: r.urgency_label as string ?? null,
+          insight: r.insight as string ?? null,
+          explanation: r.explanation as string ?? null,
+          recommendation: r.recommendation as string ?? null,
+          suspected_area: (r.suspected_area as string) ?? null,
+          confidence: typeof r.confidence === "number" ? r.confidence : null,
+          suggested_specialist: (r.suggested_specialist as string) ?? null,
+          key_findings: ((r.key_findings as string[]) ?? []) as unknown as Json,
+          missing_info: (r.missing_info as string) ?? null,
+          raw_ai: r as unknown as Json,
+        })
+        .eq("id", row.id)
+        .select()
+        .single();
+      if (updated) setRow(updated as Row);
+      toast.success("AI assessment regenerated");
+    } catch (e) {
+      console.error("regenerate failed", e);
+      await supabase.from("clinic_cases").update({ status: "error" }).eq("id", row.id);
+      toast.error("Regeneration failed", {
+        description: e instanceof Error ? e.message : undefined,
+      });
+    } finally {
+      setRegenerating(false);
+    }
   };
 
   return (
@@ -238,8 +325,21 @@ export default function CaseDetail() {
           <section className="rounded-xl border border-destructive/40 bg-destructive/5 p-5 mb-4">
             <p className="text-sm font-semibold text-destructive">Processing failed</p>
             <p className="text-xs text-muted-foreground mt-1">
-              We couldn't generate an AI-assisted assessment for this file. You can delete and re-upload it from the queue.
+              We couldn't generate an AI-assisted assessment for this file. You can regenerate the assessment or delete and re-upload it from the queue.
             </p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="mt-3"
+              onClick={regenerate}
+              disabled={regenerating}
+            >
+              {regenerating ? (
+                <><Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> Regenerating…</>
+              ) : (
+                <><RefreshCw className="w-3.5 h-3.5 mr-2" /> Regenerate AI assessment</>
+              )}
+            </Button>
           </section>
         )}
 
@@ -312,6 +412,27 @@ export default function CaseDetail() {
           AI-assisted review only. This output may include possible findings and is intended to support — not replace — a licensed clinician's diagnostic judgement.
         </p>
 
+        {/* Clinician review history */}
+        {row.reviewed_at && (
+          <section className="rounded-xl border border-border bg-card p-5 mb-4">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">
+              Clinician review history
+            </p>
+            <div className="flex items-start gap-2.5 text-sm">
+              <UserCheck className="w-4 h-4 mt-0.5 text-primary" />
+              <div>
+                <p>
+                  Marked reviewed by{" "}
+                  <span className="font-semibold">{row.reviewed_by_email ?? "Clinician"}</span>
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {new Date(row.reviewed_at).toLocaleString()}
+                </p>
+              </div>
+            </div>
+          </section>
+        )}
+
         {/* Actions */}
         <div className="flex flex-wrap gap-2">
           <Button asChild>
@@ -328,6 +449,19 @@ export default function CaseDetail() {
             <Download className="w-4 h-4 mr-2" />
             Download HTML
           </Button>
+          {!isProcessing && (
+            <Button
+              variant="outline"
+              onClick={regenerate}
+              disabled={regenerating || !row.file_path}
+            >
+              {regenerating ? (
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Regenerating…</>
+              ) : (
+                <><RefreshCw className="w-4 h-4 mr-2" /> Regenerate AI assessment</>
+              )}
+            </Button>
+          )}
           {row.status !== "reviewed" ? (
             <Button variant="outline" onClick={markReviewed}>
               <ClipboardCheck className="w-4 h-4 mr-2" />

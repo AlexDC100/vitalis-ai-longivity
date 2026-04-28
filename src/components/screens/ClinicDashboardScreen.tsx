@@ -8,17 +8,23 @@ import { Badge } from "@/components/ui/badge";
 import {
   AlertOctagon,
   AlertTriangle,
+  Bell,
   CheckCircle2,
   ClipboardCheck,
   Clock,
+  Download,
+  FileSearch,
   FileText,
   Filter,
   Loader2,
+  Printer,
   ShieldAlert,
   Sparkles,
   Upload,
 } from "lucide-react";
 import { toast } from "sonner";
+import { detectCategory } from "@/lib/detect-category";
+import { downloadCaseReportHtml } from "@/lib/case-report-html";
 
 type Priority = "critical" | "high" | "medium" | "low";
 type Status = "pending" | "analyzing" | "ready" | "reviewed" | "error";
@@ -42,6 +48,9 @@ interface ClinicCase {
   key_findings: Json | null;
   missing_info: string | null;
   assigned_doctor: string | null;
+  detected_category: string | null;
+  reviewed_by_email: string | null;
+  reviewed_by_user_id: string | null;
   created_at: string;
   reviewed_at: string | null;
 }
@@ -91,6 +100,7 @@ export default function ClinicDashboardScreen() {
   const [uploading, setUploading] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filt>("awaiting");
+  const [unreadCount, setUnreadCount] = useState(0);
 
   /* Load + realtime */
   useEffect(() => {
@@ -118,6 +128,29 @@ export default function ClinicDashboardScreen() {
     })();
     return () => { cancelled = true; };
   }, []);
+
+  /* Unread notifications count */
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    const load = async () => {
+      const { count } = await supabase
+        .from("clinic_notifications")
+        .select("id", { count: "exact", head: true })
+        .is("read_at", null);
+      if (!cancelled) setUnreadCount(count ?? 0);
+    };
+    load();
+    const ch = supabase
+      .channel(`clinic_notifications_${userId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "clinic_notifications", filter: `user_id=eq.${userId}` },
+        () => load(),
+      )
+      .subscribe();
+    return () => { cancelled = true; supabase.removeChannel(ch); };
+  }, [userId]);
 
   useEffect(() => {
     if (!userId) return;
@@ -195,6 +228,7 @@ export default function ClinicDashboardScreen() {
 
     for (const file of list) {
       const filePath = `${userId}/clinic/${Date.now()}-${file.name}`;
+      const detected = detectCategory(file);
       try {
         const up = await supabase.storage.from("medical-documents").upload(filePath, file);
         if (up.error) throw up.error;
@@ -208,7 +242,8 @@ export default function ClinicDashboardScreen() {
             mime_type: file.type || null,
             status: "analyzing",
             priority: "medium",
-            case_type: "document",
+            case_type: detected,
+            detected_category: detected,
           })
           .select()
           .single();
@@ -271,6 +306,23 @@ export default function ClinicDashboardScreen() {
             raw_ai: result as unknown as Json,
           })
           .eq("id", row.id);
+
+        const finalPriority: Priority = PRIORITY_ORDER.includes(result.priority)
+          ? result.priority
+          : "medium";
+        if (finalPriority === "critical" || finalPriority === "high") {
+          await supabase.from("clinic_notifications").insert({
+            user_id: userId,
+            case_id: row.id,
+            case_ref: row.case_ref,
+            priority: finalPriority,
+            title:
+              finalPriority === "critical"
+                ? `Critical case requires immediate review`
+                : `High-priority case awaiting review`,
+            body: `${result.case_type ?? detected} · ${result.insight ?? "AI-assisted assessment ready."}`,
+          });
+        }
       } catch (e) {
         console.error("triage failed", e);
         toast.error(`Failed to process ${file.name}`, {
@@ -298,10 +350,27 @@ export default function ClinicDashboardScreen() {
     <div className="pb-32">
       {/* Header */}
       <header className="mb-6">
-        <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1">
-          AI Diagnostic Review
-        </p>
-        <h1 className="text-3xl font-bold tracking-tight">Diagnostic queue</h1>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1">
+              AI Diagnostic Review
+            </p>
+            <h1 className="text-3xl font-bold tracking-tight">Diagnostic queue</h1>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate("/notifications")}
+            className="relative inline-flex items-center justify-center w-9 h-9 rounded-full border border-border bg-card text-muted-foreground hover:text-foreground transition-colors"
+            aria-label="Notifications"
+          >
+            <Bell className="w-4 h-4" />
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center">
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </span>
+            )}
+          </button>
+        </div>
         <p className="text-sm text-muted-foreground mt-2">
           {loading ? "Loading…" : (
             <>
@@ -472,10 +541,17 @@ function PriorityGroup({
       <ul className="space-y-2">
         {items.map((c) => (
           <li key={c.id}>
-            <button
-              type="button"
+            <div
+              role="button"
+              tabIndex={0}
               onClick={() => onOpen(c.id)}
-              className={`w-full text-left rounded-xl border p-3.5 transition-colors hover:bg-card/80 ${meta.ring}`}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onOpen(c.id);
+                }
+              }}
+              className={`w-full text-left rounded-xl border p-3.5 transition-colors hover:bg-card/80 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/40 ${meta.ring}`}
             >
               <div className="flex items-start justify-between gap-3 mb-1.5">
                 <div className="flex items-center gap-2 min-w-0 flex-wrap">
@@ -486,13 +562,20 @@ function PriorityGroup({
                   <span className="text-[11px] uppercase tracking-wider font-semibold">
                     {c.case_type}
                   </span>
+                  {c.detected_category && c.detected_category !== c.case_type && (
+                    <Badge variant="outline" className="text-[9px] gap-1">
+                      <FileSearch className="w-2.5 h-2.5" />
+                      {c.detected_category}
+                    </Badge>
+                  )}
                   <span className="text-[11px] text-muted-foreground truncate max-w-[180px]">
                     · {c.file_name}
                   </span>
                 </div>
                 {c.status === "analyzing" ? (
                   <Badge variant="outline" className="text-[10px] gap-1 shrink-0">
-                    <Loader2 className="w-2.5 h-2.5 animate-spin" /> analyzing
+                    <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                    {c.detected_category ? `triaging ${c.detected_category}` : "analyzing"}
                   </Badge>
                 ) : c.status === "error" ? (
                   <Badge variant="destructive" className="text-[10px] shrink-0">error</Badge>
@@ -512,7 +595,39 @@ function PriorityGroup({
                   {c.suggested_specialist ? <>Suggest: <span className="text-foreground">{c.suggested_specialist}</span></> : null}
                 </p>
               )}
-            </button>
+              {(c.status === "ready" || c.status === "reviewed") && (
+                <div className="mt-3 flex items-center gap-1.5 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onOpen(c.id);
+                    }}
+                    className="inline-flex items-center gap-1 h-7 px-2.5 rounded-md border border-border bg-background/60 text-[11px] hover:bg-background"
+                  >
+                    <Printer className="w-3 h-3" /> Open report
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      downloadCaseReportHtml({
+                        ...c,
+                        key_findings: c.key_findings as unknown,
+                      });
+                    }}
+                    className="inline-flex items-center gap-1 h-7 px-2.5 rounded-md border border-border bg-background/60 text-[11px] hover:bg-background"
+                  >
+                    <Download className="w-3 h-3" /> Download HTML
+                  </button>
+                  {c.reviewed_by_email && c.reviewed_at && (
+                    <span className="text-[10px] text-muted-foreground ml-auto">
+                      Reviewed by {c.reviewed_by_email}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
           </li>
         ))}
       </ul>
