@@ -27,9 +27,9 @@ function AppShell() {
   const [loading, setLoading] = useState(true);
   const { setIsGuest, setUserId, dataCompleteness } = useHealth();
   const [screen, setScreen] = useState<Screen>(() => {
-    if (typeof window === "undefined") return "diagnosis";
+    if (typeof window === "undefined") return "doctor";
     const saved = window.localStorage.getItem(SCREEN_STORAGE_KEY);
-    return isScreen(saved) ? saved : "diagnosis";
+    return isScreen(saved) ? saved : "doctor";
   });
   const [slideDir, setSlideDir] = useState<"left" | "right">("left");
   const [onboarded, setOnboarded] = useState<boolean | null>(null);
@@ -37,7 +37,9 @@ function AppShell() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const prevScreenRef = useRef<Screen>(screen);
 
-  const screenOrder: Screen[] = ["diagnosis", "body", "doctor"];
+  // Order matches the bottom nav (left → right): AI Doctor is the
+  // primary entry point, then Diagnosis, then Body.
+  const screenOrder: Screen[] = ["doctor", "diagnosis", "body"];
 
   // Sensitive client-side keys that must be wiped on sign-out so the next
   // user on a shared device cannot see the previous user's medical data.
@@ -180,9 +182,9 @@ function AppShell() {
   }
 
   const navItems: { id: Screen; label: string; icon: React.ElementType }[] = [
+    { id: "doctor", label: "AI Doctor", icon: Stethoscope },
     { id: "diagnosis", label: "Diagnosis", icon: AlertTriangle },
     { id: "body", label: "Body", icon: User },
-    { id: "doctor", label: "AI Doctor", icon: Stethoscope },
   ];
 
   const animClass = slideDir === "left" ? "animate-slide-left" : "animate-slide-right";
