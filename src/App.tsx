@@ -10,6 +10,7 @@ import SharedReport from "./pages/SharedReport.tsx";
 import ThemeFlickerTest from "./pages/ThemeFlickerTest.tsx";
 import CaseDetail from "./pages/CaseDetail.tsx";
 import CaseReport from "./pages/CaseReport.tsx";
+import NotificationsPage from "./pages/Notifications.tsx";
 import { ThemeProvider } from "@/lib/theme";
 
 const queryClient = new QueryClient();
@@ -25,6 +26,7 @@ const App = () => (
             <Route path="/" element={<Index />} />
             <Route path="/case/:id" element={<CaseDetail />} />
             <Route path="/case/:id/report" element={<CaseReport />} />
+            <Route path="/notifications" element={<NotificationsPage />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/r/:token" element={<SharedReport />} />
           <Route path="/__theme-flicker-test" element={<ThemeFlickerTest />} />
