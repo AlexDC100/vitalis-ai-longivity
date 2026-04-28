@@ -600,48 +600,34 @@ export default function CaseDetail() {
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground inline-flex items-center gap-1.5">
               <History className="w-3.5 h-3.5" /> Case timeline
             </p>
-            <span className="text-[10px] text-muted-foreground">{events.length} event{events.length === 1 ? "" : "s"}</span>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-muted-foreground">
+                {events.length} event{events.length === 1 ? "" : "s"}
+              </span>
+              <div className="flex rounded-md border border-border overflow-hidden">
+                {(["chronological", "grouped"] as const).map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setTimelineView(v)}
+                    className={`text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 transition-colors ${
+                      timelineView === v
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-card text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {v === "chronological" ? "Time" : "Grouped"}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
           {events.length === 0 ? (
             <p className="text-xs text-muted-foreground">No timeline events yet.</p>
+          ) : timelineView === "grouped" ? (
+            <GroupedTimeline events={events} />
           ) : (
-            <ol className="relative pl-4 border-l border-border/60 space-y-4">
-              {events.map((ev) => {
-                const I =
-                  ev.event_type === "uploaded" ? Upload :
-                  ev.event_type === "ai_regenerated" ? RefreshCw :
-                  ev.event_type === "ai_failed" ? XCircle :
-                  ev.event_type === "reviewed" ? UserCheck :
-                  CheckCircle2;
-                const tone =
-                  ev.event_type === "ai_failed" ? "text-destructive" :
-                  ev.event_type === "reviewed" ? "text-primary" :
-                  ev.event_type === "ai_regenerated" ? "text-amber-500" :
-                  "text-muted-foreground";
-                const label =
-                  ev.event_type === "uploaded" ? "Case uploaded" :
-                  ev.event_type === "ai_regenerated" ? "AI regeneration requested" :
-                  ev.event_type === "ai_failed" ? "AI processing failed" :
-                  ev.event_type === "reviewed" ? "Clinician marked reviewed" :
-                  ev.from_status && ev.to_status ? `Status: ${ev.from_status} → ${ev.to_status}` : "Status change";
-                const actor = ev.actor_name ?? ev.actor_email;
-                return (
-                  <li key={ev.id} className="relative">
-                    <span className="absolute -left-[21px] top-1 w-3.5 h-3.5 rounded-full bg-card border border-border flex items-center justify-center">
-                      <I className={`w-2.5 h-2.5 ${tone}`} />
-                    </span>
-                    <p className="text-sm">
-                      <span className="font-medium">{label}</span>
-                      {actor && <span className="text-muted-foreground"> · {actor}</span>}
-                    </p>
-                    {ev.note && <p className="text-xs text-muted-foreground mt-0.5">{ev.note}</p>}
-                    <p className="text-[10px] text-muted-foreground mt-0.5">
-                      {new Date(ev.created_at).toLocaleString()}
-                    </p>
-                  </li>
-                );
-              })}
-            </ol>
+            <ChronologicalTimeline events={events} />
           )}
         </section>
 
