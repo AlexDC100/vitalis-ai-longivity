@@ -109,6 +109,7 @@ export default function CaseDetail() {
   const [lastRegenAt, setLastRegenAt] = useState<number>(0);
   const [now, setNow] = useState<number>(Date.now());
   const [events, setEvents] = useState<CaseEvent[]>([]);
+  const [timelineView, setTimelineView] = useState<"chronological" | "grouped">("chronological");
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
