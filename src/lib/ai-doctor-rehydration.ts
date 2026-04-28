@@ -127,3 +127,27 @@ export function rehydrateActiveCase(triage: RehydratableCase[]): {
   const chat = activeCaseId ? readCaseChat(activeCaseId) : [];
   return { activeCaseId, header, chat };
 }
+
+/* ─── Hospital mode ─────────────────────────────────────────────── */
+export function readHospitalMode(): boolean {
+  return safeLocal()?.getItem(LS_HOSPITAL_MODE) === "1";
+}
+export function writeHospitalMode(on: boolean): void {
+  try { safeLocal()?.setItem(LS_HOSPITAL_MODE, on ? "1" : "0"); } catch { /* ignore */ }
+}
+
+/* ─── Upload queue (hospital mode batch) ────────────────────────── */
+export function readUploadQueue(): RehydratableQueueItem[] {
+  const raw = safeSession()?.getItem(SS_UPLOAD_QUEUE);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as RehydratableQueueItem[]) : [];
+  } catch { return []; }
+}
+export function writeUploadQueue(queue: RehydratableQueueItem[]): void {
+  try { safeSession()?.setItem(SS_UPLOAD_QUEUE, JSON.stringify(queue)); } catch { /* quota */ }
+}
+export function clearUploadQueue(): void {
+  try { safeSession()?.removeItem(SS_UPLOAD_QUEUE); } catch { /* ignore */ }
+}
