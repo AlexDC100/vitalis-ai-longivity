@@ -97,6 +97,14 @@ export default function NotificationsPage() {
   }
 
   const unreadCount = items.filter((n) => !n.read_at).length;
+  const inAppCount = items.filter((n) => n.delivered_in_app).length;
+  const emailCount = items.filter((n) => n.delivered_email).length;
+  const filtered = items.filter((n) => {
+    if (deliveryFilter === "in_app") return n.delivered_in_app;
+    if (deliveryFilter === "email") return n.delivered_email;
+    if (deliveryFilter === "unread") return !n.read_at;
+    return true;
+  });
 
   return (
     <div className="min-h-screen bg-background">
