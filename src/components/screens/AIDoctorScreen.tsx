@@ -1443,9 +1443,9 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
           Persists in localStorage so returning users on the same device
           aren't prompted again. Cancel restores the idle state cleanly. */}
       <AlertDialog
-        open={!!pendingFile || pendingPickerAfterConsent}
+        open={!!pendingFile || !!pendingFiles || pendingPickerAfterConsent}
         onOpenChange={(open) => {
-          if (!open) { setPendingFile(null); setPendingPickerAfterConsent(false); }
+          if (!open) { setPendingFile(null); setPendingFiles(null); setPendingPickerAfterConsent(false); }
         }}
       >
         <AlertDialogContent>
@@ -1469,7 +1469,7 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
           <AlertDialogFooter>
             <AlertDialogCancel
               className="min-h-[44px]"
-              onClick={() => { setPendingFile(null); setPendingPickerAfterConsent(false); }}
+              onClick={() => { setPendingFile(null); setPendingFiles(null); setPendingPickerAfterConsent(false); }}
             >
               Cancel
             </AlertDialogCancel>
@@ -1478,10 +1478,13 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
               onClick={() => {
                 recordConsent();
                 const f = pendingFile;
+                const fs = pendingFiles;
                 const openPicker = pendingPickerAfterConsent;
                 setPendingFile(null);
+                setPendingFiles(null);
                 setPendingPickerAfterConsent(false);
                 if (f) void handleFile(f);
+                else if (fs) void enqueueFiles(fs);
                 else if (openPicker) setTimeout(() => fileRef.current?.click(), 0);
               }}
             >
