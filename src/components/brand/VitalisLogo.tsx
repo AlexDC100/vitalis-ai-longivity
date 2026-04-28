@@ -143,9 +143,9 @@ const VitalisLogo = forwardRef<SVGSVGElement, VitalisLogoProps>(function Vitalis
         {/* Brand gradient — anchored to design-system primary token so
             light/dark + future re-skins automatically propagate. */}
         <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%"   stopColor="hsl(174 72% 56%)" />
-          <stop offset="55%"  stopColor="hsl(var(--primary))" />
-          <stop offset="100%" stopColor="hsl(210 80% 56%)" />
+          <stop offset="0%"   stopColor="hsl(var(--brand-grad-start))" />
+          <stop offset="55%"  stopColor="hsl(var(--brand-grad-mid))" />
+          <stop offset="100%" stopColor="hsl(var(--brand-grad-end))" />
         </linearGradient>
         {/* Subtle glow — only used on dark surfaces. */}
         <filter id={glowId} x="-30%" y="-30%" width="160%" height="160%">
