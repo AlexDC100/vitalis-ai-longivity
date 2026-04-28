@@ -36,6 +36,7 @@ export default function NotificationsPage() {
   const [items, setItems] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [authed, setAuthed] = useState<boolean | null>(null);
+  const [deliveryFilter, setDeliveryFilter] = useState<"all" | "in_app" | "email" | "unread">("all");
 
   useEffect(() => {
     let cancelled = false;
