@@ -106,6 +106,7 @@ export type Database = {
           id: string
           insight: string | null
           key_findings: Json | null
+          last_regenerated_at: string | null
           mime_type: string | null
           missing_info: string | null
           priority: string
@@ -135,6 +136,7 @@ export type Database = {
           id?: string
           insight?: string | null
           key_findings?: Json | null
+          last_regenerated_at?: string | null
           mime_type?: string | null
           missing_info?: string | null
           priority?: string
@@ -164,6 +166,7 @@ export type Database = {
           id?: string
           insight?: string | null
           key_findings?: Json | null
+          last_regenerated_at?: string | null
           mime_type?: string | null
           missing_info?: string | null
           priority?: string
