@@ -327,6 +327,30 @@ export default function AIDoctorScreen() {
 
   useEffect(() => { void loadTriage(); }, [loadTriage]);
 
+  // Rehydrate the active case after triage loads (page refresh / reopen).
+  // We restore the case context (latestCase, lastFileName) and the per-case
+  // chat so the AI discussion resumes exactly where the user left off.
+  const didRehydrateRef = useRef(false);
+  useEffect(() => {
+    if (didRehydrateRef.current) return;
+    if (!activeCaseId || triage.length === 0) return;
+    const c = triage.find(t => t.id === activeCaseId);
+    if (!c) return;
+    didRehydrateRef.current = true;
+    setLatestCase({
+      main_finding: c.main_finding,
+      clinical_insight: c.clinical_insight,
+      priority: c.priority,
+      review_window: c.review_window,
+      document_type: c.document_type,
+    });
+    setLastFileName(c.file_name);
+    try {
+      const raw = sessionStorage.getItem(caseChatKey(c.id));
+      if (raw) setChat(JSON.parse(raw) as ChatMsg[]);
+    } catch { /* ignore */ }
+  }, [activeCaseId, triage]);
+
   const fileRef = useRef<HTMLInputElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
   const followUpEndRef = useRef<HTMLDivElement>(null);
