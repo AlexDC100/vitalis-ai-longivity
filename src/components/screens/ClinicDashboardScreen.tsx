@@ -100,6 +100,7 @@ export default function ClinicDashboardScreen() {
   const [uploading, setUploading] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filt>("awaiting");
+  const [unreadCount, setUnreadCount] = useState(0);
 
   /* Load + realtime */
   useEffect(() => {
@@ -127,6 +128,29 @@ export default function ClinicDashboardScreen() {
     })();
     return () => { cancelled = true; };
   }, []);
+
+  /* Unread notifications count */
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    const load = async () => {
+      const { count } = await supabase
+        .from("clinic_notifications")
+        .select("id", { count: "exact", head: true })
+        .is("read_at", null);
+      if (!cancelled) setUnreadCount(count ?? 0);
+    };
+    load();
+    const ch = supabase
+      .channel(`clinic_notifications_${userId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "clinic_notifications", filter: `user_id=eq.${userId}` },
+        () => load(),
+      )
+      .subscribe();
+    return () => { cancelled = true; supabase.removeChannel(ch); };
+  }, [userId]);
 
   useEffect(() => {
     if (!userId) return;
