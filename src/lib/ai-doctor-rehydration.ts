@@ -15,6 +15,25 @@
 export const LS_ACTIVE_CASE = "vitalis.aidoctor.activeCaseId";
 export const caseChatKey = (caseId: string) => `vitalis.aidoctor.chat.${caseId}`;
 
+/**
+ * Hospital-mode + multi-file upload queue persistence keys.
+ *
+ * The production AIDoctorScreen persists `hospitalMode` to localStorage and
+ * (optionally) the in-flight upload queue to sessionStorage so that a refresh
+ * or tab switch in hospital mode does not silently lose batch state.
+ * The helpers below are also the single source of truth for tests.
+ */
+export const LS_HOSPITAL_MODE = "vitalis.aidoctor.hospitalMode";
+export const SS_UPLOAD_QUEUE = "vitalis.aidoctor.uploadQueue";
+
+export type QueueStatus = "queued" | "analyzing" | "completed" | "error";
+export interface RehydratableQueueItem {
+  id: string;
+  fileName: string;
+  status: QueueStatus;
+  priority?: "high" | "medium" | "low" | null;
+}
+
 export interface RehydratableChatMsg {
   id: string;
   role: "user" | "assistant";
