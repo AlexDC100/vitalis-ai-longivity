@@ -1,58 +1,53 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { useHealth } from "@/lib/health-context";
 import { runDiagnosis } from "@/lib/diagnosis-engine";
 import { supabase } from "@/integrations/supabase/client";
 import { useSubstances } from "@/lib/use-substances";
-import { Send, Mic, Bot, User, Stethoscope, Upload, Loader2, Calendar, ExternalLink, MapPin, Paperclip, AlertTriangle, ShieldCheck, Activity, Siren, CalendarCheck, Trash2, FileText, Download } from "lucide-react";
+import {
+  Send, Upload, Loader2, FileText, Stethoscope, AlertTriangle, ShieldCheck,
+  Activity, Siren, RefreshCw, ArrowRight, Sparkles,
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { pickPartners } from "@/lib/clinic-partners";
-import AIDoctorTestMode from "@/components/AIDoctorTestMode";
 import BookingSheet from "@/components/BookingSheet";
-import { downloadAIDoctorReport } from "@/lib/ai-doctor-report";
-import ReportViewerSheet from "@/components/ReportViewerSheet";
 
-interface ChatMsg {
-  id: string;
-  role: "user" | "assistant" | "action";
-  content: string;
-  actionType?: "booking" | "upload-success" | "care";
-  actionData?: any;
-}
+/**
+ * AI Doctor — focused, single-action experience.
+ *
+ * Screen states (only one is visible at a time):
+ *   IDLE      → centered hero + "Upload your health report" drop area.
+ *   ANALYZING → calm progress state.
+ *   RESULT    → main issue + 2–3 actions (+ specialist card if HIGH/URGENT).
+ *
+ * Chat input lives at the very bottom as a minimal field — used for
+ * follow-up questions only. No suggestion chips, no clutter.
+ */
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
 
 type Severity = "LOW" | "MODERATE" | "HIGH" | "URGENT";
+type ScreenState = "idle" | "analyzing" | "result";
 
 const SEVERITY_META: Record<Severity, {
-  label: string; tagline: string; bg: string; border: string; text: string; icon: React.ElementType;
+  label: string; tone: string; bg: string; border: string; Icon: React.ElementType; serious: boolean;
 }> = {
-  LOW:      { label: "Low", tagline: "Monitor — no action needed now",
-              bg: "bg-emerald-500/10", border: "border-emerald-500/25", text: "text-emerald-400", icon: ShieldCheck },
-  MODERATE: { label: "Moderate", tagline: "Improve lifestyle factors",
-              bg: "bg-amber-500/10", border: "border-amber-500/25", text: "text-amber-400", icon: Activity },
-  HIGH:     { label: "High", tagline: "Consult a doctor soon",
-              bg: "bg-orange-500/10", border: "border-orange-500/25", text: "text-orange-400", icon: AlertTriangle },
-  URGENT:   { label: "Urgent", tagline: "Seek medical care immediately",
-              bg: "bg-red-500/10", border: "border-red-500/25", text: "text-red-400", icon: Siren },
+  LOW:      { label: "Low",      tone: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/25", Icon: ShieldCheck,    serious: false },
+  MODERATE: { label: "Moderate", tone: "text-amber-400",   bg: "bg-amber-500/10",   border: "border-amber-500/25",   Icon: Activity,       serious: false },
+  HIGH:     { label: "High",     tone: "text-orange-400",  bg: "bg-orange-500/10",  border: "border-orange-500/25",  Icon: AlertTriangle,  serious: true  },
+  URGENT:   { label: "Urgent",   tone: "text-red-400",     bg: "bg-red-500/10",     border: "border-red-500/25",     Icon: Siren,          serious: true  },
 };
 
 function parseSeverity(content: string): Severity | null {
-  // Look for explicit machine-readable tag the model is instructed to emit.
   const m = content.match(/\[\[SEVERITY:(LOW|MODERATE|HIGH|URGENT)\]\]/i);
   if (m) return m[1].toUpperCase() as Severity;
-  // Fallback: scan a "Severity Level" line in the markdown
   const m2 = content.match(/severity[^\n]*?(URGENT|HIGH|MODERATE|LOW)/i);
   return m2 ? (m2[1].toUpperCase() as Severity) : null;
 }
-
 function parseSpecialty(content: string): string | null {
   const m = content.match(/\[\[SPECIALTY:([^\]]+)\]\]/i);
   return m ? m[1].trim() : null;
 }
-
-// Strip the machine-readable tags before rendering markdown
 function stripTags(content: string): string {
   return content
     .replace(/\[\[SEVERITY:(LOW|MODERATE|HIGH|URGENT)\]\]/gi, "")
@@ -60,294 +55,109 @@ function stripTags(content: string): string {
     .trim();
 }
 
+/** Extract the first 1–3 actions from the model's "## 4. Recommended Actions" section. */
+function extractActions(md: string): string[] {
+  const sec = md.split(/##\s*4\.\s*Recommended Actions/i)[1];
+  if (!sec) return [];
+  const next = sec.split(/##\s/)[0];
+  const lines = next.split("\n").map(l => l.trim()).filter(Boolean);
+  const items: string[] = [];
+  for (const l of lines) {
+    const m = l.match(/^(?:\d+\.|[-*])\s+(.*)$/);
+    if (m) items.push(m[1].replace(/\*\*/g, "").trim());
+    if (items.length >= 3) break;
+  }
+  return items;
+}
+
+/** Extract the "## 1. Summary" paragraph for the headline + explanation. */
+function extractSummary(md: string): { title: string; explanation: string } {
+  const sec = md.split(/##\s*1\.\s*Summary/i)[1];
+  if (!sec) return { title: "Analysis complete", explanation: stripTags(md).slice(0, 240) };
+  const text = sec.split(/##\s/)[0].trim();
+  const sentences = text.replace(/\n+/g, " ").split(/(?<=[.!?])\s+/);
+  return {
+    title: sentences[0]?.replace(/\*\*/g, "").trim() || "Analysis complete",
+    explanation: sentences.slice(1).join(" ").replace(/\*\*/g, "").trim(),
+  };
+}
+
+interface ChatMsg { id: string; role: "user" | "assistant"; content: string; }
+
 export default function AIDoctorScreen() {
   const { profile, updateField, longevityScore, biologicalAge, chronologicalAge, userId } = useHealth();
   const { toast } = useToast();
-  const storageKey = userId ? `vitalis_ai_doctor_chat_${userId}` : null;
-  const [messages, setMessages] = useState<ChatMsg[]>(() => {
-    if (typeof window === "undefined") return [];
-    try {
-      // Best-effort hydrate from any prior user (re-keyed in effect when userId resolves).
-      const keys = Object.keys(localStorage).filter(k => k.startsWith("vitalis_ai_doctor_chat_"));
-      if (keys.length === 0) return [];
-      const raw = localStorage.getItem(keys[0]);
-      return raw ? (JSON.parse(raw) as ChatMsg[]) : [];
-    } catch { return []; }
-  });
-  const [input, setInput] = useState("");
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [isHolding, setIsHolding] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
-  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const recognitionRef = useRef<any>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [bookingSheet, setBookingSheet] = useState<{ open: boolean; specialty: string; severity: Severity }>({
-    open: false,
-    specialty: "",
-    severity: "MODERATE",
-  });
-  const [reportOpen, setReportOpen] = useState(false);
-  const [userEmail, setUserEmail] = useState<string | null>(null);
-
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setUserEmail(data?.user?.email ?? null));
-  }, []);
-
-  // Substances now sourced from RLS-protected `user_substances` table
-  // (was previously `localStorage["vitalis_substances"]`).
   const { substances } = useSubstances();
 
+  const [screen, setScreen] = useState<ScreenState>("idle");
+  const [analyzingLabel, setAnalyzingLabel] = useState("Analyzing your report");
+  const [latestResult, setLatestResult] = useState<string>("");        // last full assistant message
+  const [chat, setChat] = useState<ChatMsg[]>([]);                     // follow-up Q&A only
+  const [input, setInput] = useState("");
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [bookingSheet, setBookingSheet] = useState<{ open: boolean; specialty: string; severity: Severity }>({
+    open: false, specialty: "", severity: "MODERATE",
+  });
+
+  const fileRef = useRef<HTMLInputElement>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
+  const followUpEndRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => () => { abortRef.current?.abort(); }, []);
   useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [messages]);
+    followUpEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [chat]);
 
-  // Load this user's chat history when userId becomes available.
-  useEffect(() => {
-    if (!storageKey) return;
-    try {
-      const raw = localStorage.getItem(storageKey);
-      if (raw) setMessages(JSON.parse(raw) as ChatMsg[]);
-    } catch { /* ignore */ }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storageKey]);
-
-  // Persist chat history per user. Survives tab switches and reloads
-  // until the user explicitly clears it.
-  useEffect(() => {
-    if (!storageKey) return;
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(messages));
-    } catch { /* quota — ignore */ }
-  }, [messages, storageKey]);
-
-  const clearChat = useCallback(() => {
-    if (!confirm("Clear AI Doctor chat history? This cannot be undone.")) return;
-    setMessages([]);
-    if (storageKey) {
-      try { localStorage.removeItem(storageKey); } catch { /* ignore */ }
-    }
-  }, [storageKey]);
-
-  const generateReport = useCallback((mode: "preview" | "download") => {
-    try {
-      if (mode === "preview") {
-        // Open the in-app mobile-optimized viewer (preview, share, PDF, HTML).
-        setReportOpen(true);
-        return;
-      }
-      downloadAIDoctorReport({ profile, substances });
-      toast({
-        title: "Report downloaded",
-        description: "Saved as an HTML file you can open, print, or email.",
-      });
-    } catch (err: any) {
-      toast({ title: "Could not generate report", description: err?.message || "Please try again.", variant: "destructive" });
-    }
-  }, [profile, substances, toast]);
-
-  const diagnosis = runDiagnosis(profile, substances);
-  const isHighRisk = diagnosis.severity === "critical" || diagnosis.severity === "high";
-
+  // ─── System prompt (preserves the structured response contract) ───
+  const diagnosis = useMemo(() => runDiagnosis(profile, substances), [profile, substances]);
   const substanceList = substances.length > 0
     ? substances.map(s => `${s.name} (${s.category}${s.dose ? `, ${s.dose}` : ""})`).join(", ")
     : "None reported";
 
-  const diagnosisSummary = `Primary diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk score ${diagnosis.riskScore}/100)
-Explanation: ${diagnosis.explanation}
-Top fixes: ${diagnosis.fixes.map(f => f.action).join("; ")}
-Expected impact: ${diagnosis.lifeImpact}`;
+  const systemPrompt = `You are Vitalis AI Doctor — a longevity medicine assistant. You are NOT a substitute for a licensed physician and must never give a definitive diagnosis. Be clear, decisive, and actionable.
 
-  const systemPrompt = `You are Vitalis AI Doctor — a longevity medicine assistant. You are NOT a substitute for a licensed physician and must never give a definitive diagnosis. Be clear, decisive, and actionable — never vague.
-
-========================
-MANDATORY RESPONSE FORMAT
-========================
-EVERY substantive answer MUST follow this exact structure, in this exact order, using these exact ## headers:
+EVERY substantive answer MUST follow this exact structure with these exact ## headers:
 
 ## 1. Summary
-1–3 sentences in plain language. What is likely going on, based on the data?
+1–3 sentences in plain language.
 
 ## 2. Severity Level
-Pick exactly ONE of: **LOW**, **MODERATE**, **HIGH**, **URGENT**.
-Definitions:
-- LOW — monitor, no action needed now
-- MODERATE — improve lifestyle factors
-- HIGH — consult a doctor soon
-- URGENT — seek medical care immediately (or call emergency services if symptoms suggest acute danger)
-State the chosen level in **bold** and add a one-line justification.
+Pick exactly ONE: **LOW**, **MODERATE**, **HIGH**, **URGENT**.
 
 ## 3. Key Findings
-A bulleted list of MAX 3 issues, each one short line. Reference the patient's actual numbers when relevant.
+Max 3 bullet points referencing the patient's actual numbers.
 
 ## 4. Recommended Actions
-A numbered list of concrete next steps. Mix:
-- lifestyle changes (specific, with dose/duration)
-- follow-up tests (which biomarker, when to retest)
-- doctor consultation (only when truly indicated)
+Numbered list of 2–3 concrete next steps.
 
 ## 5. Care Recommendation
-- If severity is LOW or MODERATE: a single line such as "No specialist visit required at this time."
-- If severity is HIGH or URGENT: name the TYPE of doctor (e.g., cardiologist, endocrinologist, GP, emergency care) and the general action ("book an appointment within X days" or "go to emergency care now"). Do NOT name specific hospitals or clinics.
+For LOW/MODERATE: "No specialist visit required at this time."
+For HIGH/URGENT: name the doctor TYPE and the timeline. Do not name specific clinics.
 
-At the very end of your response, on its own line, append two machine-readable tags:
+At the end, on its own line, append:
 [[SEVERITY:LOW|MODERATE|HIGH|URGENT]]
 [[SPECIALTY:<doctor type or "none">]]
-(Replace with the chosen value. These tags are required so the UI can render the right card. Do not wrap them in code blocks.)
 
-========================
-SAFETY RULES
-========================
-- Never give a definitive diagnosis — use phrases like "the data suggests" or "this pattern is consistent with".
-- Always include a brief disclaimer in the Summary or Care Recommendation when severity is HIGH or URGENT, e.g. "This is not a medical diagnosis — please confirm with a licensed physician."
-- If symptoms suggest a true emergency (chest pain with shortness of breath, signs of stroke, suicidal ideation, severe allergic reaction, etc.), severity MUST be URGENT and the action MUST be "seek emergency care now / call your local emergency number".
-- Do NOT recommend specific brand-name hospitals or clinics. Speak generically (e.g. "a reputable cardiology clinic in your area").
+PATIENT DATA — Age ${chronologicalAge} | Bio age ${biologicalAge} | Sex ${profile.sex || "Unknown"}
+BP ${profile.bp_systolic}/${profile.bp_diastolic} | HR ${profile.resting_hr} | HRV ${profile.hrv_ms} | VO2 ${profile.vo2_max}
+LDL ${profile.ldl} | HDL ${profile.hdl} | ApoB ${profile.apob} | Lp(a) ${profile.lpa}
+Glucose ${profile.fasting_glucose} | HbA1c ${profile.hba1c} | hs-CRP ${profile.hscrp}
+Sleep ${profile.avg_sleep_hours}h | Substances: ${substanceList}
+Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.riskScore}/100)`;
 
-========================
-STYLE
-========================
-- Be scannable in 5 seconds. Short sentences. No filler.
-- Use markdown tables ONLY when comparing 3+ biomarkers vs optimal ranges; otherwise prefer bullets.
-- Always reference the patient's actual numbers when discussing them.
-- Avoid hedging language like "you might want to consider possibly". Be decisive.
+  // ─── Streaming chat call ──────────────────────────────────────────
+  const streamChat = useCallback(async (
+    history: { role: "user" | "assistant"; content: string }[],
+    onToken: (full: string) => void,
+  ): Promise<string> => {
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
 
-========================
-PATIENT DATA
-========================
-- Name: ${profile.full_name || "Patient"} | Age: ${chronologicalAge} | Biological Age: ${biologicalAge} | Sex: ${profile.sex || "Unknown"}
-- Height: ${profile.height_cm}cm | Weight: ${profile.weight_kg}kg | Body Fat: ${profile.body_fat_pct}% | Waist: ${profile.waist_cm}cm
-
-CARDIOVASCULAR:
-- BP: ${profile.bp_systolic}/${profile.bp_diastolic} mmHg | Resting HR: ${profile.resting_hr} bpm | HRV: ${profile.hrv_ms} ms | VO2 Max: ${profile.vo2_max} ml/kg/min
-
-LIPIDS:
-- Total Cholesterol: ${profile.total_cholesterol} | LDL: ${profile.ldl} | HDL: ${profile.hdl} | Triglycerides: ${profile.triglycerides}
-- ApoB: ${profile.apob} mg/dL | Lp(a): ${profile.lpa} nmol/L
-
-METABOLIC:
-- Fasting Glucose: ${profile.fasting_glucose} mg/dL | HbA1c: ${profile.hba1c}% | Fasting Insulin: ${profile.fasting_insulin} μU/mL
-- hs-CRP: ${profile.hscrp} mg/L | Homocysteine: ${profile.homocysteine} μmol/L
-
-HORMONES:
-- Testosterone: ${profile.testosterone} ng/dL | Free T: ${profile.free_t} pg/mL | Estradiol: ${profile.estradiol} pg/mL
-- DHEA-S: ${profile.dhea_s} μg/dL | Cortisol: ${profile.cortisol} μg/dL
-- TSH: ${profile.tsh} mIU/L | Free T3: ${profile.free_t3} pg/mL | Free T4: ${profile.free_t4} ng/dL
-- IGF-1: ${profile.igf1} ng/mL | Vitamin D: ${profile.vitamin_d} ng/mL
-
-SLEEP & RECOVERY:
-- Avg Sleep: ${profile.avg_sleep_hours}h | Sleep Quality: ${profile.sleep_quality}/100 | FEV1: ${profile.fev1_pct}%
-
-SUBSTANCES: ${substanceList}
-
-CURRENT INTERNAL DIAGNOSIS (for your context — synthesize, don't quote verbatim):
-${diagnosisSummary}`;
-
-  const sendMessage = useCallback(async (text: string) => {
-    if (!text.trim() || isStreaming) return;
-    const userMsg: ChatMsg = { id: Date.now().toString(), role: "user", content: text.trim() };
-    const allMessages = [...messages.filter(m => m.role !== "action"), userMsg];
-    setMessages(prev => [...prev, userMsg]);
-    setInput("");
-    setIsStreaming(true);
-
-    let assistantContent = "";
-    const assistantId = (Date.now() + 1).toString();
-
-    try {
-      // The chat edge function validates the caller via supabase.auth.getUser(),
-      // so we MUST send the user's session JWT — not the anon publishable key.
-      const { data: { session } } = await supabase.auth.getSession();
-      const accessToken = session?.access_token;
-      if (!accessToken) throw new Error("Not signed in. Please refresh and sign in again.");
-
-      const resp = await fetch(CHAT_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-        },
-        body: JSON.stringify({
-          messages: allMessages.map(m => ({ role: m.role, content: m.content })),
-          systemPrompt,
-        }),
-      });
-
-      if (!resp.ok) {
-        const errData = await resp.json().catch(() => null);
-        if (resp.status === 429) toast({ title: "Rate limited", description: "Please wait a moment and try again.", variant: "destructive" });
-        else if (resp.status === 402) toast({ title: "Credits exhausted", description: "Please add funds in Settings > Workspace > Usage.", variant: "destructive" });
-        throw new Error(errData?.error || `Error ${resp.status}`);
-      }
-      if (!resp.body) throw new Error("No response body");
-
-      const reader = resp.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      setMessages(prev => [...prev, { id: assistantId, role: "assistant", content: "" }]);
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        let idx: number;
-        while ((idx = buffer.indexOf("\n")) !== -1) {
-          let line = buffer.slice(0, idx);
-          buffer = buffer.slice(idx + 1);
-          if (line.endsWith("\r")) line = line.slice(0, -1);
-          if (!line.startsWith("data: ")) continue;
-          const json = line.slice(6).trim();
-          if (json === "[DONE]") break;
-          try {
-            const parsed = JSON.parse(json);
-            const content = parsed.choices?.[0]?.delta?.content;
-            if (content) {
-              assistantContent += content;
-              setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: assistantContent } : m));
-            }
-          } catch {}
-        }
-      }
-
-      // After AI response, parse the severity tag emitted by the model.
-      // If HIGH or URGENT, inject a generic Care Recommendation card.
-      const severity = parseSeverity(assistantContent);
-      const specialty = parseSpecialty(assistantContent) || "General Practitioner";
-      if (severity === "HIGH" || severity === "URGENT") {
-        const careAction: ChatMsg = {
-          id: `care-${Date.now()}`,
-          role: "action",
-          content: "",
-          actionType: "care",
-          actionData: { severity, specialty },
-        };
-        setMessages(prev => [...prev, careAction]);
-      }
-    } catch (err: any) {
-      const errorMsg = err?.message || "Connection failed";
-      setMessages(prev => {
-        const last = prev[prev.length - 1];
-        if (last?.id === assistantId && !last.content) {
-          return prev.map(m => m.id === assistantId ? { ...m, content: `⚠️ ${errorMsg}` } : m);
-        }
-        return [...prev, { id: assistantId, role: "assistant", content: `⚠️ ${errorMsg}` }];
-      });
-    } finally {
-      setIsStreaming(false);
-    }
-  }, [messages, isStreaming, systemPrompt, toast]);
-
-  /**
-   * Test-mode helper: sends a prompt through the same edge function with
-   * the same systemPrompt as the real chat, but does NOT mutate the
-   * visible message list. Returns the full assistant text (including the
-   * hidden [[SEVERITY:...]] tags) so the test panel can validate it.
-   */
-  const runTestPrompt = useCallback(async (prompt: string): Promise<string> => {
     const { data: { session } } = await supabase.auth.getSession();
     const accessToken = session?.access_token;
-    if (!accessToken) throw new Error("Not signed in.");
+    if (!accessToken) throw new Error("Not signed in. Please refresh and sign in again.");
 
     const resp = await fetch(CHAT_URL, {
       method: "POST",
@@ -356,13 +166,13 @@ ${diagnosisSummary}`;
         Authorization: `Bearer ${accessToken}`,
         apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
       },
-      body: JSON.stringify({
-        messages: [{ role: "user", content: prompt }],
-        systemPrompt,
-      }),
+      body: JSON.stringify({ messages: history, systemPrompt }),
+      signal: ac.signal,
     });
     if (!resp.ok) {
       const errData = await resp.json().catch(() => null);
+      if (resp.status === 429) toast({ title: "Rate limited", description: "Please wait a moment and try again.", variant: "destructive" });
+      else if (resp.status === 402) toast({ title: "Credits exhausted", description: "Please add funds in Settings > Workspace > Usage.", variant: "destructive" });
       throw new Error(errData?.error || `Error ${resp.status}`);
     }
     if (!resp.body) throw new Error("No response body");
@@ -386,440 +196,311 @@ ${diagnosisSummary}`;
         try {
           const parsed = JSON.parse(json);
           const c = parsed.choices?.[0]?.delta?.content;
-          if (c) full += c;
-        } catch { /* partial chunk, ignore */ }
+          if (c) { full += c; onToken(full); }
+        } catch { /* partial */ }
       }
     }
     return full;
-  }, [systemPrompt]);
+  }, [systemPrompt, toast]);
 
-  const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !userId) return;
-    setIsUploading(true);
-
-    // Show upload message in chat
-    const uploadingMsg: ChatMsg = {
-      id: `uploading-${Date.now()}`,
-      role: "action",
-      content: `Analyzing **${file.name}**...`,
-      actionType: "upload-success",
-    };
-    setMessages(prev => [...prev, uploadingMsg]);
-
+  // ─── Upload + analyze flow ────────────────────────────────────────
+  const handleFile = useCallback(async (file: File) => {
+    if (!userId) {
+      toast({ title: "Sign in first", description: "Please sign in to analyze a report.", variant: "destructive" });
+      return;
+    }
+    setScreen("analyzing");
+    setAnalyzingLabel(`Reading ${file.name}`);
     try {
       const filePath = `${userId}/${Date.now()}_${file.name}`;
       await supabase.storage.from("medical-documents").upload(filePath, file);
-
       const { data: doc } = await supabase.from("medical_documents").insert({
         user_id: userId, file_name: file.name, file_path: filePath, status: "processing",
       }).select().single();
+      if (!doc) throw new Error("Could not save document");
 
-      if (doc) {
-        const { data: result } = await supabase.functions.invoke("parse-document", {
-          body: { documentId: doc.id, filePath },
+      setAnalyzingLabel("Extracting biomarkers");
+      const { data: result } = await supabase.functions.invoke("parse-document", {
+        body: { documentId: doc.id, filePath },
+      });
+      if (result?.biomarkers) {
+        Object.entries(result.biomarkers).forEach(([key, val]) => {
+          if (val && typeof val === "number" && val > 0) updateField(key as any, val);
         });
-
-        if (result?.biomarkers) {
-          Object.entries(result.biomarkers).forEach(([key, val]) => {
-            if (val && typeof val === "number" && val > 0) updateField(key as any, val);
-          });
-        }
-
-        const extractedCount = result?.biomarkers ? Object.keys(result.biomarkers).filter(k => result.biomarkers[k] > 0).length : 0;
-
-        // Replace uploading message with success
-        setMessages(prev => prev.map(m => m.id === uploadingMsg.id ? {
-          ...m,
-          content: `✅ **${file.name}** analyzed — ${extractedCount} biomarkers extracted and profile updated.`,
-        } : m));
-
-        // Auto-ask AI to analyze
-        const summaryText = `I just uploaded "${file.name}". ${extractedCount} biomarkers were extracted and my profile has been updated. Please analyze the new results and tell me what changed, what's concerning, and what I should do next. Create a comparison table of my key biomarkers vs optimal ranges.`;
-        await sendMessage(summaryText);
-        toast({ title: "Lab report analyzed", description: `${extractedCount} biomarkers extracted.` });
       }
+      const extractedCount = result?.biomarkers
+        ? Object.keys(result.biomarkers).filter(k => result.biomarkers[k] > 0).length
+        : 0;
+
+      setAnalyzingLabel("Asking Vitalis AI Doctor");
+      const userText = `I just uploaded "${file.name}". ${extractedCount} biomarkers were extracted. Analyze the new results — what changed, what's concerning, and what I should do next.`;
+      let full = "";
+      full = await streamChat([{ role: "user", content: userText }], (partial) => {
+        setLatestResult(partial);
+      });
+      setLatestResult(full);
+      setScreen("result");
+      toast({ title: "Report analyzed", description: `${extractedCount} biomarkers extracted.` });
     } catch (err: any) {
-      setMessages(prev => prev.map(m => m.id === uploadingMsg.id ? {
-        ...m, content: `❌ Failed to process **${file?.name}**: ${err.message}`,
-      } : m));
-      toast({ title: "Upload failed", description: err.message, variant: "destructive" });
+      toast({ title: "Analysis failed", description: err?.message || "Please try again.", variant: "destructive" });
+      setScreen("idle");
     } finally {
-      setIsUploading(false);
       if (fileRef.current) fileRef.current.value = "";
     }
-  }, [userId, updateField, toast, sendMessage]);
+  }, [userId, updateField, streamChat, toast]);
 
-  const handleHoldStart = () => {
-    holdTimer.current = setTimeout(() => {
-      setIsHolding(true);
-      const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (!SR) return;
-      const rec = new SR();
-      rec.continuous = true;
-      rec.interimResults = true;
-      rec.lang = "en-US";
-      let transcript = "";
-      rec.onresult = (e: any) => {
-        transcript = Array.from(e.results).map((r: any) => r[0].transcript).join("");
-        setInput(transcript);
-      };
-      rec.onerror = () => setIsHolding(false);
-      rec.start();
-      recognitionRef.current = rec;
-    }, 300);
-  };
+  const onDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files?.[0];
+    if (file) handleFile(file);
+  }, [handleFile]);
 
-  const handleHoldEnd = () => {
-    if (holdTimer.current) clearTimeout(holdTimer.current);
-    if (recognitionRef.current) { recognitionRef.current.stop(); recognitionRef.current = null; }
-    if (isHolding) {
-      setIsHolding(false);
-      if (input.trim()) setTimeout(() => sendMessage(input), 100);
+  // ─── Follow-up question (chat at bottom) ──────────────────────────
+  const sendFollowUp = useCallback(async () => {
+    const text = input.trim();
+    if (!text || isStreaming) return;
+    const userMsg: ChatMsg = { id: `u-${Date.now()}`, role: "user", content: text };
+    const assistantId = `a-${Date.now() + 1}`;
+    setChat(prev => [...prev, userMsg, { id: assistantId, role: "assistant", content: "" }]);
+    setInput("");
+    setIsStreaming(true);
+    try {
+      // Include the latest result for context, plus any prior follow-ups.
+      const history = [
+        ...(latestResult ? [{ role: "assistant" as const, content: latestResult }] : []),
+        ...chat.map(m => ({ role: m.role, content: m.content })),
+        { role: "user" as const, content: text },
+      ];
+      await streamChat(history, (partial) => {
+        setChat(prev => prev.map(m => m.id === assistantId ? { ...m, content: partial } : m));
+      });
+    } catch (err: any) {
+      setChat(prev => prev.map(m => m.id === assistantId
+        ? { ...m, content: `⚠️ ${err?.message || "Could not reach the AI Doctor."}` }
+        : m));
+    } finally {
+      setIsStreaming(false);
     }
-  };
+  }, [input, isStreaming, chat, latestResult, streamChat]);
 
-  const handleBookSpecialist = () => {
-    sendMessage("Based on my data, what type of specialist should I see, and how soon? Be specific and practical.");
-  };
-
-  const quickPrompts = [
-    "What's my #1 health risk right now?",
-    "Compare all my biomarkers vs optimal",
-    "Give me a 30-day protocol",
-    "What labs should I retest and when?",
-  ];
-
-  // Render generic Care Recommendation card (no hard-coded providers).
-  // Uses the severity + specialty parsed from the model's response and
-  // links to a generic Google Maps search so the user can find a real
-  // provider near them.
-  const renderCareCard = (msg: ChatMsg) => {
-    const data = msg.actionData as { severity: Severity; specialty: string };
-    const meta = SEVERITY_META[data.severity];
-    const Icon = meta.icon;
-    const isUrgent = data.severity === "URGENT";
-    const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(data.specialty + " near me")}`;
-    // Pick partner clinics (extensible via src/lib/clinic-partners.ts).
-    const partners = pickPartners(data.severity);
-    const hasPartners = partners.length > 0;
-    return (
-      <div className="flex gap-2.5 animate-fade-in">
-        <div className={`w-7 h-7 rounded-lg ${meta.bg} flex items-center justify-center shrink-0 mt-1`}>
-          <Icon className={`w-4 h-4 ${meta.text}`} />
-        </div>
-        <div className="max-w-[85%] w-full">
-          <div className={`bg-card border ${meta.border} rounded-2xl px-4 py-3 space-y-3`}>
-            <div>
-              <p className={`text-xs font-semibold ${meta.text} mb-0.5`}>
-                {isUrgent ? "Urgent care recommended" : "Book a medical consultation"}
-              </p>
-              <p className="text-[11px] text-muted-foreground">
-                {isUrgent
-                  ? "Your data suggests this may need immediate medical attention."
-                  : <>This may require professional medical attention. Recommended specialist:&nbsp;
-                      <span className="text-foreground font-medium">{data.specialty}</span>.
-                    </>}
-              </p>
-            </div>
-
-            {isUrgent ? (
-              <a
-                href="tel:112"
-                className={`flex items-center justify-center gap-2 w-full px-3 py-2.5 ${meta.bg} border ${meta.border} rounded-xl ${meta.text} text-xs font-semibold hover:opacity-90 transition-opacity`}
-              >
-                <Siren className="w-4 h-4" />
-                Call emergency services now
-              </a>
-            ) : (
-              <>
-                {hasPartners && (
-                  <button
-                    type="button"
-                    onClick={() => setBookingSheet({ open: true, specialty: data.specialty, severity: data.severity })}
-                    className="flex items-center justify-center gap-1.5 w-full px-3 py-2.5 bg-primary text-primary-foreground rounded-xl text-xs font-semibold hover:opacity-90 transition-opacity"
-                  >
-                    <CalendarCheck className="w-4 h-4" />
-                    Book {data.specialty} appointment
-                  </button>
-                )}
-                <a
-                  href={mapsUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2.5 p-2.5 bg-secondary/40 border border-border/30 rounded-xl hover:bg-secondary/60 hover:border-primary/30 transition-all group"
-                >
-                  <MapPin className="w-4 h-4 text-primary shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold text-foreground group-hover:text-primary transition-colors">
-                      Or find a {data.specialty} near you
-                    </p>
-                    <p className="text-[10px] text-muted-foreground">Opens map search — choose a reputable clinic in your area</p>
-                  </div>
-                  <ExternalLink className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary shrink-0" />
-                </a>
-              </>
-            )}
-
-            <p className="text-[10px] text-muted-foreground italic">
-              This app does not replace a licensed doctor.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  // Render upload status in chat
-  const renderUploadAction = (msg: ChatMsg) => (
-    <div className="flex gap-2.5 animate-fade-in">
-      <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-1">
-        {isUploading ? <Loader2 className="w-4 h-4 text-primary animate-spin" /> : <Upload className="w-4 h-4 text-primary" />}
-      </div>
-      <div className="max-w-[85%] bg-card border border-primary/20 rounded-2xl px-4 py-3">
-        <div className="prose prose-sm prose-invert max-w-none text-[13px] leading-relaxed [&_strong]:text-foreground">
-          <ReactMarkdown>{msg.content}</ReactMarkdown>
-        </div>
-      </div>
-    </div>
-  );
+  // ─── Derived from result ──────────────────────────────────────────
+  const severity = latestResult ? parseSeverity(latestResult) : null;
+  const specialty = latestResult ? (parseSpecialty(latestResult) || "General Practitioner") : null;
+  const sevMeta = severity ? SEVERITY_META[severity] : null;
+  const isSerious = !!sevMeta?.serious;
+  const summary = useMemo(() => latestResult ? extractSummary(stripTags(latestResult)) : null, [latestResult]);
+  const actions = useMemo(() => latestResult ? extractActions(stripTags(latestResult)) : [], [latestResult]);
 
   return (
-    <div className="flex flex-col h-full pb-20 -mx-4 -mt-3">
-      <input ref={fileRef} type="file" className="hidden" onChange={handleFileUpload} accept=".pdf,.jpg,.png,.jpeg" />
+    <div className="min-h-full flex flex-col safe-area-px safe-area-pt safe-area-pb">
 
-      {/* Minimal header */}
-      <div className="px-5 pt-4 pb-3 flex items-center gap-3">
-        <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center">
-          <Stethoscope className="w-5 h-5 text-primary" />
-        </div>
-        <div className="flex-1">
-          <h1 className="text-lg font-bold text-foreground">AI Doctor</h1>
-          <p className="text-[11px] text-muted-foreground">Clinical-grade health intelligence</p>
-        </div>
-        {messages.length > 0 && (
-          <button
-            onClick={clearChat}
-            className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
-            aria-label="Clear chat history"
-            title="Clear chat history"
+      {/* ════════ HEADER ════════ */}
+      <header className="text-center pt-2 pb-8 sm:pt-4 sm:pb-12">
+        <h1 className="text-[28px] sm:text-4xl font-bold tracking-tight text-foreground">AI Doctor</h1>
+        <p className="text-xs sm:text-sm text-muted-foreground mt-1.5">
+          {screen === "idle"      && "Upload a report to get a clear next step."}
+          {screen === "analyzing" && "Hang tight — your report is being read."}
+          {screen === "result"    && "Here's what your latest report tells us."}
+        </p>
+      </header>
+
+      {/* ════════ MAIN STAGE ════════ */}
+      <main className="flex-1 flex flex-col items-center justify-start px-1">
+
+        {/* ── IDLE: single primary action ── */}
+        {screen === "idle" && (
+          <div
+            ref={dropRef}
+            onDragOver={(e) => { e.preventDefault(); }}
+            onDrop={onDrop}
+            onClick={() => fileRef.current?.click()}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") fileRef.current?.click(); }}
+            className="w-full max-w-md mx-auto rounded-3xl border-2 border-dashed border-border hover:border-primary/60 active:border-primary transition-colors cursor-pointer p-10 sm:p-14 flex flex-col items-center text-center min-h-[260px] active:scale-[0.99] duration-150"
+            aria-label="Upload your health report"
           >
-            <Trash2 className="w-4 h-4" />
-          </button>
+            <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-5">
+              <Upload className="w-7 h-7 text-primary" />
+            </div>
+            <h2 className="text-lg sm:text-xl font-semibold text-foreground">Upload your health report</h2>
+            <p className="text-xs sm:text-sm text-muted-foreground mt-2 max-w-[260px]">
+              PDF, JPG, or PNG. We'll read it, extract your biomarkers, and tell you what matters most.
+            </p>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png"
+              className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
+            />
+          </div>
         )}
-        <button
-          onClick={() => generateReport("preview")}
-          className="p-2 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
-          aria-label="Generate health report"
-          title="Generate health report"
-        >
-          <FileText className="w-4 h-4" />
-        </button>
-      </div>
 
-      {/* Persistent safety disclaimer */}
-      <div className="mx-4 mb-2 flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-500/5 border border-amber-500/20">
-        <ShieldCheck className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-        <p className="text-[10.5px] leading-tight text-muted-foreground">
-          <span className="text-amber-400/90 font-medium">This app does not replace a licensed doctor.</span>
-          {" "}Use AI guidance to inform your decisions, not replace professional care.
+        {/* ── ANALYZING: calm progress ── */}
+        {screen === "analyzing" && (
+          <div className="flex flex-col items-center text-center pt-6 animate-fade-in">
+            <div className="relative w-16 h-16 mb-5">
+              <div className="absolute inset-0 rounded-full border-2 border-primary/20" />
+              <Loader2 className="w-16 h-16 text-primary animate-spin" />
+            </div>
+            <p className="text-base font-medium text-foreground">{analyzingLabel}</p>
+            <p className="text-xs text-muted-foreground mt-1.5">This usually takes 10–20 seconds.</p>
+          </div>
+        )}
+
+        {/* ── RESULT: main issue + 2–3 actions ── */}
+        {screen === "result" && summary && (
+          <div className="w-full max-w-md mx-auto space-y-5 animate-fade-in">
+
+            {/* Severity pill */}
+            {sevMeta && (
+              <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border ${sevMeta.bg} ${sevMeta.border} mx-auto`}>
+                <sevMeta.Icon className={`w-3.5 h-3.5 ${sevMeta.tone}`} />
+                <span className={`text-[11px] font-semibold uppercase tracking-wider ${sevMeta.tone}`}>
+                  {sevMeta.label} severity
+                </span>
+              </div>
+            )}
+
+            {/* Main health issue */}
+            <section className="text-center">
+              <h2 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight leading-snug">
+                {summary.title}
+              </h2>
+              {summary.explanation && (
+                <p className="text-sm text-muted-foreground mt-2.5 leading-relaxed">
+                  {summary.explanation}
+                </p>
+              )}
+            </section>
+
+            {/* 2–3 actions */}
+            {actions.length > 0 && (
+              <section className="space-y-2">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground text-center">
+                  What to do next
+                </p>
+                {actions.map((a, i) => (
+                  <div key={i} className="flex items-start gap-3 bg-card border border-border rounded-2xl p-3.5 min-h-[60px]">
+                    <div className="w-7 h-7 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0 text-xs font-bold">
+                      {i + 1}
+                    </div>
+                    <p className="text-sm text-foreground leading-relaxed flex-1 pt-0.5">{a}</p>
+                  </div>
+                ))}
+              </section>
+            )}
+
+            {/* Specialist card — ONLY when serious */}
+            {isSerious && sevMeta && specialty && (
+              <section className={`rounded-2xl border ${sevMeta.border} ${sevMeta.bg} p-4 space-y-3 text-center`}>
+                <div className="flex items-center justify-center gap-2">
+                  <Stethoscope className={`w-4 h-4 ${sevMeta.tone}`} />
+                  <p className={`text-xs font-semibold ${sevMeta.tone}`}>
+                    {severity === "URGENT" ? "Seek medical care now" : "We recommend a specialist"}
+                  </p>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {severity === "URGENT"
+                    ? "Your data suggests this needs immediate attention."
+                    : <>Recommended: <span className="text-foreground font-medium">{specialty}</span></>}
+                </p>
+                {severity === "URGENT" ? (
+                  <a
+                    href="tel:112"
+                    className={`flex items-center justify-center gap-2 w-full min-h-[44px] px-4 py-3 ${sevMeta.bg} border ${sevMeta.border} rounded-xl ${sevMeta.tone} text-sm font-semibold`}
+                  >
+                    <Siren className="w-4 h-4" />
+                    Call emergency services
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setBookingSheet({ open: true, specialty, severity: severity! })}
+                    className="flex items-center justify-center gap-2 w-full min-h-[44px] px-4 py-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold active:scale-[0.98] transition-transform"
+                  >
+                    <Stethoscope className="w-4 h-4" />
+                    Book consultation
+                  </button>
+                )}
+              </section>
+            )}
+
+            {/* Quiet "start over" — single secondary action */}
+            <div className="flex justify-center pt-1">
+              <button
+                type="button"
+                onClick={() => { setLatestResult(""); setChat([]); setScreen("idle"); }}
+                className="inline-flex items-center gap-1.5 min-h-[44px] px-4 text-xs font-medium text-muted-foreground hover:text-foreground active:scale-95 transition-all"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Upload another report
+              </button>
+            </div>
+
+            {/* Follow-up Q&A — only renders once the user asks something */}
+            {chat.length > 0 && (
+              <section className="space-y-3 pt-4 border-t border-border/50">
+                {chat.map(m => (
+                  <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+                    <div
+                      className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
+                        m.role === "user"
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-card border border-border text-foreground"
+                      }`}
+                    >
+                      {m.role === "assistant"
+                        ? <div className="prose prose-sm prose-invert max-w-none [&_p]:my-1 [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:mt-2">
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{stripTags(m.content) || "…"}</ReactMarkdown>
+                          </div>
+                        : m.content}
+                    </div>
+                  </div>
+                ))}
+                <div ref={followUpEndRef} />
+              </section>
+            )}
+          </div>
+        )}
+      </main>
+
+      {/* ════════ CHAT INPUT (always at the bottom) ════════ */}
+      <div className="sticky bottom-0 mt-6 pt-3 bg-gradient-to-t from-background via-background to-background/0">
+        <form
+          onSubmit={(e) => { e.preventDefault(); sendFollowUp(); }}
+          className="flex items-center gap-2 max-w-md mx-auto bg-card border border-border rounded-full pl-4 pr-1.5 py-1.5 focus-within:border-primary/60 transition-colors"
+        >
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder={screen === "result" ? "Ask a follow-up question…" : "Ask the AI Doctor…"}
+            className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none min-h-[36px]"
+            disabled={isStreaming || screen === "analyzing"}
+            aria-label="Message AI Doctor"
+          />
+          <button
+            type="submit"
+            disabled={!input.trim() || isStreaming || screen === "analyzing"}
+            className="w-10 h-10 min-h-[44px] min-w-[44px] -m-1.5 ml-0 rounded-full bg-primary flex items-center justify-center disabled:opacity-30 transition-opacity active:scale-95"
+            aria-label="Send message"
+          >
+            {isStreaming
+              ? <Loader2 className="w-4 h-4 text-primary-foreground animate-spin" />
+              : <Send className="w-4 h-4 text-primary-foreground" />}
+          </button>
+        </form>
+        <p className="text-[10px] text-center text-muted-foreground/70 mt-2">
+          Vitalis AI Doctor is informational only — not a substitute for a licensed physician.
         </p>
       </div>
 
-      {/* Test mode — verify mandatory 5-block structure */}
-      <AIDoctorTestMode runPrompt={runTestPrompt} />
-
-      {/* Messages */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 space-y-4">
-        {messages.length === 0 && (
-          <div className="flex flex-col items-center justify-center pt-8 space-y-5">
-            <div className="w-16 h-16 rounded-3xl bg-primary/10 flex items-center justify-center">
-              <Stethoscope className="w-8 h-8 text-primary" />
-            </div>
-            <div className="text-center space-y-1.5">
-              <p className="text-lg font-semibold text-foreground">Your AI Doctor</p>
-              <p className="text-xs text-muted-foreground max-w-[280px]">
-                Ask me anything about your health. I'll analyze your biomarkers and give you specific protocols.
-              </p>
-            </div>
-
-            {/* Smart contextual actions — integrated in chat */}
-            <div className="w-full max-w-sm space-y-2">
-              {isHighRisk && (
-                <button
-                  onClick={handleBookSpecialist}
-                  className="w-full flex items-center gap-3 p-3 bg-red-500/10 border border-red-500/20 rounded-2xl hover:bg-red-500/15 transition-colors text-left"
-                >
-                  <Calendar className="w-5 h-5 text-red-400 shrink-0" />
-                  <div>
-                    <p className="text-sm font-semibold text-red-400">Ask about a specialist</p>
-                    <p className="text-[11px] text-muted-foreground">{diagnosis.severity} risk — let me find you the right doctor</p>
-                  </div>
-                </button>
-              )}
-              <button
-                onClick={() => generateReport("preview")}
-                className="w-full flex items-center gap-3 p-3 bg-emerald-500/5 border border-emerald-500/20 rounded-2xl hover:bg-emerald-500/10 transition-colors text-left"
-              >
-                <FileText className="w-5 h-5 text-emerald-400 shrink-0" />
-                <div className="flex-1">
-                  <p className="text-sm font-semibold text-foreground">Generate health report</p>
-                  <p className="text-[11px] text-muted-foreground">Your values vs normal · underlying issues · which doctor to see</p>
-                </div>
-                <Download className="w-4 h-4 text-muted-foreground shrink-0" onClick={(e) => { e.stopPropagation(); generateReport("download"); }} />
-              </button>
-              <button
-                onClick={() => fileRef.current?.click()}
-                className="w-full flex items-center gap-3 p-3 bg-primary/5 border border-primary/20 rounded-2xl hover:bg-primary/10 transition-colors text-left"
-              >
-                <Upload className="w-5 h-5 text-primary shrink-0" />
-                <div>
-                  <p className="text-sm font-semibold text-foreground">Upload lab results</p>
-                  <p className="text-[11px] text-muted-foreground">PDF or photo — I'll extract and analyze everything</p>
-                </div>
-              </button>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 w-full max-w-sm">
-              {quickPrompts.map(q => (
-                <button
-                  key={q}
-                  onClick={() => sendMessage(q)}
-                  className="text-left text-xs px-3 py-2.5 rounded-xl bg-card border border-border/50 text-muted-foreground hover:text-foreground hover:border-primary/30 transition-all"
-                >
-                  {q}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {messages.map(msg => {
-          if (msg.role === "action" && msg.actionType === "care") return <div key={msg.id}>{renderCareCard(msg)}</div>;
-          if (msg.role === "action") return <div key={msg.id}>{renderUploadAction(msg)}</div>;
-
-          // For assistant messages, parse severity inline so we can render
-          // a compact, color-coded badge above the structured response.
-          const severity = msg.role === "assistant" ? parseSeverity(msg.content) : null;
-          const cleanContent = msg.role === "assistant" ? stripTags(msg.content) : msg.content;
-          const sevMeta = severity ? SEVERITY_META[severity] : null;
-          const SevIcon = sevMeta?.icon;
-
-          return (
-            <div key={msg.id} className={`flex gap-2.5 ${msg.role === "user" ? "justify-end" : ""} animate-fade-in`}>
-              {msg.role === "assistant" && (
-                <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-1">
-                  <Bot className="w-4 h-4 text-primary" />
-                </div>
-              )}
-              <div className={`max-w-[85%] ${msg.role === "user" ? "" : "w-full"}`}>
-                {sevMeta && SevIcon && (
-                  <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full ${sevMeta.bg} border ${sevMeta.border} mb-1.5`}>
-                    <SevIcon className={`w-3 h-3 ${sevMeta.text}`} />
-                    <span className={`text-[10px] font-bold uppercase tracking-wide ${sevMeta.text}`}>
-                      {sevMeta.label}
-                    </span>
-                    <span className="text-[10px] text-muted-foreground">· {sevMeta.tagline}</span>
-                  </div>
-                )}
-                <div className={`rounded-2xl px-4 py-3 ${
-                  msg.role === "user" ? "bg-primary text-primary-foreground inline-block" : "bg-card border border-border/50"
-                }`}>
-                  {msg.role === "assistant" ? (
-                    <div className="prose prose-sm prose-invert max-w-none text-[13px] leading-relaxed [&_p]:mb-2 [&_ul]:mb-2 [&_ol]:mb-2 [&_li]:mb-0.5 [&_strong]:text-foreground [&_h2]:text-sm [&_h2]:font-bold [&_h2]:mb-1.5 [&_h2]:mt-3 [&_h2]:text-foreground [&_h2:first-child]:mt-0 [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mb-1 [&_table]:w-full [&_table]:text-[11px] [&_th]:bg-secondary/50 [&_th]:px-2 [&_th]:py-1.5 [&_th]:text-left [&_th]:font-semibold [&_th]:border-b [&_th]:border-border/50 [&_td]:px-2 [&_td]:py-1.5 [&_td]:border-t [&_td]:border-border/30 [&_code]:bg-secondary/50 [&_code]:px-1 [&_code]:rounded [&_table]:border [&_table]:border-border/30 [&_table]:rounded-lg [&_table]:overflow-hidden">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{cleanContent || "..."}</ReactMarkdown>
-                    </div>
-                  ) : (
-                    <p className="text-[13px] leading-relaxed">{cleanContent}</p>
-                  )}
-                </div>
-              </div>
-              {msg.role === "user" && (
-                <div className="w-7 h-7 rounded-lg bg-secondary flex items-center justify-center shrink-0 mt-1">
-                  <User className="w-4 h-4 text-muted-foreground" />
-                </div>
-              )}
-            </div>
-          );
-        })}
-
-        {isStreaming && messages[messages.length - 1]?.content === "" && (
-          <div className="flex gap-2.5 animate-fade-in">
-            <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-              <Bot className="w-4 h-4 text-primary" />
-            </div>
-            <div className="bg-card border border-border/50 rounded-2xl px-4 py-3">
-              <div className="flex gap-1">
-                <div className="w-2 h-2 rounded-full bg-primary/40 animate-bounce" style={{ animationDelay: "0ms" }} />
-                <div className="w-2 h-2 rounded-full bg-primary/40 animate-bounce" style={{ animationDelay: "150ms" }} />
-                <div className="w-2 h-2 rounded-full bg-primary/40 animate-bounce" style={{ animationDelay: "300ms" }} />
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Voice overlay */}
-      {isHolding && (
-        <div className="absolute inset-0 bg-background/90 backdrop-blur-md flex flex-col items-center justify-center z-50 animate-fade-in">
-          <div className="w-24 h-24 rounded-full bg-primary/20 flex items-center justify-center animate-pulse">
-            <Mic className="w-10 h-10 text-primary" />
-          </div>
-          <p className="text-foreground font-semibold mt-4">Listening...</p>
-          <p className="text-xs text-muted-foreground mt-1">Release to send</p>
-        </div>
-      )}
-
-      {/* Input bar with integrated upload */}
-      <div className="px-4 pt-3 pb-2">
-        <div className="flex items-center gap-2 bg-card border border-border/50 rounded-2xl px-3 py-2">
-          <button
-            onClick={() => fileRef.current?.click()}
-            disabled={isUploading}
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors shrink-0"
-            title="Upload lab report"
-          >
-            {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Paperclip className="w-4 h-4" />}
-          </button>
-          <input
-            ref={inputRef}
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && sendMessage(input)}
-            placeholder="Ask your AI Doctor..."
-            className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
-            disabled={isStreaming}
-          />
-          <button
-            onTouchStart={handleHoldStart}
-            onTouchEnd={handleHoldEnd}
-            onMouseDown={handleHoldStart}
-            onMouseUp={handleHoldEnd}
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors shrink-0"
-          >
-            <Mic className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => sendMessage(input)}
-            disabled={!input.trim() || isStreaming}
-            className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center disabled:opacity-30 transition-opacity shrink-0"
-          >
-            <Send className="w-4 h-4 text-primary-foreground" />
-          </button>
-        </div>
-      </div>
       <BookingSheet
         open={bookingSheet.open}
         onOpenChange={(open) => setBookingSheet(s => ({ ...s, open }))}
         specialty={bookingSheet.specialty}
         severity={bookingSheet.severity}
-      />
-      <ReportViewerSheet
-        open={reportOpen}
-        onOpenChange={setReportOpen}
-        input={reportOpen ? { profile, substances } : null}
-        userId={userId}
-        userEmail={userEmail}
       />
     </div>
   );
