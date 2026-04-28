@@ -997,6 +997,23 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
                 <p className="text-[10px] text-muted-foreground/70 italic pt-1">
                   AI-assisted analysis. Does not replace a licensed physician.
                 </p>
+                <button
+                  type="button"
+                  onClick={() => downloadCaseSummary({
+                    file_name: lastFileName || "case",
+                    document_type: latestCase.document_type,
+                    main_finding: latestCase.main_finding,
+                    clinical_insight: latestCase.clinical_insight,
+                    priority: latestCase.priority,
+                    review_window: latestCase.review_window,
+                    created_at: new Date().toISOString(),
+                  })}
+                  className="w-full inline-flex items-center justify-center gap-1.5 mt-2 min-h-[40px] px-3 rounded-lg border border-border bg-background/40 hover:bg-background/70 text-foreground text-[11px] font-medium transition-colors"
+                  aria-label="Download case summary PDF"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Download summary
+                </button>
               </section>
             )}
 
