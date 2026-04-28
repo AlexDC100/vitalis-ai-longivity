@@ -1215,6 +1215,71 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
         {screen === "result" && summary && (
           <div className="w-full max-w-md mx-auto space-y-5 animate-fade-in">
 
+            {/* Active-case header — shows which triage case is loaded and lets
+                the user switch between cases without losing the conversation
+                (each case has its own persisted chat thread). */}
+            {activeCaseId && triage.length > 0 && (() => {
+              const active = triage.find(t => t.id === activeCaseId);
+              if (!active) return null;
+              const meta = PRIORITY_META[active.priority];
+              const others = triage.filter(t => t.id !== activeCaseId);
+              return (
+                <div className={`rounded-2xl border ${meta.border} ${meta.bg} px-3 py-2.5 flex items-center gap-3`}>
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${meta.dot}`} aria-hidden />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                      Discussing case
+                    </p>
+                    <p className="text-xs font-semibold text-foreground truncate">
+                      {active.document_type} · {active.file_name}
+                    </p>
+                  </div>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 min-h-[36px] px-2.5 rounded-lg border border-border bg-background/50 hover:bg-background text-[11px] font-medium text-foreground transition-colors"
+                        aria-label="Switch to a different case"
+                      >
+                        Switch <ChevronDown className="w-3 h-3" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-64">
+                      <DropdownMenuLabel className="text-[10px] uppercase tracking-wider">
+                        Your cases
+                      </DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      {others.length === 0 && (
+                        <p className="px-2 py-3 text-xs text-muted-foreground text-center">
+                          No other cases yet.
+                        </p>
+                      )}
+                      {others.map(c => {
+                        const m = PRIORITY_META[c.priority];
+                        return (
+                          <DropdownMenuItem
+                            key={c.id}
+                            onSelect={() => handleDiscussCase(c)}
+                            className="flex items-start gap-2 py-2 cursor-pointer"
+                          >
+                            <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${m.dot}`} aria-hidden />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-medium text-foreground truncate">
+                                {c.document_type} · {c.file_name}
+                              </p>
+                              <p className={`text-[10px] ${m.tone}`}>
+                                {m.label} · {c.review_window}
+                              </p>
+                            </div>
+                          </DropdownMenuItem>
+                        );
+                      })}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              );
+            })()}
+
             {/* Severity pill */}
             {sevMeta && (
               <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border ${sevMeta.bg} ${sevMeta.border} mx-auto`}>
