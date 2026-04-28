@@ -164,6 +164,49 @@ export default function AIDoctorScreen() {
     if (typeof window === "undefined") return {};
     try { return JSON.parse(sessionStorage.getItem(SS_BIOMARKERS) || "{}"); } catch { return {}; }
   });
+  // Latest case priority + clinical insight from the parse-document call.
+  const [latestCase, setLatestCase] = useState<{
+    main_finding: string;
+    clinical_insight: string;
+    priority: Priority;
+    review_window: string;
+    document_type: string;
+  } | null>(null);
+  // Triage list — all of the user's processed documents, sorted by priority.
+  // Only surfaced when the user has 2+ uploads (hospital backlog use case).
+  const [triage, setTriage] = useState<TriageCase[]>([]);
+
+  // Load triage list whenever we land on result/idle (after an upload completes).
+  const loadTriage = useCallback(async () => {
+    if (!userId) return;
+    const { data, error } = await supabase
+      .from("medical_documents")
+      .select("id, file_name, document_type, extracted_data, created_at, status")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(50);
+    if (error || !data) return;
+    const cases: TriageCase[] = data
+      .filter((d: any) => d.status === "reviewed" && d.extracted_data)
+      .map((d: any) => {
+        const ed = d.extracted_data || {};
+        const cp = ed.case_priority || {};
+        const lvl = (cp.level || ed.urgency || "LOW").toString().toUpperCase() as Priority;
+        const safe: Priority = lvl === "HIGH" || lvl === "MEDIUM" ? lvl : "LOW";
+        return {
+          id: d.id,
+          file_name: d.file_name,
+          document_type: d.document_type || "General",
+          main_finding: ed.main_finding || "",
+          priority: safe,
+          review_window: cp.review_window || PRIORITY_META[safe].window,
+          created_at: d.created_at,
+        };
+      });
+    setTriage(cases);
+  }, [userId]);
+
+  useEffect(() => { void loadTriage(); }, [loadTriage]);
 
   const fileRef = useRef<HTMLInputElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
