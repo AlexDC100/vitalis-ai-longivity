@@ -1457,6 +1457,7 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
                     sessionStorage.removeItem(SS_BIOMARKERS);
                     sessionStorage.removeItem(SS_FILENAME);
                     sessionStorage.removeItem(SS_SCREEN);
+                    localStorage.removeItem(LS_ACTIVE_CASE);
                   } catch { /* ignore */ }
                 }}
                 className="inline-flex items-center gap-1.5 min-h-[44px] px-4 text-xs font-medium text-muted-foreground hover:text-foreground active:scale-95 transition-all"
