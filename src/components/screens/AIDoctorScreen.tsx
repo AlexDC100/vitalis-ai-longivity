@@ -669,7 +669,7 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
               {isDragging ? "Drop to upload" : "Upload your health report"}
             </h2>
             <p className="text-xs sm:text-sm text-muted-foreground mt-2 max-w-[260px]">
-              PDF, JPG, or PNG. We'll read it, extract your biomarkers, and tell you what matters most.
+              Blood tests, MRI/CT/X-ray, ECG, or radiology PDFs. We'll read it, flag what matters, and assign a case priority.
             </p>
             <button
               type="button"
@@ -693,11 +693,62 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
             <input
               ref={fileRef}
               type="file"
-              accept=".pdf,.jpg,.jpeg,.png"
+              accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.dcm,image/*"
               className="hidden"
               onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
             />
           </div>
+        )}
+
+        {/* ── Triage list (visible on idle when ≥2 processed cases exist) ── */}
+        {screen === "idle" && triage.length >= 2 && (
+          <section className="w-full max-w-md mx-auto mt-8 animate-fade-in">
+            <div className="flex items-center justify-between mb-3 px-1">
+              <div className="flex items-center gap-2">
+                <ClipboardList className="w-4 h-4 text-primary" />
+                <h3 className="text-sm font-semibold text-foreground">Case priority</h3>
+              </div>
+              <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                {triage.length} cases
+              </span>
+            </div>
+            <ul className="space-y-2">
+              {(["HIGH", "MEDIUM", "LOW"] as Priority[]).flatMap(level =>
+                triage
+                  .filter(c => c.priority === level)
+                  .map(c => {
+                    const meta = PRIORITY_META[c.priority];
+                    return (
+                      <li
+                        key={c.id}
+                        className={`flex items-start gap-3 rounded-2xl border ${meta.border} ${meta.bg} p-3`}
+                      >
+                        <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${meta.dot}`} aria-hidden />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-xs font-medium text-foreground truncate">
+                              {c.document_type} · <span className="text-muted-foreground">{c.file_name}</span>
+                            </p>
+                            <span className={`text-[10px] font-semibold uppercase tracking-wider ${meta.tone} shrink-0`}>
+                              {meta.label}
+                            </span>
+                          </div>
+                          {c.main_finding && (
+                            <p className="text-xs text-muted-foreground mt-1 leading-snug line-clamp-2">
+                              {c.main_finding}
+                            </p>
+                          )}
+                          <p className={`text-[10px] mt-1 ${meta.tone}`}>{c.review_window}</p>
+                        </div>
+                      </li>
+                    );
+                  })
+              )}
+            </ul>
+            <p className="text-[10px] text-center text-muted-foreground/70 mt-3 px-2">
+              AI-assisted triage. Does not replace a licensed physician.
+            </p>
+          </section>
         )}
 
         {/* ── ANALYZING: calm progress ── */}
