@@ -101,7 +101,7 @@ export default function ReportViewerSheet({ open, onOpenChange, input, userId, u
             html2canvas: { scale: 2, useCORS: true, backgroundColor: "#ffffff" },
             jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
             pagebreak: { mode: ["css", "legacy"] },
-          })
+          } as any)
           .from(container)
           .save();
         toast({ title: "PDF downloaded", description: "Saved to your downloads folder." });
