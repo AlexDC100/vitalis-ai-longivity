@@ -112,6 +112,22 @@ export default function BodyScreen() {
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
 
+  /**
+   * Shared reveal gate for Metrics, Profile, and Lab reports skeletons.
+   * We wait until ALL underlying queries (auth/userId + documents) have
+   * resolved AND a minimum reveal window has elapsed before flipping
+   * `sectionsReady` to true. This keeps section reveals synchronized so
+   * they don't pop in independently as each query resolves.
+   */
+  const [sectionsReady, setSectionsReady] = useState(false);
+  useEffect(() => {
+    const minRevealMs = reduceMotion ? 0 : 280;
+    const t = setTimeout(() => {
+      if (userId !== undefined && !documentsLoading) setSectionsReady(true);
+    }, minRevealMs);
+    return () => clearTimeout(t);
+  }, [userId, documentsLoading, reduceMotion]);
+
   // Family history (RLS-protected `user_family_history` table)
   const { conditions: familyHistory, toggleCondition } = useFamilyHistory();
 
@@ -396,10 +412,10 @@ export default function BodyScreen() {
                              `Score ${trend.deltaScore >= 0 ? "+" : ""}${trend.deltaScore} pts over 30 days`;
 
   return (
-    <div className={`space-y-7 sm:space-y-8 safe-area-pb ${fadeIn}`}>
+    <div className={`space-y-7 sm:space-y-8 safe-area-px safe-area-pt safe-area-pb ${fadeIn}`}>
 
       {/* ══════════ 1. HERO ══════════ */}
-      <header className={`text-center pt-1 sm:pt-2 space-y-2.5 sm:space-y-3 ${fadeInDelayed("animate-[fade-in_0.5s_ease-out]")}`}>
+      <header className={`text-center space-y-2.5 sm:space-y-3 ${fadeInDelayed("animate-[fade-in_0.5s_ease-out]")}`}>
         <h1 className="text-[28px] leading-tight sm:text-4xl font-bold text-foreground tracking-tight">Your Body</h1>
         <div className="flex flex-col sm:flex-row items-center justify-center gap-1.5 sm:gap-2 px-4">
           <span className={`inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-full border ${trendMeta.tone}`}>
@@ -411,16 +427,37 @@ export default function BodyScreen() {
       </header>
 
       {/* ══════════ 2. LONGEVITY SCORE ══════════ */}
-      <section className={`flex flex-col items-center gap-3 ${fadeInDelayed("animate-[scale-in_0.4s_ease-out_0.1s_both] [will-change:transform]")}`}>
-        <div className="sm:hidden"><ScoreRing score={longevityScore} size={184} strokeWidth={12} /></div>
-        <div className="hidden sm:block"><ScoreRing score={longevityScore} size={220} strokeWidth={14} /></div>
-        <div className="text-center">
-          <p className={`text-base font-semibold ${overall.tone}`}>{overall.label}</p>
-          <p className="text-[11px] text-muted-foreground mt-0.5">
-            Bio age <span className="text-foreground font-medium">{biologicalAge}</span> · Actual {chronologicalAge}
-          </p>
-        </div>
-      </section>
+      {!userId || !sectionsReady ? (
+        <section
+          className="flex flex-col items-center gap-3"
+          aria-busy="true"
+          aria-label="Computing your longevity score"
+        >
+          {/* Ring placeholder — matches ScoreRing footprint to prevent layout shift */}
+          <div className="sm:hidden">
+            <Skeleton className="rounded-full w-[184px] h-[184px]" />
+          </div>
+          <div className="hidden sm:block">
+            <Skeleton className="rounded-full w-[220px] h-[220px]" />
+          </div>
+          <div className="flex flex-col items-center gap-1.5">
+            <Skeleton className="h-4 w-24" />
+            <Skeleton className="h-2.5 w-40" />
+          </div>
+          <span className="sr-only">Loading longevity score</span>
+        </section>
+      ) : (
+        <section className={`flex flex-col items-center gap-3 ${fadeInDelayed("animate-[scale-in_0.4s_ease-out_0.1s_both] [will-change:transform]")}`}>
+          <div className="sm:hidden"><ScoreRing score={longevityScore} size={184} strokeWidth={12} /></div>
+          <div className="hidden sm:block"><ScoreRing score={longevityScore} size={220} strokeWidth={14} /></div>
+          <div className="text-center">
+            <p className={`text-base font-semibold ${overall.tone}`}>{overall.label}</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              Bio age <span className="text-foreground font-medium">{biologicalAge}</span> · Actual {chronologicalAge}
+            </p>
+          </div>
+        </section>
+      )}
 
       {/* ══════════ 3. BODY SYSTEMS ══════════ */}
       <section className={`space-y-2.5 sm:space-y-3 ${fadeInDelayed("animate-[fade-in_0.5s_ease-out_0.2s_both]")}`}>
@@ -571,14 +608,21 @@ export default function BodyScreen() {
           }`}
         >
           <div className="overflow-hidden">
-            {!userId ? (
-              <div className="grid grid-cols-2 gap-2" aria-busy="true" aria-label="Loading metrics">
+            {!sectionsReady ? (
+              <div
+                className="grid grid-cols-2 gap-2"
+                role="status"
+                aria-busy="true"
+                aria-live="polite"
+                aria-label="Loading your metrics"
+              >
                 {Array.from({ length: 6 }).map((_, i) => (
                   <div key={i} className="bg-card border border-border rounded-lg p-2.5 min-h-[72px] space-y-1.5">
                     <Skeleton className="h-2.5 w-12" />
                     <Skeleton className="h-4 w-16" />
                   </div>
                 ))}
+                <span className="sr-only">Loading metrics</span>
               </div>
             ) : (
             <div className="grid grid-cols-2 gap-2">
@@ -636,8 +680,14 @@ export default function BodyScreen() {
           }`}
         >
           <div className="overflow-hidden">
-            {!userId ? (
-              <div className="bg-card border border-border rounded-xl p-3.5 space-y-3" aria-busy="true" aria-label="Loading profile">
+            {!sectionsReady ? (
+              <div
+                className="bg-card border border-border rounded-xl p-3.5 space-y-3"
+                role="status"
+                aria-busy="true"
+                aria-live="polite"
+                aria-label="Loading your profile and family history"
+              >
                 <div className="grid grid-cols-2 gap-2">
                   <div className="space-y-1.5"><Skeleton className="h-2.5 w-10" /><Skeleton className="h-8 w-full" /></div>
                   <div className="space-y-1.5"><Skeleton className="h-2.5 w-10" /><Skeleton className="h-8 w-full" /></div>
@@ -648,6 +698,7 @@ export default function BodyScreen() {
                   </div>
                 </div>
                 <Skeleton className="h-2 w-full rounded-full" />
+                <span className="sr-only">Loading profile</span>
               </div>
             ) : (
             <div className="bg-card border border-border rounded-xl p-3.5 space-y-3">
@@ -761,8 +812,14 @@ export default function BodyScreen() {
               )}
             </div>
 
-            {documentsLoading && (
-              <div className="space-y-2" aria-busy="true" aria-label="Loading lab reports">
+            {!sectionsReady && (
+              <div
+                className="space-y-2"
+                role="status"
+                aria-busy="true"
+                aria-live="polite"
+                aria-label="Loading your lab reports"
+              >
                 {Array.from({ length: 3 }).map((_, i) => (
                   <div key={i} className="bg-card border border-border rounded-lg p-2.5 min-h-[52px] flex items-center gap-2">
                     <Skeleton className="w-4 h-4 rounded" />
@@ -773,9 +830,10 @@ export default function BodyScreen() {
                     <Skeleton className="h-4 w-12 rounded-full" />
                   </div>
                 ))}
+                <span className="sr-only">Loading lab reports</span>
               </div>
             )}
-            {!documentsLoading && documents.map(doc => (
+            {sectionsReady && documents.map(doc => (
               <div key={doc.id} className="bg-card border border-border rounded-lg p-2.5 min-h-[52px] flex items-center gap-2 transition-colors hover:border-primary/30">
                 <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
                 <div className="flex-1 min-w-0">
