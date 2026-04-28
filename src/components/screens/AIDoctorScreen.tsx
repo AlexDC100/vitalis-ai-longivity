@@ -780,7 +780,7 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
             {/* Main health issue */}
             <section className="text-center">
               <h2 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight leading-snug">
-                {summary.title}
+                {latestCase?.main_finding || summary.title}
               </h2>
               {summary.explanation && (
                 <p className="text-sm text-muted-foreground mt-2.5 leading-relaxed">
@@ -788,6 +788,29 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
                 </p>
               )}
             </section>
+
+            {/* Case priority + clinical insight (multi-modality triage) */}
+            {latestCase && (latestCase.main_finding || latestCase.clinical_insight) && (
+              <section className={`rounded-2xl border ${PRIORITY_META[latestCase.priority].border} ${PRIORITY_META[latestCase.priority].bg} p-4 space-y-2`}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <ClipboardList className={`w-4 h-4 ${PRIORITY_META[latestCase.priority].tone}`} />
+                    <p className="text-xs font-semibold text-foreground">Case priority</p>
+                  </div>
+                  <span className={`text-[10px] font-bold uppercase tracking-wider ${PRIORITY_META[latestCase.priority].tone}`}>
+                    {PRIORITY_META[latestCase.priority].label} · {latestCase.review_window}
+                  </span>
+                </div>
+                {latestCase.clinical_insight && (
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    {latestCase.clinical_insight}
+                  </p>
+                )}
+                <p className="text-[10px] text-muted-foreground/70 italic pt-1">
+                  AI-assisted analysis. Does not replace a licensed physician.
+                </p>
+              </section>
+            )}
 
             {/* 2–3 actions */}
             {actions.length > 0 && (
