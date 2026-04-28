@@ -88,6 +88,21 @@ function extractSummary(md: string): { title: string; explanation: string } {
   };
 }
 
+/** Extract bullet items from "## 3. Key Findings". */
+function extractKeyFindings(md: string): string[] {
+  const sec = md.split(/##\s*3\.\s*Key Findings/i)[1];
+  if (!sec) return [];
+  const next = sec.split(/##\s/)[0];
+  const lines = next.split("\n").map(l => l.trim()).filter(Boolean);
+  const items: string[] = [];
+  for (const l of lines) {
+    const m = l.match(/^(?:\d+\.|[-*])\s+(.*)$/);
+    if (m) items.push(m[1].replace(/\*\*/g, "").trim());
+    if (items.length >= 5) break;
+  }
+  return items;
+}
+
 interface ChatMsg { id: string; role: "user" | "assistant"; content: string; }
 
 /** Session-storage keys to persist upload context across navigation. */
