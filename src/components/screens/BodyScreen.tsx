@@ -1,16 +1,15 @@
 import { useHealth } from "@/lib/health-context";
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useSubstances } from "@/lib/use-substances";
 import { useFamilyHistory } from "@/lib/use-family-history";
 import {
   Upload, FileText, Heart, Brain, Activity, Sparkles,
-  ChevronRight, User, Dna, MessageCircle, Send, Bot,
+  ChevronRight, User, Dna,
   TrendingUp, TrendingDown, Minus, AlertCircle, Zap, Moon, Wind, Droplets,
   Check, Circle, RefreshCw, Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
-import ReactMarkdown from "react-markdown";
 import ScoreRing from "@/components/ScoreRing";
 import { runDiagnosis, getAllSystemScores } from "@/lib/diagnosis-engine";
 
@@ -100,12 +99,6 @@ export default function BodyScreen() {
   }>({ direction: "flat", deltaYears: 0, deltaScore: 0, hasHistory: false });
 
   // AI Chat
-  const [chatOpen, setChatOpen] = useState(false);
-  const [chatMessages, setChatMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
-  const [chatInput, setChatInput] = useState("");
-  const [chatLoading, setChatLoading] = useState(false);
-  const chatEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
 
   // ─── Fallback diagnosis (used until AI returns) ────────────
   // Substances now come from RLS-protected `user_substances` table.
