@@ -937,9 +937,15 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
             <input
               ref={fileRef}
               type="file"
+              multiple={hospitalMode}
               accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.dcm,image/*"
               className="hidden"
-              onChange={(e) => { const f = e.target.files?.[0]; if (f) requestFileWithConsent(f); }}
+              onChange={(e) => {
+                const files = Array.from(e.target.files || []);
+                if (files.length === 0) return;
+                if (hospitalMode && files.length > 1) requestFilesWithConsent(files);
+                else requestFileWithConsent(files[0]);
+              }}
             />
           </div>
         )}
