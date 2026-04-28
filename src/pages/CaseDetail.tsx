@@ -217,9 +217,26 @@ export default function CaseDetail() {
   const uploadedAt = new Date(row.created_at).toLocaleString();
   const isProcessing = row.status === "analyzing" || row.status === "pending";
   const isError = row.status === "error";
+  const cooldownLeft = Math.max(0, REGEN_COOLDOWN_MS - (now - lastRegenAt));
+  const cooldownSec = Math.ceil(cooldownLeft / 1000);
+  const onCooldown = cooldownLeft > 0;
+
+  const userDisplayName = (
+    u: { user_metadata?: Record<string, unknown> } | null,
+  ): string | null => {
+    if (!u) return null;
+    const md = (u.user_metadata ?? {}) as Record<string, unknown>;
+    return (
+      (md.full_name as string) ||
+      (md.name as string) ||
+      (md.display_name as string) ||
+      null
+    );
+  };
 
   const markReviewed = async () => {
     const { data: { user } } = await supabase.auth.getUser();
+    const name = userDisplayName(user);
     await supabase
       .from("clinic_cases")
       .update({
@@ -227,8 +244,21 @@ export default function CaseDetail() {
         reviewed_at: new Date().toISOString(),
         reviewed_by_user_id: user?.id ?? null,
         reviewed_by_email: user?.email ?? null,
+        reviewed_by_name: name,
       })
       .eq("id", row.id);
+    if (user?.id) {
+      await supabase.from("clinic_case_events").insert({
+        user_id: user.id,
+        case_id: row.id,
+        event_type: "reviewed",
+        from_status: row.status,
+        to_status: "reviewed",
+        actor_email: user.email ?? null,
+        actor_name: name,
+        note: "Marked as clinician-reviewed",
+      });
+    }
     toast.success("Marked as reviewed");
     navigate("/");
   };
