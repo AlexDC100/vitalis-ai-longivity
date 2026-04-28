@@ -180,6 +180,62 @@ export default function AIDoctorScreen() {
   // Triage list — all of the user's processed documents, sorted by priority.
   // Only surfaced when the user has 2+ uploads (hospital backlog use case).
   const [triage, setTriage] = useState<TriageCase[]>([]);
+  const [hospitalMode, setHospitalMode] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem(SS_HOSPITAL_MODE) === "1";
+  });
+  const [reviewingId, setReviewingId] = useState<string | null>(null);
+  const [activeCaseId, setActiveCaseId] = useState<string | null>(null);
+
+  useEffect(() => {
+    try { localStorage.setItem(SS_HOSPITAL_MODE, hospitalMode ? "1" : "0"); } catch { /* ignore */ }
+  }, [hospitalMode]);
+
+  /** Mark a triage case as reviewed (or undo). Optimistic + persisted. */
+  const handleMarkReviewed = useCallback(async (caseId: string, undo = false) => {
+    if (!userId) return;
+    setReviewingId(caseId);
+    const ts = undo ? null : new Date().toISOString();
+    // Optimistic update
+    setTriage(prev => prev.map(c => c.id === caseId ? { ...c, reviewed_at: ts } : c));
+    const { error } = await supabase
+      .from("medical_documents")
+      .update({ reviewed_at: ts })
+      .eq("id", caseId)
+      .eq("user_id", userId);
+    setReviewingId(null);
+    if (error) {
+      // Revert on failure.
+      setTriage(prev => prev.map(c => c.id === caseId ? { ...c, reviewed_at: undo ? ts : null } : c));
+      toast({ title: "Could not update", description: error.message, variant: "destructive" });
+      return;
+    }
+    toast({
+      title: undo ? "Marked as pending" : "Marked as reviewed",
+      description: undo ? "Case returned to the queue." : "Case removed from the active queue.",
+    });
+  }, [userId, toast]);
+
+  /** Continue the AI discussion using a triage case as context. */
+  const handleDiscussCase = useCallback((c: TriageCase) => {
+    setActiveCaseId(c.id);
+    setLatestCase({
+      main_finding: c.main_finding,
+      clinical_insight: c.clinical_insight,
+      priority: c.priority,
+      review_window: c.review_window,
+      document_type: c.document_type,
+    });
+    setLastFileName(c.file_name);
+    // Prime the chat with a single contextual user message that frames the case.
+    const primer = `Continue the discussion about my "${c.document_type}" case (${c.file_name}). Main finding: ${c.main_finding || "n/a"}. Clinical insight: ${c.clinical_insight || "n/a"}. Priority: ${c.priority} — ${c.review_window}. Help me understand what to do next.`;
+    setChat([]);
+    setScreen("result");
+    setTimeout(() => sendFollowUpRef.current?.(primer), 50);
+  }, []);
+
+  // Forward-ref pattern so handleDiscussCase (defined early) can call sendFollowUp (defined later).
+  const sendFollowUpRef = useRef<((text: string) => void) | null>(null);
 
   // Load triage list whenever we land on result/idle (after an upload completes).
   const loadTriage = useCallback(async () => {
