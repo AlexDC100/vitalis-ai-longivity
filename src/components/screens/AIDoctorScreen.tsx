@@ -88,14 +88,31 @@ function extractSummary(md: string): { title: string; explanation: string } {
 
 interface ChatMsg { id: string; role: "user" | "assistant"; content: string; }
 
+/** Session-storage keys to persist upload context across navigation. */
+const SS_FILENAME = "vitalis.aidoctor.fileName";
+const SS_BIOMARKERS = "vitalis.aidoctor.biomarkers";
+const SS_RESULT = "vitalis.aidoctor.latestResult";
+const SS_SCREEN = "vitalis.aidoctor.screen";
+
 export default function AIDoctorScreen() {
   const { profile, updateField, longevityScore, biologicalAge, chronologicalAge, userId } = useHealth();
   const { toast } = useToast();
   const { substances } = useSubstances();
 
-  const [screen, setScreen] = useState<ScreenState>("idle");
+  const [screen, setScreen] = useState<ScreenState>(() => {
+    if (typeof window === "undefined") return "idle";
+    const s = sessionStorage.getItem(SS_SCREEN) as ScreenState | null;
+    return s === "result" ? "result" : "idle"; // never restore "analyzing"
+  });
   const [analyzingLabel, setAnalyzingLabel] = useState("Analyzing your report");
-  const [latestResult, setLatestResult] = useState<string>("");        // last full assistant message
+  const [latestResult, setLatestResult] = useState<string>(() => {
+    if (typeof window === "undefined") return "";
+    return sessionStorage.getItem(SS_RESULT) || "";
+  });
+  const [lastFileName, setLastFileName] = useState<string>(() => {
+    if (typeof window === "undefined") return "";
+    return sessionStorage.getItem(SS_FILENAME) || "";
+  });
   const [chat, setChat] = useState<ChatMsg[]>([]);                     // follow-up Q&A only
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
@@ -109,7 +126,10 @@ export default function AIDoctorScreen() {
   const [actionConfirm, setActionConfirm] = useState<{ index: number; text: string } | null>(null);
   // Track a snapshot of biomarkers extracted from the most recent upload,
   // used to contextualize follow-up chat questions.
-  const [extractedBiomarkers, setExtractedBiomarkers] = useState<Record<string, number>>({});
+  const [extractedBiomarkers, setExtractedBiomarkers] = useState<Record<string, number>>(() => {
+    if (typeof window === "undefined") return {};
+    try { return JSON.parse(sessionStorage.getItem(SS_BIOMARKERS) || "{}"); } catch { return {}; }
+  });
 
   const fileRef = useRef<HTMLInputElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
@@ -121,6 +141,22 @@ export default function AIDoctorScreen() {
   useEffect(() => {
     followUpEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [chat]);
+
+  // ─── Persist upload context across navigation ─────────────────────
+  // Snapshot of file name + biomarkers + latest result is saved to
+  // sessionStorage so the user can navigate away (Body, Diagnosis) and
+  // come back without re-uploading. Cleared on "Upload another report".
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      if (latestResult) sessionStorage.setItem(SS_RESULT, latestResult);
+      else sessionStorage.removeItem(SS_RESULT);
+      sessionStorage.setItem(SS_BIOMARKERS, JSON.stringify(extractedBiomarkers));
+      if (lastFileName) sessionStorage.setItem(SS_FILENAME, lastFileName);
+      else sessionStorage.removeItem(SS_FILENAME);
+      sessionStorage.setItem(SS_SCREEN, screen);
+    } catch { /* quota / private mode — ignore */ }
+  }, [latestResult, extractedBiomarkers, lastFileName, screen]);
 
   /**
    * Runtime invariant: the AI Doctor screen must show exactly ONE primary
@@ -146,6 +182,47 @@ export default function AIDoctorScreen() {
       }
     }
   }, [screen, latestResult, chat.length]);
+
+  /**
+   * Dev-only test harness: rapidly cycles the screen state machine to
+   * verify the single-primary-action invariant under fast updates.
+   * Triggered by `?aidoctor-test=1` in the URL or
+   * `localStorage.aidoctor_test = "1"`. Logs PASS/FAIL to the console.
+   */
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    const enabled =
+      new URLSearchParams(window.location.search).get("aidoctor-test") === "1" ||
+      localStorage.getItem("aidoctor_test") === "1";
+    if (!enabled) return;
+    let cancelled = false;
+    const states: ScreenState[] = ["idle", "analyzing", "result", "idle", "result", "analyzing", "idle"];
+    let i = 0;
+    let violations = 0;
+    const tick = () => {
+      if (cancelled) return;
+      setScreen(states[i % states.length]);
+      i++;
+      requestAnimationFrame(() => {
+        const root = stageRef.current;
+        const count = root?.querySelectorAll("[data-primary-action]").length ?? 0;
+        if (count > 1) {
+          violations++;
+          // eslint-disable-next-line no-console
+          console.error(`[AIDoctor.testHarness] step ${i} state=${states[(i - 1) % states.length]} primaries=${count}`);
+        }
+        if (i < 60) setTimeout(tick, 16);
+        else {
+          // eslint-disable-next-line no-console
+          console.log(
+            `[AIDoctor.testHarness] ${violations === 0 ? "PASS ✅" : `FAIL ❌ (${violations} violations)`} after ${i} rapid state updates`,
+          );
+        }
+      });
+    };
+    setTimeout(tick, 500);
+    return () => { cancelled = true; };
+  }, []);
 
   // ─── System prompt (preserves the structured response contract) ───
   const diagnosis = useMemo(() => runDiagnosis(profile, substances), [profile, substances]);
@@ -273,6 +350,7 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
         });
         setExtractedBiomarkers(snap);
       }
+      setLastFileName(file.name);
       const extractedCount = result?.biomarkers
         ? Object.keys(result.biomarkers).filter(k => result.biomarkers[k] > 0).length
         : 0;
@@ -304,6 +382,26 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
   const sendFollowUp = useCallback(async (override?: string) => {
     const text = (override ?? input).trim();
     if (!text || isStreaming) return;
+    // Guardrail: must have an extracted biomarker snapshot OR a parsed
+    // main issue from a prior result before chatting. Otherwise the AI
+    // has no patient context and replies are generic.
+    const hasBiomarkers = Object.keys(extractedBiomarkers).length > 0;
+    const hasResult = !!latestResult;
+    if (!hasBiomarkers && !hasResult) {
+      toast({
+        title: "Upload a report first",
+        description: "The AI Doctor needs your biomarkers before it can answer questions.",
+        variant: "destructive",
+      });
+      if (screen !== "analyzing") {
+        setScreen("idle");
+        setTimeout(() => {
+          const btn = stageRef.current?.querySelector<HTMLButtonElement>("[data-primary-action]");
+          btn?.focus();
+        }, 50);
+      }
+      return;
+    }
     const userMsg: ChatMsg = { id: `u-${Date.now()}`, role: "user", content: text };
     const assistantId = `a-${Date.now() + 1}`;
     setChat(prev => [...prev, userMsg, { id: assistantId, role: "assistant", content: "" }]);
@@ -332,6 +430,7 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
       await streamChat(history, (partial) => {
         setChat(prev => prev.map(m => m.id === assistantId ? { ...m, content: partial } : m));
       });
+      toast({ title: "Answer ready", description: "The AI Doctor finished responding." });
     } catch (err: any) {
       setChat(prev => prev.map(m => m.id === assistantId
         ? { ...m, content: `⚠️ ${err?.message || "Could not reach the AI Doctor."}` }
@@ -339,7 +438,7 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
     } finally {
       setIsStreaming(false);
     }
-  }, [input, isStreaming, chat, latestResult, streamChat, extractedBiomarkers]);
+  }, [input, isStreaming, chat, latestResult, streamChat, extractedBiomarkers, screen, toast]);
 
   // ─── Derived from result ──────────────────────────────────────────
   const severity = latestResult ? parseSeverity(latestResult) : null;
@@ -369,6 +468,15 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
         {screen === "idle" && (
           <div
             ref={dropRef}
+            role="button"
+            tabIndex={0}
+            aria-describedby="aidoctor-drop-instructions"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                fileRef.current?.click();
+              }
+            }}
             onDragEnter={(e) => {
               e.preventDefault();
               dragDepthRef.current += 1;
@@ -380,12 +488,12 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
               if (dragDepthRef.current === 0) setIsDragging(false);
             }}
             onDrop={(e) => { dragDepthRef.current = 0; setIsDragging(false); onDrop(e); }}
-            className={`w-full max-w-md mx-auto rounded-3xl border-2 border-dashed transition-all duration-200 p-10 sm:p-14 flex flex-col items-center text-center min-h-[280px] ${
+            className={`w-full max-w-md mx-auto rounded-3xl border-2 border-dashed transition-all duration-200 p-10 sm:p-14 flex flex-col items-center text-center min-h-[280px] focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/40 ${
               isDragging
                 ? "border-primary bg-primary/5 scale-[1.01]"
                 : "border-border hover:border-primary/60 hover:bg-card/40"
             }`}
-            aria-label="Drop your health report here, or use the upload button below"
+            aria-label="Drop your health report here, or press Enter to choose a file"
           >
             <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-5 transition-colors ${
               isDragging ? "bg-primary/20" : "bg-primary/10"
@@ -409,6 +517,14 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
               Choose file
             </button>
             <p className="text-[10px] text-muted-foreground/70 mt-3">or drag and drop here</p>
+            <p id="aidoctor-drop-instructions" className="sr-only">
+              Drop a PDF, JPG, or PNG health report onto this area, or press Enter or Space to open the file picker. Keyboard users can also use the Choose file button below.
+            </p>
+            {lastFileName && (
+              <p className="text-[10px] text-muted-foreground/60 mt-2">
+                Last uploaded: {lastFileName}
+              </p>
+            )}
             <input
               ref={fileRef}
               type="file"
@@ -521,7 +637,19 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
             <div className="flex justify-center pt-1">
               <button
                 type="button"
-                onClick={() => { setLatestResult(""); setChat([]); setScreen("idle"); }}
+                onClick={() => {
+                  setLatestResult("");
+                  setChat([]);
+                  setExtractedBiomarkers({});
+                  setLastFileName("");
+                  setScreen("idle");
+                  try {
+                    sessionStorage.removeItem(SS_RESULT);
+                    sessionStorage.removeItem(SS_BIOMARKERS);
+                    sessionStorage.removeItem(SS_FILENAME);
+                    sessionStorage.removeItem(SS_SCREEN);
+                  } catch { /* ignore */ }
+                }}
                 className="inline-flex items-center gap-1.5 min-h-[44px] px-4 text-xs font-medium text-muted-foreground hover:text-foreground active:scale-95 transition-all"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
@@ -626,7 +754,12 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
               onClick={() => {
                 if (!actionConfirm) return;
                 const text = `Help me actually do this: "${actionConfirm.text}". Give me a concrete 7-day plan with specific doses, timing, and what to track. Reference my actual numbers.`;
+                const idx = actionConfirm.index + 1;
                 setActionConfirm(null);
+                toast({
+                  title: `Action ${idx} confirmed`,
+                  description: "Generating your tailored 7-day plan…",
+                });
                 // Pass directly to avoid stale-closure issues with `input` state.
                 sendFollowUp(text);
               }}
