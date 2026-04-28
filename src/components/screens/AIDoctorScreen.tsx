@@ -1276,6 +1276,60 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ════════ Pre-upload consent / disclaimer ════════
+          Required acknowledgment before any medical file is analyzed.
+          Persists in localStorage so returning users on the same device
+          aren't prompted again. Cancel restores the idle state cleanly. */}
+      <AlertDialog
+        open={!!pendingFile || pendingPickerAfterConsent}
+        onOpenChange={(open) => {
+          if (!open) { setPendingFile(null); setPendingPickerAfterConsent(false); }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-primary" />
+              <AlertDialogTitle className="text-base">Before we analyze your file</AlertDialogTitle>
+            </div>
+            <AlertDialogDescription className="pt-2 text-sm leading-relaxed text-foreground space-y-2">
+              <span className="block">
+                Vitalis uses AI to read and summarize your medical document.
+                The output is <span className="font-semibold">AI-assisted analysis</span> and
+                does <span className="font-semibold">not replace a licensed physician</span>.
+              </span>
+              <span className="block text-muted-foreground text-xs">
+                Your file is uploaded to your private storage and processed
+                securely. Do not upload files for anyone else without their permission.
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              className="min-h-[44px]"
+              onClick={() => { setPendingFile(null); setPendingPickerAfterConsent(false); }}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="min-h-[44px]"
+              onClick={() => {
+                recordConsent();
+                const f = pendingFile;
+                const openPicker = pendingPickerAfterConsent;
+                setPendingFile(null);
+                setPendingPickerAfterConsent(false);
+                if (f) void handleFile(f);
+                else if (openPicker) setTimeout(() => fileRef.current?.click(), 0);
+              }}
+            >
+              I understand — continue
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <AIDoctorTapAuditPanel />
     </div>
   );
