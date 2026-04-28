@@ -654,6 +654,9 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
     }
   }, [input, isStreaming, chat, latestResult, streamChat, extractedBiomarkers, screen, toast]);
 
+  // Expose sendFollowUp through a ref so triage actions defined earlier can call it.
+  useEffect(() => { sendFollowUpRef.current = (t: string) => { void sendFollowUp(t); }; }, [sendFollowUp]);
+
   // ─── Derived from result ──────────────────────────────────────────
   const severity = latestResult ? parseSeverity(latestResult) : null;
   const specialty = latestResult ? (parseSpecialty(latestResult) || "General Practitioner") : null;
