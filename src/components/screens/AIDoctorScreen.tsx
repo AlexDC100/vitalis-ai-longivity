@@ -350,6 +350,7 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
         });
         setExtractedBiomarkers(snap);
       }
+      setLastFileName(file.name);
       const extractedCount = result?.biomarkers
         ? Object.keys(result.biomarkers).filter(k => result.biomarkers[k] > 0).length
         : 0;
