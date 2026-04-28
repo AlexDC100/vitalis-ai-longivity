@@ -6,7 +6,7 @@ import { useSubstances } from "@/lib/use-substances";
 import {
   Send, Upload, Loader2, FileText, Stethoscope, AlertTriangle, ShieldCheck,
   Activity, Siren, RefreshCw, CheckCircle2, Download, ClipboardList,
-  Check, MessageSquare, Hospital,
+  Check, MessageSquare, Hospital, ChevronDown, X, Clock, AlertCircle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from "react-markdown";
@@ -17,6 +17,10 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
+  DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import AIDoctorTapAuditPanel from "@/components/AIDoctorTapAuditPanel";
 import { downloadCaseSummary } from "@/lib/case-summary";
 
@@ -128,11 +132,27 @@ interface TriageCase {
 }
 const SS_HOSPITAL_MODE = "vitalis.aidoctor.hospitalMode";
 const LS_UPLOAD_CONSENT = "vitalis.aidoctor.uploadConsent.v1";
+const LS_ACTIVE_CASE = "vitalis.aidoctor.activeCaseId";
+/** Per-case chat storage key. Lets users switch between cases without losing
+ *  the conversation they had with the AI Doctor for each case. */
+const caseChatKey = (caseId: string) => `vitalis.aidoctor.chat.${caseId}`;
 const PRIORITY_META: Record<Priority, { label: string; tone: string; bg: string; border: string; dot: string; window: string }> = {
   HIGH:   { label: "High",   tone: "text-red-400",     bg: "bg-red-500/10",     border: "border-red-500/25",     dot: "bg-red-400",     window: "Review within 24–48h" },
   MEDIUM: { label: "Medium", tone: "text-amber-400",   bg: "bg-amber-500/10",   border: "border-amber-500/25",   dot: "bg-amber-400",   window: "Routine review" },
   LOW:    { label: "Low",    tone: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/25", dot: "bg-emerald-400", window: "Stable" },
 };
+
+// ─── Multi-file upload queue (hospital mode) ──────────────────────
+type QueueStatus = "queued" | "analyzing" | "completed" | "error";
+interface QueueItem {
+  id: string;
+  file: File;
+  status: QueueStatus;
+  priority?: Priority;
+  error?: string;
+  caseId?: string;       // medical_documents.id once known
+  mainFinding?: string;
+}
 
 export default function AIDoctorScreen() {
   const { profile, updateField, longevityScore, biologicalAge, chronologicalAge, userId } = useHealth();
