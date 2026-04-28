@@ -5,12 +5,16 @@ import { supabase } from "@/integrations/supabase/client";
 import { useSubstances } from "@/lib/use-substances";
 import {
   Send, Upload, Loader2, FileText, Stethoscope, AlertTriangle, ShieldCheck,
-  Activity, Siren, RefreshCw, ArrowRight, Sparkles,
+  Activity, Siren, RefreshCw, CheckCircle2,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import BookingSheet from "@/components/BookingSheet";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 /**
  * AI Doctor — focused, single-action experience.
@@ -98,16 +102,50 @@ export default function AIDoctorScreen() {
   const [bookingSheet, setBookingSheet] = useState<{ open: boolean; specialty: string; severity: Severity }>({
     open: false, specialty: "", severity: "MODERATE",
   });
+  // Drag state — counter-based so nested children don't flicker the highlight.
+  const [isDragging, setIsDragging] = useState(false);
+  const dragDepthRef = useRef(0);
+  // Confirmation dialog for tapping a recommended action.
+  const [actionConfirm, setActionConfirm] = useState<{ index: number; text: string } | null>(null);
+  // Track a snapshot of biomarkers extracted from the most recent upload,
+  // used to contextualize follow-up chat questions.
+  const [extractedBiomarkers, setExtractedBiomarkers] = useState<Record<string, number>>({});
 
   const fileRef = useRef<HTMLInputElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
   const followUpEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const stageRef = useRef<HTMLElement>(null);
 
   useEffect(() => () => { abortRef.current?.abort(); }, []);
   useEffect(() => {
     followUpEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [chat]);
+
+  /**
+   * Runtime invariant: the AI Doctor screen must show exactly ONE primary
+   * action at a time. Every primary CTA in the JSX is tagged with
+   * `data-primary-action`. After every render we count them; in dev we
+   * throw, in prod we log and hide the extras to prevent confusion.
+   */
+  useEffect(() => {
+    const root = stageRef.current;
+    if (!root) return;
+    const primaries = root.querySelectorAll<HTMLElement>("[data-primary-action]");
+    if (primaries.length > 1) {
+      // eslint-disable-next-line no-console
+      console.error(
+        `[AIDoctor.invariant] Expected at most 1 primary action on screen "${screen}", found ${primaries.length}. Hiding extras.`,
+        Array.from(primaries).map(el => el.getAttribute("aria-label") || el.textContent?.trim() || el.tagName),
+      );
+      // Defensive: hide everything past the first to keep the UI calm.
+      primaries.forEach((el, i) => { if (i > 0) el.style.display = "none"; });
+      if (import.meta.env.DEV) {
+        // Surface loudly during development so the offending render is fixed.
+        throw new Error(`[AIDoctor.invariant] Multiple primary actions on "${screen}"`);
+      }
+    }
+  }, [screen, latestResult, chat.length, isSerious_unused_marker]);
 
   // ─── System prompt (preserves the structured response contract) ───
   const diagnosis = useMemo(() => runDiagnosis(profile, substances), [profile, substances]);
