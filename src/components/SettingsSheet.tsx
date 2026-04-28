@@ -527,34 +527,12 @@ export default function SettingsSheet({
           </Section>
 
           {/* Preferences */}
-          <Section icon={SettingsIcon} title="Preferences">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Ruler className="w-4 h-4 text-muted-foreground" />
-                <Label className="text-sm">Units</Label>
-              </div>
-              <div className="flex rounded-lg bg-muted/40 p-0.5 text-xs">
-                {(["metric", "imperial"] as Units[]).map((u) => (
-                  <button
-                    key={u}
-                    onClick={() => saveUnits(u)}
-                    className={`px-3 py-1 rounded-md transition ${
-                      units === u
-                        ? "bg-primary text-primary-foreground"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {u === "metric" ? "kg / cm" : "lb / in"}
-                  </button>
-                ))}
-              </div>
-            </div>
-
+          <Section icon={Bell} title="Notifications">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Bell className="w-4 h-4 text-muted-foreground" />
                 <Label className="text-sm" htmlFor="notif-switch">
-                  Notifications
+                  Enable notifications
                 </Label>
               </div>
               <Switch
@@ -563,7 +541,31 @@ export default function SettingsSheet({
                 onCheckedChange={saveNotifications}
               />
             </div>
+            <div className="flex items-center justify-between">
+              <Label className="text-sm">Alert on Critical cases</Label>
+              <Switch
+                checked={alertCritical}
+                onCheckedChange={(v) => savePref(PREF_KEYS.alertCritical, v, setAlertCritical)}
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <Label className="text-sm">Alert on High priority cases</Label>
+              <Switch
+                checked={alertHigh}
+                onCheckedChange={(v) => savePref(PREF_KEYS.alertHigh, v, setAlertHigh)}
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <Label className="text-sm">Weekly backlog summary</Label>
+              <Switch
+                checked={weeklySummary}
+                onCheckedChange={(v) => savePref(PREF_KEYS.weeklySummary, v, setWeeklySummary)}
+              />
+            </div>
+          </Section>
 
+          {/* Appearance */}
+          <Section icon={SettingsIcon} title="Appearance">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Moon className="w-4 h-4 text-muted-foreground" />
@@ -581,32 +583,6 @@ export default function SettingsSheet({
               variant="vitalis-outline"
               size="sm"
               className="w-full justify-start gap-2"
-              onClick={exportHtmlReport}
-              disabled={busy}
-            >
-              <FileText className="w-4 h-4" />
-              Export HTML health report
-            </Button>
-            <p className="text-[11px] text-muted-foreground leading-relaxed -mt-1">
-              A printable summary of your diagnosis, biomarkers, and
-              recommended actions.
-            </p>
-
-            <Button
-              variant="vitalis-outline"
-              size="sm"
-              className="w-full justify-start gap-2"
-              onClick={() => setShowConsultations(true)}
-              disabled={busy}
-            >
-              <Calendar className="w-4 h-4" />
-              My consultation requests
-            </Button>
-
-            <Button
-              variant="vitalis-outline"
-              size="sm"
-              className="w-full justify-start gap-2"
               onClick={exportData}
               disabled={busy}
             >
@@ -614,8 +590,7 @@ export default function SettingsSheet({
               Export everything (.zip — JSON + CSV)
             </Button>
             <p className="text-[11px] text-muted-foreground leading-relaxed -mt-1">
-              Includes your profile, snapshots, documents, substances, family
-              history, intake sessions and action log.
+              Includes all your clinic cases and privacy settings.
             </p>
 
             <Button
@@ -724,11 +699,6 @@ export default function SettingsSheet({
         </div>
       </SheetContent>
     </Sheet>
-
-    <MyConsultationsSheet
-      open={showConsultations}
-      onOpenChange={setShowConsultations}
-    />
     </>
   );
 }
