@@ -486,6 +486,19 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
         });
         setExtractedBiomarkers(snap);
       }
+      // Capture case priority / clinical insight from the multi-modality parser.
+      if (result) {
+        const cp = result.case_priority || {};
+        const lvl = (cp.level || result.urgency || "LOW").toString().toUpperCase() as Priority;
+        const safe: Priority = lvl === "HIGH" || lvl === "MEDIUM" ? lvl : "LOW";
+        setLatestCase({
+          main_finding: result.main_finding || "",
+          clinical_insight: result.clinical_insight || "",
+          priority: safe,
+          review_window: cp.review_window || PRIORITY_META[safe].window,
+          document_type: result.document_type || "General",
+        });
+      }
       setLastFileName(file.name);
       const extractedCount = result?.biomarkers
         ? Object.keys(result.biomarkers).filter(k => result.biomarkers[k] > 0).length
@@ -500,13 +513,15 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
       setLatestResult(full);
       setScreen("result");
       toast({ title: "Report analyzed", description: `${extractedCount} biomarkers extracted.` });
+      // Refresh the triage list so the new case appears.
+      void loadTriage();
     } catch (err: any) {
       toast({ title: "Analysis failed", description: err?.message || "Please try again.", variant: "destructive" });
       setScreen("idle");
     } finally {
       if (fileRef.current) fileRef.current.value = "";
     }
-  }, [userId, updateField, streamChat, toast]);
+  }, [userId, updateField, streamChat, toast, loadTriage]);
 
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
