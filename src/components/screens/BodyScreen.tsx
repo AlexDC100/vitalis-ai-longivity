@@ -361,7 +361,10 @@ export default function BodyScreen() {
                              `Score ${trend.deltaScore >= 0 ? "+" : ""}${trend.deltaScore} pts over 30 days`;
 
   return (
-    <div className="space-y-7 sm:space-y-8 pb-28 animate-fade-in">
+    <div
+      className="space-y-7 sm:space-y-8 animate-fade-in"
+      style={{ paddingBottom: "calc(7rem + env(safe-area-inset-bottom, 0px))" }}
+    >
 
       {/* ══════════ 1. HERO ══════════ */}
       <header className="text-center pt-1 sm:pt-2 space-y-2.5 sm:space-y-3 animate-[fade-in_0.5s_ease-out]">
@@ -376,7 +379,7 @@ export default function BodyScreen() {
       </header>
 
       {/* ══════════ 2. LONGEVITY SCORE ══════════ */}
-      <section className="flex flex-col items-center gap-3 animate-[scale-in_0.4s_ease-out_0.1s_both]">
+      <section className="flex flex-col items-center gap-3 animate-[scale-in_0.4s_ease-out_0.1s_both] [will-change:transform]">
         <div className="sm:hidden"><ScoreRing score={longevityScore} size={184} strokeWidth={12} /></div>
         <div className="hidden sm:block"><ScoreRing score={longevityScore} size={220} strokeWidth={14} /></div>
         <div className="text-center">
@@ -433,7 +436,7 @@ export default function BodyScreen() {
             <button
               onClick={fetchInsights}
               disabled={insightsLoading}
-              className="text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors"
+              className="min-h-[44px] min-w-[44px] -m-2 p-2 flex items-center justify-center text-muted-foreground hover:text-foreground active:scale-95 disabled:opacity-50 transition-all"
               aria-label="Refresh insights"
             >
               {insightsLoading
@@ -448,9 +451,18 @@ export default function BodyScreen() {
           )}
         </section>
       ) : insightsLoading ? (
-        <section className="bg-card border border-border rounded-2xl p-5 flex items-center gap-3 animate-pulse">
-          <Loader2 className="w-4 h-4 text-primary animate-spin" />
-          <p className="text-xs text-muted-foreground">Analyzing your data with AI…</p>
+        // Skeleton — hints at the layout of the upcoming "Main issue" card
+        // so the transition feels instant when it arrives.
+        <section className="bg-card border border-border rounded-2xl p-4 sm:p-5 space-y-3 animate-[fade-in_0.3s_ease-out]">
+          <div className="flex items-center gap-2">
+            <div className="h-3 w-20 rounded-full bg-muted animate-pulse" />
+            <Loader2 className="w-3 h-3 text-primary animate-spin" />
+          </div>
+          <div className="h-5 w-3/4 rounded-md bg-muted animate-pulse" />
+          <div className="space-y-1.5">
+            <div className="h-2.5 w-full rounded-full bg-muted animate-pulse" />
+            <div className="h-2.5 w-5/6 rounded-full bg-muted animate-pulse" />
+          </div>
         </section>
       ) : null}
 
@@ -474,7 +486,7 @@ export default function BodyScreen() {
                 <button
                   key={fixKey}
                   onClick={() => toggleFixStatus(fix.action)}
-                  className={`w-full text-left bg-card border rounded-xl p-3 sm:p-3.5 flex items-start gap-3 transition-all active:scale-[0.99] ${
+                  className={`w-full min-h-[64px] text-left bg-card border rounded-xl p-3 sm:p-3.5 flex items-start gap-3 transition-all duration-200 ease-out active:scale-[0.985] hover:-translate-y-px ${
                     isDone     ? "border-emerald-500/30 bg-emerald-500/5"
                     : isStarted ? "border-primary/40 bg-primary/5"
                     :             "border-border hover:border-primary/30"
@@ -511,17 +523,23 @@ export default function BodyScreen() {
       <section>
         <button
           onClick={() => setShowMetrics(!showMetrics)}
-          className="w-full flex items-center justify-between py-2 px-1"
+          className="w-full min-h-[44px] flex items-center justify-between py-2 px-1 rounded-lg active:bg-muted/40 transition-colors"
+          aria-expanded={showMetrics}
         >
           <div className="flex items-center gap-2">
             <Activity className="w-3.5 h-3.5 text-muted-foreground" />
             <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Your metrics</span>
           </div>
-          <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform ${showMetrics ? "rotate-90" : ""}`} />
+          <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform duration-300 ease-out ${showMetrics ? "rotate-90" : ""}`} />
         </button>
 
-        {showMetrics && (
-          <div className="grid grid-cols-2 gap-2 mt-2 animate-[fade-in_0.3s_ease-out]">
+        <div
+          className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out ${
+            showMetrics ? "grid-rows-[1fr] opacity-100 mt-2" : "grid-rows-[0fr] opacity-0"
+          }`}
+        >
+          <div className="overflow-hidden">
+            <div className="grid grid-cols-2 gap-2">
             {[
               { key: "weight_kg",        label: "Weight",   unit: "kg",  icon: User },
               { key: "resting_hr",       label: "Resting HR", unit: "bpm", icon: Heart },
@@ -533,13 +551,14 @@ export default function BodyScreen() {
               const Icon = m.icon;
               const val = (profile as any)[m.key];
               return (
-                <div key={m.key} className="bg-card border border-border rounded-lg p-2.5">
+                <div key={m.key} className="bg-card border border-border rounded-lg p-2.5 transition-colors hover:border-primary/30 focus-within:border-primary/50">
                   <div className="flex items-center gap-1.5 mb-1">
                     <Icon className="w-3 h-3 text-muted-foreground" />
                     <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{m.label}</span>
                   </div>
                   <input
                     type="number"
+                    inputMode="decimal"
                     value={val || ""}
                     onChange={(e) => updateField(m.key as any, parseFloat(e.target.value) || 0)}
                     className="w-full text-base font-semibold tabular-nums bg-transparent text-foreground focus:outline-none"
@@ -549,30 +568,38 @@ export default function BodyScreen() {
                 </div>
               );
             })}
+            </div>
           </div>
-        )}
+        </div>
       </section>
 
       {/* ══════════ Profile ══════════ */}
       <section>
         <button
           onClick={() => setShowProfile(!showProfile)}
-          className="w-full flex items-center justify-between py-2 px-1"
+          className="w-full min-h-[44px] flex items-center justify-between py-2 px-1 rounded-lg active:bg-muted/40 transition-colors"
+          aria-expanded={showProfile}
         >
           <div className="flex items-center gap-2">
             <User className="w-3.5 h-3.5 text-muted-foreground" />
             <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Profile & history</span>
           </div>
-          <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform ${showProfile ? "rotate-90" : ""}`} />
+          <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform duration-300 ease-out ${showProfile ? "rotate-90" : ""}`} />
         </button>
 
-        {showProfile && (
-          <div className="mt-2 bg-card border border-border rounded-xl p-3.5 space-y-3 animate-[fade-in_0.3s_ease-out]">
+        <div
+          className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out ${
+            showProfile ? "grid-rows-[1fr] opacity-100 mt-2" : "grid-rows-[0fr] opacity-0"
+          }`}
+        >
+          <div className="overflow-hidden">
+            <div className="bg-card border border-border rounded-xl p-3.5 space-y-3">
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="text-[10px] text-muted-foreground uppercase tracking-wider">Age</label>
                 <input
                   type="number"
+                  inputMode="numeric"
                   value={chronologicalAge || ""}
                   onChange={(e) => {
                     const age = parseInt(e.target.value) || 30;
@@ -605,7 +632,7 @@ export default function BodyScreen() {
                   <button
                     key={c}
                     onClick={() => toggleFamilyCondition(c)}
-                    className={`text-[10px] px-2 py-0.5 rounded-full border transition-all ${
+                    className={`text-[10px] px-2.5 py-1 rounded-full border transition-all duration-200 active:scale-95 ${
                       familyHistory.includes(c)
                         ? "bg-primary/10 border-primary/30 text-primary font-medium"
                         : "bg-muted border-border text-muted-foreground"
@@ -621,18 +648,20 @@ export default function BodyScreen() {
                 <span className="text-xs font-bold text-primary tabular-nums">{dataCompleteness}%</span>
               </div>
               <div className="w-full h-1 rounded-full bg-muted">
-                <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${dataCompleteness}%` }} />
+                <div className="h-full rounded-full bg-primary transition-[width] duration-700 ease-out" style={{ width: `${dataCompleteness}%` }} />
               </div>
             </div>
+            </div>
           </div>
-        )}
+        </div>
       </section>
 
       {/* ══════════ Vault ══════════ */}
       <section>
         <button
           onClick={() => setShowVault(!showVault)}
-          className="w-full flex items-center justify-between py-2 px-1"
+          className="w-full min-h-[44px] flex items-center justify-between py-2 px-1 rounded-lg active:bg-muted/40 transition-colors"
+          aria-expanded={showVault}
         >
           <div className="flex items-center gap-2">
             <FileText className="w-3.5 h-3.5 text-muted-foreground" />
@@ -640,13 +669,17 @@ export default function BodyScreen() {
               Lab reports {documents.length > 0 && `· ${documents.length}`}
             </span>
           </div>
-          <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform ${showVault ? "rotate-90" : ""}`} />
+          <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform duration-300 ease-out ${showVault ? "rotate-90" : ""}`} />
         </button>
 
-        {showVault && (
-          <div className="mt-2 space-y-2 animate-[fade-in_0.3s_ease-out]">
+        <div
+          className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out ${
+            showVault ? "grid-rows-[1fr] opacity-100 mt-2" : "grid-rows-[0fr] opacity-0"
+          }`}
+        >
+          <div className="overflow-hidden space-y-2">
             <div
-              className={`border-2 border-dashed rounded-xl p-5 text-center transition-colors cursor-pointer ${dragOver ? "border-primary bg-primary/5" : "border-border"}`}
+              className={`border-2 border-dashed rounded-xl p-5 text-center transition-all duration-200 cursor-pointer active:scale-[0.99] ${dragOver ? "border-primary bg-primary/5 scale-[1.01]" : "border-border hover:border-primary/40"}`}
               onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
               onDragLeave={() => setDragOver(false)}
               onDrop={(e) => { e.preventDefault(); setDragOver(false); handleFileUpload(e.dataTransfer.files); }}
@@ -669,7 +702,7 @@ export default function BodyScreen() {
             </div>
 
             {documents.map(doc => (
-              <div key={doc.id} className="bg-card border border-border rounded-lg p-2.5 flex items-center gap-2">
+              <div key={doc.id} className="bg-card border border-border rounded-lg p-2.5 flex items-center gap-2 transition-colors hover:border-primary/30">
                 <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-medium text-foreground truncate">{doc.file_name}</p>
@@ -681,7 +714,7 @@ export default function BodyScreen() {
               </div>
             ))}
           </div>
-        )}
+        </div>
       </section>
 
     </div>
