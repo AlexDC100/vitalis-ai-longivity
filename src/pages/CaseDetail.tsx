@@ -349,10 +349,33 @@ export default function CaseDetail() {
         .select()
         .single();
       if (updated) setRow(updated as Row);
+      if (user?.id) {
+        await supabase.from("clinic_case_events").insert({
+          user_id: user.id,
+          case_id: row.id,
+          event_type: "status_changed",
+          from_status: "analyzing",
+          to_status: "ready",
+          actor_email: user.email ?? null,
+          actor_name: actorName,
+          note: `Re-triaged as ${newPriority}`,
+        });
+      }
       toast.success("AI assessment regenerated");
     } catch (e) {
       console.error("regenerate failed", e);
       await supabase.from("clinic_cases").update({ status: "error" }).eq("id", row.id);
+      if (user?.id) {
+        await supabase.from("clinic_case_events").insert({
+          user_id: user.id,
+          case_id: row.id,
+          event_type: "ai_failed",
+          to_status: "error",
+          actor_email: user.email ?? null,
+          actor_name: actorName,
+          note: e instanceof Error ? e.message : "Regeneration failed",
+        });
+      }
       toast.error("Regeneration failed", {
         description: e instanceof Error ? e.message : undefined,
       });
