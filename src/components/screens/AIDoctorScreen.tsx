@@ -183,6 +183,47 @@ export default function AIDoctorScreen() {
     }
   }, [screen, latestResult, chat.length]);
 
+  /**
+   * Dev-only test harness: rapidly cycles the screen state machine to
+   * verify the single-primary-action invariant under fast updates.
+   * Triggered by `?aidoctor-test=1` in the URL or
+   * `localStorage.aidoctor_test = "1"`. Logs PASS/FAIL to the console.
+   */
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    const enabled =
+      new URLSearchParams(window.location.search).get("aidoctor-test") === "1" ||
+      localStorage.getItem("aidoctor_test") === "1";
+    if (!enabled) return;
+    let cancelled = false;
+    const states: ScreenState[] = ["idle", "analyzing", "result", "idle", "result", "analyzing", "idle"];
+    let i = 0;
+    let violations = 0;
+    const tick = () => {
+      if (cancelled) return;
+      setScreen(states[i % states.length]);
+      i++;
+      requestAnimationFrame(() => {
+        const root = stageRef.current;
+        const count = root?.querySelectorAll("[data-primary-action]").length ?? 0;
+        if (count > 1) {
+          violations++;
+          // eslint-disable-next-line no-console
+          console.error(`[AIDoctor.testHarness] step ${i} state=${states[(i - 1) % states.length]} primaries=${count}`);
+        }
+        if (i < 60) setTimeout(tick, 16);
+        else {
+          // eslint-disable-next-line no-console
+          console.log(
+            `[AIDoctor.testHarness] ${violations === 0 ? "PASS ✅" : `FAIL ❌ (${violations} violations)`} after ${i} rapid state updates`,
+          );
+        }
+      });
+    };
+    setTimeout(tick, 500);
+    return () => { cancelled = true; };
+  }, []);
+
   // ─── System prompt (preserves the structured response contract) ───
   const diagnosis = useMemo(() => runDiagnosis(profile, substances), [profile, substances]);
   const substanceList = substances.length > 0
