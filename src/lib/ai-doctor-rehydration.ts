@@ -15,6 +15,25 @@
 export const LS_ACTIVE_CASE = "vitalis.aidoctor.activeCaseId";
 export const caseChatKey = (caseId: string) => `vitalis.aidoctor.chat.${caseId}`;
 
+/**
+ * Hospital-mode + multi-file upload queue persistence keys.
+ *
+ * The production AIDoctorScreen persists `hospitalMode` to localStorage and
+ * (optionally) the in-flight upload queue to sessionStorage so that a refresh
+ * or tab switch in hospital mode does not silently lose batch state.
+ * The helpers below are also the single source of truth for tests.
+ */
+export const LS_HOSPITAL_MODE = "vitalis.aidoctor.hospitalMode";
+export const SS_UPLOAD_QUEUE = "vitalis.aidoctor.uploadQueue";
+
+export type QueueStatus = "queued" | "analyzing" | "completed" | "error";
+export interface RehydratableQueueItem {
+  id: string;
+  fileName: string;
+  status: QueueStatus;
+  priority?: "high" | "medium" | "low" | null;
+}
+
 export interface RehydratableChatMsg {
   id: string;
   role: "user" | "assistant";
@@ -107,4 +126,28 @@ export function rehydrateActiveCase(triage: RehydratableCase[]): {
   const header = resolveChatHeader(triage, activeCaseId);
   const chat = activeCaseId ? readCaseChat(activeCaseId) : [];
   return { activeCaseId, header, chat };
+}
+
+/* ─── Hospital mode ─────────────────────────────────────────────── */
+export function readHospitalMode(): boolean {
+  return safeLocal()?.getItem(LS_HOSPITAL_MODE) === "1";
+}
+export function writeHospitalMode(on: boolean): void {
+  try { safeLocal()?.setItem(LS_HOSPITAL_MODE, on ? "1" : "0"); } catch { /* ignore */ }
+}
+
+/* ─── Upload queue (hospital mode batch) ────────────────────────── */
+export function readUploadQueue(): RehydratableQueueItem[] {
+  const raw = safeSession()?.getItem(SS_UPLOAD_QUEUE);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as RehydratableQueueItem[]) : [];
+  } catch { return []; }
+}
+export function writeUploadQueue(queue: RehydratableQueueItem[]): void {
+  try { safeSession()?.setItem(SS_UPLOAD_QUEUE, JSON.stringify(queue)); } catch { /* quota */ }
+}
+export function clearUploadQueue(): void {
+  try { safeSession()?.removeItem(SS_UPLOAD_QUEUE); } catch { /* ignore */ }
 }
