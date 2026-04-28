@@ -79,14 +79,24 @@ export default function SharedReport() {
     if (!isValidShareToken(token)) { setState({ kind: "invalid" }); return; }
     let cancelled = false;
     (async () => {
-      const { data, error } = await supabase
-        .from("shared_health_reports")
-        .select("title, html, expires_at")
-        .eq("share_token", token)
-        .maybeSingle();
+      // Use a SECURITY DEFINER RPC so the table itself is not publicly readable.
+      // The function only returns a row when the caller supplies the exact token
+      // AND the report has not expired — preventing enumeration of all shares.
+      const { data: rows, error } = await supabase
+        .rpc("get_shared_report", { _token: token });
+      const data = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
 
       if (cancelled) return;
-      if (error) { setState({ kind: "error", message: error.message }); return; }
+      if (error) {
+        // Never leak raw DB errors (table names, RLS messages, UUID parse errors)
+        // to anonymous viewers. Log details server/console-side only.
+        console.error("[SharedReport] lookup error:", error.message);
+        setState({
+          kind: "error",
+          message: "Something went wrong loading this report. Please try again.",
+        });
+        return;
+      }
       if (!data) { clearCachedExpiry(token); setState({ kind: "missing" }); return; }
       const expired = new Date(data.expires_at).getTime() < Date.now();
       if (expired) {
@@ -249,7 +259,9 @@ export default function SharedReport() {
         <div className="max-w-sm space-y-3">
           <h1 className="text-xl font-semibold">Report unavailable</h1>
           <p className="text-sm text-muted-foreground">
-            {state.kind === "error" ? state.message : "This report link is invalid or has been removed."}
+            {state.kind === "error"
+              ? "Something went wrong loading this report. Please try again."
+              : "This report link is invalid or has been removed."}
           </p>
           <Button asChild variant="outline" className="mt-2">
             <Link to="/">Open Vitalis</Link>
