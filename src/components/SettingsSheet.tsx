@@ -30,7 +30,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { useHealth } from "@/lib/health-context";
 import { toast } from "sonner";
 import JSZip from "jszip";
-import { useSubstances } from "@/lib/use-substances";
 import VitalisLogo from "@/components/brand/VitalisLogo";
 
 interface SettingsSheetProps {
@@ -96,7 +95,6 @@ export default function SettingsSheet({
   onSignOut,
 }: SettingsSheetProps) {
   const { profile, userId } = useHealth();
-  const { substances } = useSubstances();
   const [email, setEmail] = useState<string>("");
   const [notifications, setNotifications] = useState<boolean>(true);
   const [alertCritical, setAlertCritical] = useState<boolean>(true);
