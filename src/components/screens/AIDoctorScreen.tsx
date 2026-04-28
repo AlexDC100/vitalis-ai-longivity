@@ -733,14 +733,20 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
 
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
-    const file = e.dataTransfer.files?.[0];
-    if (file) requestFileWithConsent(file);
-  }, []); // handler defined below; ref keeps deps stable
+    const files = Array.from(e.dataTransfer.files || []);
+    if (files.length === 0) return;
+    if (hospitalMode && files.length > 1) {
+      requestFilesWithConsent(files);
+    } else {
+      requestFileWithConsent(files[0]);
+    }
+  }, []); // handlers defined below; refs keep deps stable
 
   // ─── Pre-upload consent / disclaimer ──────────────────────────────
   // Required acknowledgment before any medical file is analyzed. Stored
   // in localStorage so we don't nag returning users on the same device.
   const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [pendingFiles, setPendingFiles] = useState<File[] | null>(null);
   const [pendingPickerAfterConsent, setPendingPickerAfterConsent] = useState(false);
   const hasConsented = useCallback(() => {
     try { return localStorage.getItem(LS_UPLOAD_CONSENT) === "1"; } catch { return false; }
@@ -753,6 +759,11 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
     if (hasConsented()) { void handleFile(file); return; }
     setPendingFile(file);
   }, [hasConsented, handleFile]);
+  /** Gate a multi-file batch (hospital mode) behind consent. */
+  const requestFilesWithConsent = useCallback((files: File[]) => {
+    if (hasConsented()) { void enqueueFiles(files); return; }
+    setPendingFiles(files);
+  }, [hasConsented, enqueueFiles]);
   /** Gate the file picker itself — opening the chooser requires consent. */
   const openFilePicker = useCallback(() => {
     if (hasConsented()) { fileRef.current?.click(); return; }
