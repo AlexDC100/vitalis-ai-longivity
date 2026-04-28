@@ -60,6 +60,17 @@
     --gradient-score: conic-gradient(hsl(174 72% 46%) var(--score-pct, 79%), hsl(210 25% 16%) 0%);
     --shadow-glow: 0 0 20px hsl(174 72% 46% / 0.2);
     --shadow-card: 0 4px 20px hsl(210 40% 2% / 0.4);
+
+    /* ─── Brand gradient stops (single source of truth) ─────────
+       Reused by VitalisLogo, button highlights, focus rings, and
+       chart/CTA accents so the brand reads identically everywhere. */
+    --brand-grad-start: 174 72% 56%;
+    --brand-grad-mid:   174 72% 46%;
+    --brand-grad-end:   210 80% 56%;
+    --gradient-brand: linear-gradient(135deg,
+      hsl(var(--brand-grad-start)) 0%,
+      hsl(var(--brand-grad-mid))   55%,
+      hsl(var(--brand-grad-end))   100%);
   }
 
   /* ─── Light theme ──────────────────────────────────────────────
@@ -118,6 +129,16 @@
     /* Clean, glow-less shadows for light mode. */
     --shadow-glow: 0 1px 2px hsl(215 25% 18% / 0.06);
     --shadow-card: 0 1px 2px hsl(215 25% 18% / 0.04), 0 4px 12px hsl(215 25% 18% / 0.06);
+
+    /* Light-mode brand stops — slightly deeper for AA contrast on
+       white surfaces while preserving the recognisable gradient. */
+    --brand-grad-start: 174 72% 46%;
+    --brand-grad-mid:   174 72% 38%;
+    --brand-grad-end:   210 80% 48%;
+    --gradient-brand: linear-gradient(135deg,
+      hsl(var(--brand-grad-start)) 0%,
+      hsl(var(--brand-grad-mid))   55%,
+      hsl(var(--brand-grad-end))   100%);
   }
 }
 
@@ -129,6 +150,17 @@
   body {
     @apply bg-background text-foreground font-sans antialiased;
     font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  /* ─── Brand utility classes ────────────────────────────────────
+     Reuse the canonical brand gradient on text/fills/borders without
+     re-declaring stops at each call site. */
+  .bg-brand-gradient { background-image: var(--gradient-brand); }
+  .text-brand-gradient {
+    background-image: var(--gradient-brand);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
   }
 
   /* Smooth theme switch — applied only to color-bearing properties so
