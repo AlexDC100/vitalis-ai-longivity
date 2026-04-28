@@ -286,11 +286,20 @@ export default function CaseDetail() {
       return;
     }
     setRegenerating(true);
-    setLastRegenAt(Date.now());
+    const startedAt = new Date();
+    setLastRegenAt(startedAt.getTime());
     const { data: { user } } = await supabase.auth.getUser();
     const actorName = userDisplayName(user);
     try {
-      await supabase.from("clinic_cases").update({ status: "analyzing" }).eq("id", row.id);
+      await supabase
+        .from("clinic_cases")
+        .update({
+          status: "analyzing",
+          last_regenerated_at: startedAt.toISOString(),
+        })
+        .eq("id", row.id);
+      // Reflect locally so cooldown survives a refresh even before realtime fires
+      setRow((prev) => prev ? { ...prev, last_regenerated_at: startedAt.toISOString(), status: "analyzing" } : prev);
       if (user?.id) {
         await supabase.from("clinic_case_events").insert({
           user_id: user.id,
