@@ -218,7 +218,13 @@ export default function CaseDetail() {
   const uploadedAt = new Date(row.created_at).toLocaleString();
   const isProcessing = row.status === "analyzing" || row.status === "pending";
   const isError = row.status === "error";
-  const cooldownLeft = Math.max(0, REGEN_COOLDOWN_MS - (now - lastRegenAt));
+  // Cooldown source of truth = server timestamp (persists across refreshes).
+  // Local lastRegenAt covers the window between click and DB round-trip.
+  const serverRegenMs = row.last_regenerated_at ? new Date(row.last_regenerated_at).getTime() : 0;
+  const effectiveRegenAt = Math.max(serverRegenMs, lastRegenAt);
+  const cooldownLeft = effectiveRegenAt > 0
+    ? Math.max(0, REGEN_COOLDOWN_MS - (now - effectiveRegenAt))
+    : 0;
   const cooldownSec = Math.ceil(cooldownLeft / 1000);
   const onCooldown = cooldownLeft > 0;
 
