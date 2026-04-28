@@ -468,11 +468,13 @@ export default function CaseDetail() {
               size="sm"
               variant="outline"
               className="mt-3"
-              onClick={regenerate}
-              disabled={regenerating}
+              onClick={() => setConfirmRegenOpen(true)}
+              disabled={regenerating || onCooldown}
             >
               {regenerating ? (
                 <><Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> Regenerating…</>
+              ) : onCooldown ? (
+                <><Clock className="w-3.5 h-3.5 mr-2" /> Retry in {cooldownSec}s</>
               ) : (
                 <><RefreshCw className="w-3.5 h-3.5 mr-2" /> Regenerate AI assessment</>
               )}
