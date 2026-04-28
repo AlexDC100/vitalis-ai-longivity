@@ -15,6 +15,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import AIDoctorTapAuditPanel from "@/components/AIDoctorTapAuditPanel";
 
 /**
  * AI Doctor — focused, single-action experience.
@@ -521,7 +522,11 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
       </header>
 
       {/* ════════ MAIN STAGE ════════ */}
-      <main ref={stageRef} className="flex-1 flex flex-col items-center justify-start px-1">
+      <main
+        ref={stageRef}
+        data-aidoctor-stage="true"
+        className="flex-1 flex flex-col items-center justify-start px-1"
+      >
 
         {/* ── IDLE: single primary action ── */}
         {screen === "idle" && (
