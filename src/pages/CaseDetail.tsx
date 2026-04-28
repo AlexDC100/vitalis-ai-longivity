@@ -68,6 +68,7 @@ interface Row {
   reviewed_by_name: string | null;
   created_at: string;
   reviewed_at: string | null;
+  last_regenerated_at: string | null;
 }
 
 interface CaseEvent {
@@ -108,6 +109,7 @@ export default function CaseDetail() {
   const [lastRegenAt, setLastRegenAt] = useState<number>(0);
   const [now, setNow] = useState<number>(Date.now());
   const [events, setEvents] = useState<CaseEvent[]>([]);
+  const [timelineView, setTimelineView] = useState<"chronological" | "grouped">("chronological");
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -217,7 +219,13 @@ export default function CaseDetail() {
   const uploadedAt = new Date(row.created_at).toLocaleString();
   const isProcessing = row.status === "analyzing" || row.status === "pending";
   const isError = row.status === "error";
-  const cooldownLeft = Math.max(0, REGEN_COOLDOWN_MS - (now - lastRegenAt));
+  // Cooldown source of truth = server timestamp (persists across refreshes).
+  // Local lastRegenAt covers the window between click and DB round-trip.
+  const serverRegenMs = row.last_regenerated_at ? new Date(row.last_regenerated_at).getTime() : 0;
+  const effectiveRegenAt = Math.max(serverRegenMs, lastRegenAt);
+  const cooldownLeft = effectiveRegenAt > 0
+    ? Math.max(0, REGEN_COOLDOWN_MS - (now - effectiveRegenAt))
+    : 0;
   const cooldownSec = Math.ceil(cooldownLeft / 1000);
   const onCooldown = cooldownLeft > 0;
 
@@ -279,11 +287,20 @@ export default function CaseDetail() {
       return;
     }
     setRegenerating(true);
-    setLastRegenAt(Date.now());
+    const startedAt = new Date();
+    setLastRegenAt(startedAt.getTime());
     const { data: { user } } = await supabase.auth.getUser();
     const actorName = userDisplayName(user);
     try {
-      await supabase.from("clinic_cases").update({ status: "analyzing" }).eq("id", row.id);
+      await supabase
+        .from("clinic_cases")
+        .update({
+          status: "analyzing",
+          last_regenerated_at: startedAt.toISOString(),
+        })
+        .eq("id", row.id);
+      // Reflect locally so cooldown survives a refresh even before realtime fires
+      setRow((prev) => prev ? { ...prev, last_regenerated_at: startedAt.toISOString(), status: "analyzing" } : prev);
       if (user?.id) {
         await supabase.from("clinic_case_events").insert({
           user_id: user.id,
@@ -583,48 +600,34 @@ export default function CaseDetail() {
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground inline-flex items-center gap-1.5">
               <History className="w-3.5 h-3.5" /> Case timeline
             </p>
-            <span className="text-[10px] text-muted-foreground">{events.length} event{events.length === 1 ? "" : "s"}</span>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-muted-foreground">
+                {events.length} event{events.length === 1 ? "" : "s"}
+              </span>
+              <div className="flex rounded-md border border-border overflow-hidden">
+                {(["chronological", "grouped"] as const).map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setTimelineView(v)}
+                    className={`text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 transition-colors ${
+                      timelineView === v
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-card text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {v === "chronological" ? "Time" : "Grouped"}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
           {events.length === 0 ? (
             <p className="text-xs text-muted-foreground">No timeline events yet.</p>
+          ) : timelineView === "grouped" ? (
+            <GroupedTimeline events={events} />
           ) : (
-            <ol className="relative pl-4 border-l border-border/60 space-y-4">
-              {events.map((ev) => {
-                const I =
-                  ev.event_type === "uploaded" ? Upload :
-                  ev.event_type === "ai_regenerated" ? RefreshCw :
-                  ev.event_type === "ai_failed" ? XCircle :
-                  ev.event_type === "reviewed" ? UserCheck :
-                  CheckCircle2;
-                const tone =
-                  ev.event_type === "ai_failed" ? "text-destructive" :
-                  ev.event_type === "reviewed" ? "text-primary" :
-                  ev.event_type === "ai_regenerated" ? "text-amber-500" :
-                  "text-muted-foreground";
-                const label =
-                  ev.event_type === "uploaded" ? "Case uploaded" :
-                  ev.event_type === "ai_regenerated" ? "AI regeneration requested" :
-                  ev.event_type === "ai_failed" ? "AI processing failed" :
-                  ev.event_type === "reviewed" ? "Clinician marked reviewed" :
-                  ev.from_status && ev.to_status ? `Status: ${ev.from_status} → ${ev.to_status}` : "Status change";
-                const actor = ev.actor_name ?? ev.actor_email;
-                return (
-                  <li key={ev.id} className="relative">
-                    <span className="absolute -left-[21px] top-1 w-3.5 h-3.5 rounded-full bg-card border border-border flex items-center justify-center">
-                      <I className={`w-2.5 h-2.5 ${tone}`} />
-                    </span>
-                    <p className="text-sm">
-                      <span className="font-medium">{label}</span>
-                      {actor && <span className="text-muted-foreground"> · {actor}</span>}
-                    </p>
-                    {ev.note && <p className="text-xs text-muted-foreground mt-0.5">{ev.note}</p>}
-                    <p className="text-[10px] text-muted-foreground mt-0.5">
-                      {new Date(ev.created_at).toLocaleString()}
-                    </p>
-                  </li>
-                );
-              })}
-            </ol>
+            <ChronologicalTimeline events={events} />
           )}
         </section>
 
@@ -704,6 +707,115 @@ function Field({ label, value }: { label: string; value: string }) {
     <div className="mb-4 last:mb-0">
       <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">{label}</p>
       <p className="text-sm leading-relaxed whitespace-pre-wrap">{value}</p>
+    </div>
+  );
+}
+
+/* ---------- Timeline helpers ---------- */
+
+type EventCategory = "upload" | "ai" | "review";
+
+function classifyEvent(t: string): EventCategory {
+  if (t === "uploaded") return "upload";
+  if (t === "reviewed") return "review";
+  return "ai"; // ai_regenerated, ai_failed, status_changed (AI-driven)
+}
+
+function eventLabel(ev: CaseEvent): string {
+  switch (ev.event_type) {
+    case "uploaded": return "Case uploaded";
+    case "ai_regenerated": return "AI regeneration requested";
+    case "ai_failed": return "AI processing failed";
+    case "reviewed": return "Clinician marked reviewed";
+    case "status_changed":
+      return ev.from_status && ev.to_status
+        ? `Status changed: ${ev.from_status} → ${ev.to_status}`
+        : "Status changed";
+    default:
+      return ev.event_type;
+  }
+}
+
+function eventIcon(t: string): { I: React.ElementType; tone: string } {
+  switch (t) {
+    case "uploaded": return { I: Upload, tone: "text-muted-foreground" };
+    case "ai_regenerated": return { I: RefreshCw, tone: "text-amber-500" };
+    case "ai_failed": return { I: XCircle, tone: "text-destructive" };
+    case "reviewed": return { I: UserCheck, tone: "text-primary" };
+    case "status_changed": return { I: CheckCircle2, tone: "text-primary" };
+    default: return { I: CheckCircle2, tone: "text-muted-foreground" };
+  }
+}
+
+function TimelineItem({ ev }: { ev: CaseEvent }) {
+  const { I, tone } = eventIcon(ev.event_type);
+  const actor = ev.actor_name ?? ev.actor_email;
+  return (
+    <li className="relative">
+      <span className="absolute -left-[21px] top-1 w-3.5 h-3.5 rounded-full bg-card border border-border flex items-center justify-center">
+        <I className={`w-2.5 h-2.5 ${tone}`} />
+      </span>
+      <p className="text-sm">
+        <span className="font-medium">{eventLabel(ev)}</span>
+        {ev.from_status && ev.to_status && ev.event_type !== "status_changed" && (
+          <span className="text-muted-foreground"> · {ev.from_status} → {ev.to_status}</span>
+        )}
+        {actor && <span className="text-muted-foreground"> · {actor}</span>}
+      </p>
+      {ev.note && <p className="text-xs text-muted-foreground mt-0.5">{ev.note}</p>}
+      <p className="text-[10px] text-muted-foreground mt-0.5">
+        {new Date(ev.created_at).toLocaleString()}
+      </p>
+    </li>
+  );
+}
+
+function ChronologicalTimeline({ events }: { events: CaseEvent[] }) {
+  // Strict chronological order (ascending by created_at, stable by id)
+  const sorted = [...events].sort((a, b) => {
+    const d = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    return d !== 0 ? d : a.id.localeCompare(b.id);
+  });
+  return (
+    <ol className="relative pl-4 border-l border-border/60 space-y-4">
+      {sorted.map((ev) => <TimelineItem key={ev.id} ev={ev} />)}
+    </ol>
+  );
+}
+
+function GroupedTimeline({ events }: { events: CaseEvent[] }) {
+  const groups: { key: EventCategory; label: string; items: CaseEvent[] }[] = [
+    { key: "upload", label: "Upload", items: [] },
+    { key: "ai", label: "AI processing", items: [] },
+    { key: "review", label: "Clinician review", items: [] },
+  ];
+  for (const ev of events) {
+    const cat = classifyEvent(ev.event_type);
+    groups.find((g) => g.key === cat)!.items.push(ev);
+  }
+  // Each group sorted chronologically
+  for (const g of groups) {
+    g.items.sort((a, b) => {
+      const d = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      return d !== 0 ? d : a.id.localeCompare(b.id);
+    });
+  }
+  return (
+    <div className="space-y-5">
+      {groups.map((g) => (
+        <div key={g.key}>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">
+            {g.label} <span className="text-muted-foreground/60">({g.items.length})</span>
+          </p>
+          {g.items.length === 0 ? (
+            <p className="text-xs text-muted-foreground pl-4">No events yet.</p>
+          ) : (
+            <ol className="relative pl-4 border-l border-border/60 space-y-4">
+              {g.items.map((ev) => <TimelineItem key={ev.id} ev={ev} />)}
+            </ol>
+          )}
+        </div>
+      ))}
     </div>
   );
 }

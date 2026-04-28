@@ -36,6 +36,7 @@ export default function NotificationsPage() {
   const [items, setItems] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [authed, setAuthed] = useState<boolean | null>(null);
+  const [deliveryFilter, setDeliveryFilter] = useState<"all" | "in_app" | "email" | "unread">("all");
 
   useEffect(() => {
     let cancelled = false;
@@ -96,6 +97,14 @@ export default function NotificationsPage() {
   }
 
   const unreadCount = items.filter((n) => !n.read_at).length;
+  const inAppCount = items.filter((n) => n.delivered_in_app).length;
+  const emailCount = items.filter((n) => n.delivered_email).length;
+  const filtered = items.filter((n) => {
+    if (deliveryFilter === "in_app") return n.delivered_in_app;
+    if (deliveryFilter === "email") return n.delivered_email;
+    if (deliveryFilter === "unread") return !n.read_at;
+    return true;
+  });
 
   return (
     <div className="min-h-screen bg-background">
@@ -137,6 +146,34 @@ export default function NotificationsPage() {
           )}
         </div>
 
+        {/* Delivery filter chips */}
+        {!loading && items.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 mb-4">
+            {([
+              { key: "all", label: `All (${items.length})` },
+              { key: "unread", label: `Unread (${unreadCount})` },
+              { key: "in_app", label: `In-app (${inAppCount})` },
+              { key: "email", label: `Email (${emailCount})` },
+            ] as const).map((f) => {
+              const active = deliveryFilter === f.key;
+              return (
+                <button
+                  key={f.key}
+                  type="button"
+                  onClick={() => setDeliveryFilter(f.key)}
+                  className={`text-[11px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded-full border transition-colors ${
+                    active
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "border-border text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {f.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {loading ? (
           <div className="flex items-center justify-center py-16">
             <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
@@ -151,9 +188,16 @@ export default function NotificationsPage() {
               You'll see alerts here when Critical or High priority cases are detected.
             </p>
           </div>
+        ) : filtered.length === 0 ? (
+          <div className="text-center py-12 px-6 border border-dashed border-border rounded-xl">
+            <p className="text-sm text-muted-foreground">No notifications match this filter.</p>
+            <Button variant="ghost" size="sm" className="mt-2" onClick={() => setDeliveryFilter("all")}>
+              Clear filter
+            </Button>
+          </div>
         ) : (
           <ul className="space-y-2">
-            {items.map((n) => {
+            {filtered.map((n) => {
               const Icon = n.priority === "critical" ? ShieldAlert : AlertOctagon;
               const tone =
                 n.priority === "critical" ? "text-destructive" : "text-amber-500";
