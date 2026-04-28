@@ -262,6 +262,44 @@ export function generateAIDoctorReportHtml({
   const totalIssues = issues.length;
   const criticalIssues = issues.filter(i => i.status === "critical").length;
 
+  // ========================================================================
+  // Claude-style feedback — plain language: "what's normal vs your values
+  // and what underlying issues to investigate". Rendered as its own section.
+  // ========================================================================
+  const claudeIntro = totalIssues === 0
+    ? `Across the markers we have data for, everything is sitting inside the longevity-optimal range. Nothing here flags as urgent — focus shifts to maintaining habits and re-testing on schedule.`
+    : `We compared your values to two reference ranges: the standard "normal" lab range (broad — designed to catch disease) and the longevity-optimal range (narrower — what the data suggests minimises long-term risk). ${totalIssues} marker${totalIssues > 1 ? "s sit" : " sits"} outside the optimal window${criticalIssues > 0 ? `, including ${criticalIssues} flagged as critical that warrant near-term attention` : ""}.`;
+
+  const claudeBullets = issues.slice(0, 6).map(it => {
+    const youAre = it.marker.direction === "higher"
+      ? `below the optimal floor of ${it.marker.optimal[0]} ${it.marker.unit}`
+      : it.marker.direction === "lower"
+        ? `above the optimal ceiling of ${it.marker.optimal[1]} ${it.marker.unit}`
+        : `outside the optimal window of ${it.marker.optimal[0]}–${it.marker.optimal[1]} ${it.marker.unit}`;
+    const sevWord = it.status === "critical" ? "Critical —" : "Worth investigating —";
+    const sColor = STATUS_STYLES[it.status].color;
+    return `
+      <li style="margin:0 0 14px;padding:14px 16px;background:#0d0d10;border:1px solid #1f1f23;border-left:3px solid ${sColor};border-radius:12px;list-style:none">
+        <div style="font-size:13.5px;color:#f3f4f6;font-weight:600;margin-bottom:4px">${escapeHtml(sevWord)} ${escapeHtml(it.marker.label)}</div>
+        <div style="font-size:12.5px;color:#9ca3af;line-height:1.6">
+          Your value of <strong style="color:${sColor}">${escapeHtml(it.value)} ${escapeHtml(it.marker.unit)}</strong> is ${escapeHtml(youAre)}. Standard "normal" range is <strong style="color:#e5e7eb">${escapeHtml(it.marker.normal[0])}–${escapeHtml(it.marker.normal[1])}</strong>.
+          <br/><span style="color:#d1d5db">${escapeHtml(it.marker.meaning)}</span>
+          <br/><span style="color:#fbbf24"><strong>Investigate:</strong></span> <span style="color:#d1d5db">${escapeHtml(it.marker.risk)} Discuss with a ${escapeHtml(it.marker.specialist)}.</span>
+        </div>
+      </li>`;
+  }).join("");
+
+  const claudeSection = `
+    <div style="background:linear-gradient(180deg,#0e0d14,#0a0a0b);border:1px solid #1f1f23;border-radius:20px;padding:26px;margin-top:28px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+        <span style="font-size:10.5px;background:#1e1b4b;color:#a5b4fc;padding:4px 10px;border-radius:999px;font-weight:600;letter-spacing:.05em;text-transform:uppercase">Claude-style feedback</span>
+      </div>
+      <h2 style="margin:6px 0 10px;font-size:18px;font-weight:600;letter-spacing:-.01em">What's normal vs your values — and what to investigate</h2>
+      <p style="color:#d1d5db;font-size:13.5px;line-height:1.65;margin:0 0 18px">${escapeHtml(claudeIntro)}</p>
+      ${claudeBullets ? `<ul style="padding:0;margin:0">${claudeBullets}</ul>` : ""}
+      ${issues.length > 6 ? `<p style="color:#6b7280;font-size:12px;margin:6px 0 0">+ ${issues.length - 6} more markers detailed in the comparison table below.</p>` : ""}
+    </div>`;
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -327,6 +365,8 @@ export function generateAIDoctorReportHtml({
     <h2><span class="dot"></span> Underlying Issues — Plain Language</h2>
     ${issuesHtml}
   </div>
+
+  ${claudeSection}
 
   <div class="section">
     <h2><span class="dot"></span> Which Doctor To See</h2>
