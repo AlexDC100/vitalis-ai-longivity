@@ -8,17 +8,23 @@ import { Badge } from "@/components/ui/badge";
 import {
   AlertOctagon,
   AlertTriangle,
+  Bell,
   CheckCircle2,
   ClipboardCheck,
   Clock,
+  Download,
+  FileSearch,
   FileText,
   Filter,
   Loader2,
+  Printer,
   ShieldAlert,
   Sparkles,
   Upload,
 } from "lucide-react";
 import { toast } from "sonner";
+import { detectCategory } from "@/lib/detect-category";
+import { downloadCaseReportHtml } from "@/lib/case-report-html";
 
 type Priority = "critical" | "high" | "medium" | "low";
 type Status = "pending" | "analyzing" | "ready" | "reviewed" | "error";
@@ -42,6 +48,9 @@ interface ClinicCase {
   key_findings: Json | null;
   missing_info: string | null;
   assigned_doctor: string | null;
+  detected_category: string | null;
+  reviewed_by_email: string | null;
+  reviewed_by_user_id: string | null;
   created_at: string;
   reviewed_at: string | null;
 }
