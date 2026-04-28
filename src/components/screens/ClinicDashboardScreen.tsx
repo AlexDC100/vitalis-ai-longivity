@@ -228,6 +228,7 @@ export default function ClinicDashboardScreen() {
 
     for (const file of list) {
       const filePath = `${userId}/clinic/${Date.now()}-${file.name}`;
+      const detected = detectCategory(file);
       try {
         const up = await supabase.storage.from("medical-documents").upload(filePath, file);
         if (up.error) throw up.error;
@@ -241,7 +242,8 @@ export default function ClinicDashboardScreen() {
             mime_type: file.type || null,
             status: "analyzing",
             priority: "medium",
-            case_type: "document",
+            case_type: detected,
+            detected_category: detected,
           })
           .select()
           .single();
@@ -304,6 +306,23 @@ export default function ClinicDashboardScreen() {
             raw_ai: result as unknown as Json,
           })
           .eq("id", row.id);
+
+        const finalPriority: Priority = PRIORITY_ORDER.includes(result.priority)
+          ? result.priority
+          : "medium";
+        if (finalPriority === "critical" || finalPriority === "high") {
+          await supabase.from("clinic_notifications").insert({
+            user_id: userId,
+            case_id: row.id,
+            case_ref: row.case_ref,
+            priority: finalPriority,
+            title:
+              finalPriority === "critical"
+                ? `Critical case requires immediate review`
+                : `High-priority case awaiting review`,
+            body: `${result.case_type ?? detected} · ${result.insight ?? "AI-assisted assessment ready."}`,
+          });
+        }
       } catch (e) {
         console.error("triage failed", e);
         toast.error(`Failed to process ${file.name}`, {
