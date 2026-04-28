@@ -14,7 +14,7 @@
  */
 import React, { useEffect, useState } from "react";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { render, screen, act, cleanup } from "@testing-library/react";
+import { render, act, cleanup } from "@testing-library/react";
 
 // Keys must stay in sync with AIDoctorScreen.tsx
 const LS_ACTIVE_CASE = "vitalis.aidoctor.activeCaseId";
@@ -116,61 +116,52 @@ describe.each(VIEWPORTS)("AI Doctor rehydration on %s", (label, w, h) => {
   afterEach(() => cleanup());
 
   it(`[${label}] persists activeCaseId across a refresh and shows the chat header`, () => {
-    // First mount: select a case + add a message
     localStorage.setItem(LS_ACTIVE_CASE, "case-A");
     const first = render(<Harness triage={TRIAGE} />);
-    expect(screen.getByTestId("chat-header-title").textContent).toContain("blood-panel.pdf");
+    expect(first.getByTestId("chat-header-title").textContent).toContain("blood-panel.pdf");
 
-    act(() => { screen.getByTestId("add-msg").click(); });
-    expect(screen.getByTestId("chat-log").children).toHaveLength(1);
+    act(() => { first.getByTestId("add-msg").click(); });
+    expect(first.getByTestId("chat-log").children).toHaveLength(1);
 
-    // Simulate a full page refresh: unmount + remount, but keep storage.
+    // Full page refresh: unmount + remount, storage preserved.
     first.unmount();
-    render(<Harness triage={TRIAGE} />);
+    const second = render(<Harness triage={TRIAGE} />);
 
-    // activeCaseId must be rehydrated from localStorage and the header shown.
     expect(localStorage.getItem(LS_ACTIVE_CASE)).toBe("case-A");
-    expect(screen.getByTestId("chat-header")).toBeInTheDocument();
-    expect(screen.getByTestId("chat-header-title").textContent).toContain("Blood Test");
-    // Per-case chat must rehydrate from sessionStorage.
-    expect(screen.getByTestId("chat-log").children).toHaveLength(1);
+    expect(second.getByTestId("chat-header")).toBeInTheDocument();
+    expect(second.getByTestId("chat-header-title").textContent).toContain("Blood Test");
+    expect(second.getByTestId("chat-log").children).toHaveLength(1);
   });
 
-  it(`[${label}] keeps per-case chat threads when switching cases (tab switch)`, () => {
+  it(`[${label}] keeps per-case chat threads when switching cases`, () => {
     localStorage.setItem(LS_ACTIVE_CASE, "case-A");
-    render(<Harness triage={TRIAGE} />);
+    const r = render(<Harness triage={TRIAGE} />);
 
-    // Add 2 messages on case A
-    act(() => { screen.getByTestId("add-msg").click(); });
-    act(() => { screen.getByTestId("add-msg").click(); });
-    expect(screen.getByTestId("chat-log").children).toHaveLength(2);
+    act(() => { r.getByTestId("add-msg").click(); });
+    act(() => { r.getByTestId("add-msg").click(); });
+    expect(r.getByTestId("chat-log").children).toHaveLength(2);
 
-    // Switch to case B — header updates, chat resets to B's (empty) thread
-    act(() => { screen.getByTestId("select-second").click(); });
+    act(() => { r.getByTestId("select-second").click(); });
     expect(localStorage.getItem(LS_ACTIVE_CASE)).toBe("case-B");
-    expect(screen.getByTestId("chat-header-title").textContent).toContain("chest-xray.png");
-    // B has no prior thread persisted
+    expect(r.getByTestId("chat-header-title").textContent).toContain("chest-xray.png");
     expect(sessionStorage.getItem(caseChatKey("case-B"))).toBeTruthy();
 
-    // Case A's thread is preserved in sessionStorage for later restore.
     const savedA = JSON.parse(sessionStorage.getItem(caseChatKey("case-A")) || "[]");
     expect(savedA).toHaveLength(2);
     expect(savedA[0]).toMatchObject({ role: "user", content: "msg-1" });
   });
 
-  it(`[${label}] clears the chat header when activeCaseId is missing`, () => {
-    // No activeCaseId in storage → no header rendered.
-    render(<Harness triage={TRIAGE} />);
-    expect(screen.queryByTestId("chat-header")).toBeNull();
+  it(`[${label}] hides the chat header when no activeCaseId is stored`, () => {
+    const r = render(<Harness triage={TRIAGE} />);
+    expect(r.queryByTestId("chat-header")).toBeNull();
     expect(localStorage.getItem(LS_ACTIVE_CASE)).toBeNull();
   });
 
-  it(`[${label}] survives a tab switch (visibilitychange) without losing case context`, () => {
+  it(`[${label}] survives a tab visibilitychange without losing case context`, () => {
     localStorage.setItem(LS_ACTIVE_CASE, "case-B");
-    render(<Harness triage={TRIAGE} />);
-    act(() => { screen.getByTestId("add-msg").click(); });
+    const r = render(<Harness triage={TRIAGE} />);
+    act(() => { r.getByTestId("add-msg").click(); });
 
-    // Simulate the tab going hidden then visible again.
     act(() => {
       Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
       document.dispatchEvent(new Event("visibilitychange"));
@@ -178,8 +169,8 @@ describe.each(VIEWPORTS)("AI Doctor rehydration on %s", (label, w, h) => {
       document.dispatchEvent(new Event("visibilitychange"));
     });
 
-    expect(screen.getByTestId("chat-header-title").textContent).toContain("chest-xray.png");
-    expect(screen.getByTestId("chat-log").children).toHaveLength(1);
+    expect(r.getByTestId("chat-header-title").textContent).toContain("chest-xray.png");
+    expect(r.getByTestId("chat-log").children).toHaveLength(1);
     expect(localStorage.getItem(LS_ACTIVE_CASE)).toBe("case-B");
   });
 });
