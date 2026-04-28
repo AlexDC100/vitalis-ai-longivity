@@ -5,12 +5,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { useSubstances } from "@/lib/use-substances";
 import {
   Send, Upload, Loader2, FileText, Stethoscope, AlertTriangle, ShieldCheck,
-  Activity, Siren, RefreshCw, CheckCircle2,
+  Activity, Siren, RefreshCw, CheckCircle2, Download,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import BookingSheet from "@/components/BookingSheet";
+import { downloadAIDoctorReport } from "@/lib/ai-doctor-report";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -85,6 +86,21 @@ function extractSummary(md: string): { title: string; explanation: string } {
     title: sentences[0]?.replace(/\*\*/g, "").trim() || "Analysis complete",
     explanation: sentences.slice(1).join(" ").replace(/\*\*/g, "").trim(),
   };
+}
+
+/** Extract bullet items from "## 3. Key Findings". */
+function extractKeyFindings(md: string): string[] {
+  const sec = md.split(/##\s*3\.\s*Key Findings/i)[1];
+  if (!sec) return [];
+  const next = sec.split(/##\s/)[0];
+  const lines = next.split("\n").map(l => l.trim()).filter(Boolean);
+  const items: string[] = [];
+  for (const l of lines) {
+    const m = l.match(/^(?:\d+\.|[-*])\s+(.*)$/);
+    if (m) items.push(m[1].replace(/\*\*/g, "").trim());
+    if (items.length >= 5) break;
+  }
+  return items;
 }
 
 interface ChatMsg { id: string; role: "user" | "assistant"; content: string; }
@@ -507,6 +523,16 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
   const isSerious = !!sevMeta?.serious;
   const summary = useMemo(() => latestResult ? extractSummary(stripTags(latestResult)) : null, [latestResult]);
   const actions = useMemo(() => latestResult ? extractActions(stripTags(latestResult)) : [], [latestResult]);
+  const findings = useMemo(() => latestResult ? extractKeyFindings(stripTags(latestResult)) : [], [latestResult]);
+
+  const handleDownloadReport = useCallback(() => {
+    try {
+      downloadAIDoctorReport({ profile, substances });
+      toast({ title: "Report downloaded", description: "Your full health report was saved." });
+    } catch (err: any) {
+      toast({ title: "Download failed", description: err?.message || "Please try again.", variant: "destructive" });
+    }
+  }, [profile, substances, toast]);
 
   return (
     <div className="min-h-full flex flex-col safe-area-px safe-area-pt safe-area-pb">
@@ -696,6 +722,44 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
                 )}
               </section>
             )}
+
+            {/* ── Structured report + download ── */}
+            <section className="rounded-2xl border border-border bg-card p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-primary" />
+                <h3 className="text-sm font-semibold text-foreground">Your report</h3>
+              </div>
+              {findings.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Key biomarkers
+                  </p>
+                  <ul className="space-y-1.5">
+                    {findings.map((f, i) => (
+                      <li key={i} className="flex gap-2 text-xs text-foreground leading-relaxed">
+                        <span className="text-primary mt-0.5">•</span>
+                        <span className="flex-1">{f}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {sevMeta && (
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Risk level</span>
+                  <span className={`font-semibold ${sevMeta.tone}`}>{sevMeta.label}</span>
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={handleDownloadReport}
+                className="w-full inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2.5 rounded-xl border border-border bg-background hover:bg-muted/50 text-sm font-medium text-foreground active:scale-[0.99] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                aria-label="Download full health report"
+              >
+                <Download className="w-4 h-4" />
+                Download report
+              </button>
+            </section>
 
             {/* Quiet "start over" — single secondary action */}
             <div className="flex justify-center pt-1">
