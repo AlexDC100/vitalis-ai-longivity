@@ -68,6 +68,7 @@ interface Row {
   reviewed_by_name: string | null;
   created_at: string;
   reviewed_at: string | null;
+  last_regenerated_at: string | null;
 }
 
 interface CaseEvent {
