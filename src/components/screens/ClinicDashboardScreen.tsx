@@ -8,7 +8,6 @@ import { Badge } from "@/components/ui/badge";
 import {
   AlertOctagon,
   AlertTriangle,
-  Bell,
   CheckCircle2,
   ClipboardCheck,
   Clock,
@@ -25,6 +24,7 @@ import {
 import { toast } from "sonner";
 import { detectCategory } from "@/lib/detect-category";
 import { downloadCaseReportHtml } from "@/lib/case-report-html";
+import NotificationBell from "@/components/NotificationBell";
 
 type Priority = "critical" | "high" | "medium" | "low";
 type Status = "pending" | "analyzing" | "ready" | "reviewed" | "error";
@@ -100,7 +100,6 @@ export default function ClinicDashboardScreen() {
   const [uploading, setUploading] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filt>("awaiting");
-  const [unreadCount, setUnreadCount] = useState(0);
 
   /* Load + realtime */
   useEffect(() => {
@@ -128,29 +127,6 @@ export default function ClinicDashboardScreen() {
     })();
     return () => { cancelled = true; };
   }, []);
-
-  /* Unread notifications count */
-  useEffect(() => {
-    if (!userId) return;
-    let cancelled = false;
-    const load = async () => {
-      const { count } = await supabase
-        .from("clinic_notifications")
-        .select("id", { count: "exact", head: true })
-        .is("read_at", null);
-      if (!cancelled) setUnreadCount(count ?? 0);
-    };
-    load();
-    const ch = supabase
-      .channel(`clinic_notifications_${userId}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "clinic_notifications", filter: `user_id=eq.${userId}` },
-        () => load(),
-      )
-      .subscribe();
-    return () => { cancelled = true; supabase.removeChannel(ch); };
-  }, [userId]);
 
   useEffect(() => {
     if (!userId) return;
@@ -249,6 +225,16 @@ export default function ClinicDashboardScreen() {
           .single();
         if (insErr || !row) throw insErr ?? new Error("Insert failed");
 
+        // Timeline: uploaded
+        await supabase.from("clinic_case_events").insert({
+          user_id: userId,
+          case_id: row.id,
+          event_type: "uploaded",
+          to_status: "analyzing",
+          note: `${file.name} (${detected})`,
+          metadata: { file_name: file.name, detected_category: detected, mime_type: file.type } as unknown as Json,
+        });
+
         let payload: { text?: string; base64?: string; mimeType?: string; fileName: string } = {
           fileName: file.name,
         };
@@ -307,6 +293,17 @@ export default function ClinicDashboardScreen() {
           })
           .eq("id", row.id);
 
+        // Timeline: AI assessment ready
+        await supabase.from("clinic_case_events").insert({
+          user_id: userId,
+          case_id: row.id,
+          event_type: "status_changed",
+          from_status: "analyzing",
+          to_status: "ready",
+          note: `Triaged as ${result.priority ?? "medium"}`,
+          metadata: { priority: result.priority, confidence: result.confidence } as unknown as Json,
+        });
+
         const finalPriority: Priority = PRIORITY_ORDER.includes(result.priority)
           ? result.priority
           : "medium";
@@ -328,11 +325,23 @@ export default function ClinicDashboardScreen() {
         toast.error(`Failed to process ${file.name}`, {
           description: e instanceof Error ? e.message : undefined,
         });
-        await supabase
+        const { data: errRow } = await supabase
           .from("clinic_cases")
           .update({ status: "error" })
           .eq("user_id", userId)
-          .eq("file_path", filePath);
+          .eq("file_path", filePath)
+          .select("id")
+          .maybeSingle();
+        if (errRow?.id) {
+          await supabase.from("clinic_case_events").insert({
+            user_id: userId,
+            case_id: errRow.id,
+            event_type: "ai_failed",
+            to_status: "error",
+            note: e instanceof Error ? e.message : "AI processing failed",
+            metadata: { file_name: file.name } as unknown as Json,
+          });
+        }
       }
     }
 
@@ -357,19 +366,7 @@ export default function ClinicDashboardScreen() {
             </p>
             <h1 className="text-3xl font-bold tracking-tight">Diagnostic queue</h1>
           </div>
-          <button
-            type="button"
-            onClick={() => navigate("/notifications")}
-            className="relative inline-flex items-center justify-center w-9 h-9 rounded-full border border-border bg-card text-muted-foreground hover:text-foreground transition-colors"
-            aria-label="Notifications"
-          >
-            <Bell className="w-4 h-4" />
-            {unreadCount > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center">
-                {unreadCount > 9 ? "9+" : unreadCount}
-              </span>
-            )}
-          </button>
+          <NotificationBell />
         </div>
         <p className="text-sm text-muted-foreground mt-2">
           {loading ? "Loading…" : (

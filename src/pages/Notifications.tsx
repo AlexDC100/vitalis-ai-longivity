@@ -11,6 +11,9 @@ import {
   Loader2,
   ShieldAlert,
   AlertOctagon,
+  MonitorSmartphone,
+  Mail,
+  MailX,
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -24,6 +27,7 @@ interface Notification {
   body: string | null;
   read_at: string | null;
   delivered_email: boolean;
+  delivered_in_app: boolean;
   created_at: string;
 }
 
@@ -187,6 +191,30 @@ export default function NotificationsPage() {
                     {n.body && (
                       <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{n.body}</p>
                     )}
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                      <span
+                        className={`inline-flex items-center gap-1 text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded border ${
+                          n.delivered_in_app
+                            ? "border-primary/40 text-primary bg-primary/5"
+                            : "border-border text-muted-foreground"
+                        }`}
+                        title={n.delivered_in_app ? "Delivered in-app" : "Not delivered in-app"}
+                      >
+                        <MonitorSmartphone className="w-3 h-3" />
+                        In-app {n.delivered_in_app ? "delivered" : "pending"}
+                      </span>
+                      <span
+                        className={`inline-flex items-center gap-1 text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded border ${
+                          n.delivered_email
+                            ? "border-primary/40 text-primary bg-primary/5"
+                            : "border-border text-muted-foreground"
+                        }`}
+                        title={n.delivered_email ? "Email sent" : "Email not sent"}
+                      >
+                        {n.delivered_email ? <Mail className="w-3 h-3" /> : <MailX className="w-3 h-3" />}
+                        Email {n.delivered_email ? "sent" : "off"}
+                      </span>
+                    </div>
                     <div className="mt-3 flex items-center gap-2">
                       {n.case_id && (
                         <Button size="sm" variant="outline" onClick={() => open(n)}>

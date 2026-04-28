@@ -4,20 +4,35 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import VitalisLogo from "@/components/brand/VitalisLogo";
+import NotificationBell from "@/components/NotificationBell";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   AlertOctagon,
   AlertTriangle,
   ArrowLeft,
   CheckCircle2,
   ClipboardCheck,
+  Clock,
   Download,
   FileText,
+  History,
   Loader2,
   Printer,
   RefreshCw,
   ShieldAlert,
   Trash2,
+  Upload,
   UserCheck,
+  XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { downloadCaseReportHtml } from "@/lib/case-report-html";
@@ -25,6 +40,8 @@ import { extractTextFromFile } from "@/lib/pdf-utils";
 import type { Json } from "@/integrations/supabase/types";
 
 type Priority = "critical" | "high" | "medium" | "low";
+
+const REGEN_COOLDOWN_MS = 30_000;
 
 interface Row {
   id: string;
@@ -48,8 +65,20 @@ interface Row {
   detected_category: string | null;
   reviewed_by_user_id: string | null;
   reviewed_by_email: string | null;
+  reviewed_by_name: string | null;
   created_at: string;
   reviewed_at: string | null;
+}
+
+interface CaseEvent {
+  id: string;
+  event_type: string;
+  from_status: string | null;
+  to_status: string | null;
+  actor_email: string | null;
+  actor_name: string | null;
+  note: string | null;
+  created_at: string;
 }
 
 const meta: Record<Priority, { label: string; icon: React.ElementType; tone: string; window: string }> = {
@@ -75,6 +104,15 @@ export default function CaseDetail() {
   const [docUrl, setDocUrl] = useState<string | null>(null);
   const [authed, setAuthed] = useState<boolean | null>(null);
   const [regenerating, setRegenerating] = useState(false);
+  const [confirmRegenOpen, setConfirmRegenOpen] = useState(false);
+  const [lastRegenAt, setLastRegenAt] = useState<number>(0);
+  const [now, setNow] = useState<number>(Date.now());
+  const [events, setEvents] = useState<CaseEvent[]>([]);
+
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -113,6 +151,30 @@ export default function CaseDetail() {
     })();
     return () => { cancelled = true; };
   }, [row?.file_path]);
+
+  // Load case timeline + realtime
+  useEffect(() => {
+    if (!id) return;
+    let cancelled = false;
+    const load = async () => {
+      const { data } = await supabase
+        .from("clinic_case_events")
+        .select("id,event_type,from_status,to_status,actor_email,actor_name,note,created_at")
+        .eq("case_id", id)
+        .order("created_at", { ascending: true });
+      if (!cancelled) setEvents((data ?? []) as CaseEvent[]);
+    };
+    load();
+    const ch = supabase
+      .channel(`case_events_${id}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "clinic_case_events", filter: `case_id=eq.${id}` },
+        () => load(),
+      )
+      .subscribe();
+    return () => { cancelled = true; supabase.removeChannel(ch); };
+  }, [id]);
 
   if (authed === false) {
     return (
@@ -155,9 +217,26 @@ export default function CaseDetail() {
   const uploadedAt = new Date(row.created_at).toLocaleString();
   const isProcessing = row.status === "analyzing" || row.status === "pending";
   const isError = row.status === "error";
+  const cooldownLeft = Math.max(0, REGEN_COOLDOWN_MS - (now - lastRegenAt));
+  const cooldownSec = Math.ceil(cooldownLeft / 1000);
+  const onCooldown = cooldownLeft > 0;
+
+  const userDisplayName = (
+    u: { user_metadata?: Record<string, unknown> } | null,
+  ): string | null => {
+    if (!u) return null;
+    const md = (u.user_metadata ?? {}) as Record<string, unknown>;
+    return (
+      (md.full_name as string) ||
+      (md.name as string) ||
+      (md.display_name as string) ||
+      null
+    );
+  };
 
   const markReviewed = async () => {
     const { data: { user } } = await supabase.auth.getUser();
+    const name = userDisplayName(user);
     await supabase
       .from("clinic_cases")
       .update({
@@ -165,8 +244,21 @@ export default function CaseDetail() {
         reviewed_at: new Date().toISOString(),
         reviewed_by_user_id: user?.id ?? null,
         reviewed_by_email: user?.email ?? null,
+        reviewed_by_name: name,
       })
       .eq("id", row.id);
+    if (user?.id) {
+      await supabase.from("clinic_case_events").insert({
+        user_id: user.id,
+        case_id: row.id,
+        event_type: "reviewed",
+        from_status: row.status,
+        to_status: "reviewed",
+        actor_email: user.email ?? null,
+        actor_name: name,
+        note: "Marked as clinician-reviewed",
+      });
+    }
     toast.success("Marked as reviewed");
     navigate("/");
   };
@@ -182,9 +274,28 @@ export default function CaseDetail() {
       toast.error("Original file not found");
       return;
     }
+    if (onCooldown) {
+      toast.error(`Please wait ${cooldownSec}s before retrying`);
+      return;
+    }
     setRegenerating(true);
+    setLastRegenAt(Date.now());
+    const { data: { user } } = await supabase.auth.getUser();
+    const actorName = userDisplayName(user);
     try {
       await supabase.from("clinic_cases").update({ status: "analyzing" }).eq("id", row.id);
+      if (user?.id) {
+        await supabase.from("clinic_case_events").insert({
+          user_id: user.id,
+          case_id: row.id,
+          event_type: "ai_regenerated",
+          from_status: row.status,
+          to_status: "analyzing",
+          actor_email: user.email ?? null,
+          actor_name: actorName,
+          note: "Clinician requested AI regeneration",
+        });
+      }
       const { data: blob, error: dlErr } = await supabase.storage
         .from("medical-documents")
         .download(row.file_path);
@@ -238,10 +349,33 @@ export default function CaseDetail() {
         .select()
         .single();
       if (updated) setRow(updated as Row);
+      if (user?.id) {
+        await supabase.from("clinic_case_events").insert({
+          user_id: user.id,
+          case_id: row.id,
+          event_type: "status_changed",
+          from_status: "analyzing",
+          to_status: "ready",
+          actor_email: user.email ?? null,
+          actor_name: actorName,
+          note: `Re-triaged as ${newPriority}`,
+        });
+      }
       toast.success("AI assessment regenerated");
     } catch (e) {
       console.error("regenerate failed", e);
       await supabase.from("clinic_cases").update({ status: "error" }).eq("id", row.id);
+      if (user?.id) {
+        await supabase.from("clinic_case_events").insert({
+          user_id: user.id,
+          case_id: row.id,
+          event_type: "ai_failed",
+          to_status: "error",
+          actor_email: user.email ?? null,
+          actor_name: actorName,
+          note: e instanceof Error ? e.message : "Regeneration failed",
+        });
+      }
       toast.error("Regeneration failed", {
         description: e instanceof Error ? e.message : undefined,
       });
@@ -260,12 +394,15 @@ export default function CaseDetail() {
           >
             <ArrowLeft className="w-4 h-4" /> Queue
           </button>
-          <div className="flex items-center gap-2">
-            <VitalisLogo variant="icon" size={18} />
-            <span className="text-[12px] font-semibold tracking-tight">Vitalis</span>
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground border-l border-border/50 pl-2 ml-1">
-              Clinic
-            </span>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <VitalisLogo variant="icon" size={18} />
+              <span className="text-[12px] font-semibold tracking-tight">Vitalis</span>
+              <span className="text-[10px] uppercase tracking-wider text-muted-foreground border-l border-border/50 pl-2 ml-1">
+                Clinic
+              </span>
+            </div>
+            <NotificationBell size="sm" />
           </div>
         </div>
       </header>
@@ -331,11 +468,13 @@ export default function CaseDetail() {
               size="sm"
               variant="outline"
               className="mt-3"
-              onClick={regenerate}
-              disabled={regenerating}
+              onClick={() => setConfirmRegenOpen(true)}
+              disabled={regenerating || onCooldown}
             >
               {regenerating ? (
                 <><Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> Regenerating…</>
+              ) : onCooldown ? (
+                <><Clock className="w-3.5 h-3.5 mr-2" /> Retry in {cooldownSec}s</>
               ) : (
                 <><RefreshCw className="w-3.5 h-3.5 mr-2" /> Regenerate AI assessment</>
               )}
@@ -423,7 +562,12 @@ export default function CaseDetail() {
               <div>
                 <p>
                   Marked reviewed by{" "}
-                  <span className="font-semibold">{row.reviewed_by_email ?? "Clinician"}</span>
+                  <span className="font-semibold">
+                    {row.reviewed_by_name ?? row.reviewed_by_email ?? "Clinician"}
+                  </span>
+                  {row.reviewed_by_name && row.reviewed_by_email && (
+                    <span className="text-muted-foreground"> · {row.reviewed_by_email}</span>
+                  )}
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   {new Date(row.reviewed_at).toLocaleString()}
@@ -432,6 +576,57 @@ export default function CaseDetail() {
             </div>
           </section>
         )}
+
+        {/* Case timeline */}
+        <section className="rounded-xl border border-border bg-card p-5 mb-4">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground inline-flex items-center gap-1.5">
+              <History className="w-3.5 h-3.5" /> Case timeline
+            </p>
+            <span className="text-[10px] text-muted-foreground">{events.length} event{events.length === 1 ? "" : "s"}</span>
+          </div>
+          {events.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No timeline events yet.</p>
+          ) : (
+            <ol className="relative pl-4 border-l border-border/60 space-y-4">
+              {events.map((ev) => {
+                const I =
+                  ev.event_type === "uploaded" ? Upload :
+                  ev.event_type === "ai_regenerated" ? RefreshCw :
+                  ev.event_type === "ai_failed" ? XCircle :
+                  ev.event_type === "reviewed" ? UserCheck :
+                  CheckCircle2;
+                const tone =
+                  ev.event_type === "ai_failed" ? "text-destructive" :
+                  ev.event_type === "reviewed" ? "text-primary" :
+                  ev.event_type === "ai_regenerated" ? "text-amber-500" :
+                  "text-muted-foreground";
+                const label =
+                  ev.event_type === "uploaded" ? "Case uploaded" :
+                  ev.event_type === "ai_regenerated" ? "AI regeneration requested" :
+                  ev.event_type === "ai_failed" ? "AI processing failed" :
+                  ev.event_type === "reviewed" ? "Clinician marked reviewed" :
+                  ev.from_status && ev.to_status ? `Status: ${ev.from_status} → ${ev.to_status}` : "Status change";
+                const actor = ev.actor_name ?? ev.actor_email;
+                return (
+                  <li key={ev.id} className="relative">
+                    <span className="absolute -left-[21px] top-1 w-3.5 h-3.5 rounded-full bg-card border border-border flex items-center justify-center">
+                      <I className={`w-2.5 h-2.5 ${tone}`} />
+                    </span>
+                    <p className="text-sm">
+                      <span className="font-medium">{label}</span>
+                      {actor && <span className="text-muted-foreground"> · {actor}</span>}
+                    </p>
+                    {ev.note && <p className="text-xs text-muted-foreground mt-0.5">{ev.note}</p>}
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      {new Date(ev.created_at).toLocaleString()}
+                    </p>
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+        </section>
 
         {/* Actions */}
         <div className="flex flex-wrap gap-2">
@@ -452,11 +647,13 @@ export default function CaseDetail() {
           {!isProcessing && (
             <Button
               variant="outline"
-              onClick={regenerate}
-              disabled={regenerating || !row.file_path}
+              onClick={() => setConfirmRegenOpen(true)}
+              disabled={regenerating || !row.file_path || onCooldown}
             >
               {regenerating ? (
                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Regenerating…</>
+              ) : onCooldown ? (
+                <><Clock className="w-4 h-4 mr-2" /> Retry in {cooldownSec}s</>
               ) : (
                 <><RefreshCw className="w-4 h-4 mr-2" /> Regenerate AI assessment</>
               )}
@@ -476,6 +673,28 @@ export default function CaseDetail() {
           </Button>
         </div>
       </main>
+
+      <AlertDialog open={confirmRegenOpen} onOpenChange={setConfirmRegenOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Regenerate AI assessment?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This re-runs AI-assisted triage on the original file and overwrites the current assessment, priority, and key findings. The previous assessment cannot be restored. After regenerating you'll need to wait {Math.round(REGEN_COOLDOWN_MS / 1000)}s before retrying again.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setConfirmRegenOpen(false);
+                regenerate();
+              }}
+            >
+              Regenerate
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

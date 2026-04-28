@@ -50,6 +50,48 @@ export type Database = {
         }
         Relationships: []
       }
+      clinic_case_events: {
+        Row: {
+          actor_email: string | null
+          actor_name: string | null
+          case_id: string
+          created_at: string
+          event_type: string
+          from_status: string | null
+          id: string
+          metadata: Json
+          note: string | null
+          to_status: string | null
+          user_id: string
+        }
+        Insert: {
+          actor_email?: string | null
+          actor_name?: string | null
+          case_id: string
+          created_at?: string
+          event_type: string
+          from_status?: string | null
+          id?: string
+          metadata?: Json
+          note?: string | null
+          to_status?: string | null
+          user_id: string
+        }
+        Update: {
+          actor_email?: string | null
+          actor_name?: string | null
+          case_id?: string
+          created_at?: string
+          event_type?: string
+          from_status?: string | null
+          id?: string
+          metadata?: Json
+          note?: string | null
+          to_status?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       clinic_cases: {
         Row: {
           assigned_doctor: string | null
@@ -71,6 +113,7 @@ export type Database = {
           recommendation: string | null
           reviewed_at: string | null
           reviewed_by_email: string | null
+          reviewed_by_name: string | null
           reviewed_by_user_id: string | null
           status: string
           suggested_specialist: string | null
@@ -99,6 +142,7 @@ export type Database = {
           recommendation?: string | null
           reviewed_at?: string | null
           reviewed_by_email?: string | null
+          reviewed_by_name?: string | null
           reviewed_by_user_id?: string | null
           status?: string
           suggested_specialist?: string | null
@@ -127,6 +171,7 @@ export type Database = {
           recommendation?: string | null
           reviewed_at?: string | null
           reviewed_by_email?: string | null
+          reviewed_by_name?: string | null
           reviewed_by_user_id?: string | null
           status?: string
           suggested_specialist?: string | null
@@ -144,6 +189,7 @@ export type Database = {
           case_ref: string | null
           created_at: string
           delivered_email: boolean
+          delivered_in_app: boolean
           id: string
           priority: string
           read_at: string | null
@@ -156,6 +202,7 @@ export type Database = {
           case_ref?: string | null
           created_at?: string
           delivered_email?: boolean
+          delivered_in_app?: boolean
           id?: string
           priority: string
           read_at?: string | null
@@ -168,6 +215,7 @@ export type Database = {
           case_ref?: string | null
           created_at?: string
           delivered_email?: boolean
+          delivered_in_app?: boolean
           id?: string
           priority?: string
           read_at?: string | null

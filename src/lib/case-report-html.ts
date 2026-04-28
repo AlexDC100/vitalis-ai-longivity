@@ -28,6 +28,7 @@ export interface CaseReportInput {
   detected_category?: string | null;
   reviewed_at?: string | null;
   reviewed_by_email?: string | null;
+  reviewed_by_name?: string | null;
 }
 
 const REVIEW_WINDOW: Record<Priority, string> = {
@@ -57,8 +58,12 @@ export function buildCaseReportHtml(row: CaseReportInput): string {
       )
     : [];
   const reviewedAt = row.reviewed_at ? new Date(row.reviewed_at).toLocaleString() : null;
+  const reviewerName = row.reviewed_by_name?.trim() || null;
+  const reviewerEmail = row.reviewed_by_email?.trim() || null;
+  const reviewerDisplay = reviewerName ?? reviewerEmail ?? "Clinician";
+  const reviewerExtra = reviewerName && reviewerEmail ? ` (${esc(reviewerEmail)})` : "";
   const reviewerLine = reviewedAt
-    ? `<section class="block"><h3>Clinician review history</h3><p>Marked reviewed by <strong>${esc(row.reviewed_by_email ?? "Clinician")}</strong> on ${esc(reviewedAt)}.</p></section>`
+    ? `<section class="block"><h3>Clinician review history</h3><p>Marked reviewed by <strong>${esc(reviewerDisplay)}</strong>${reviewerExtra} on ${esc(reviewedAt)}.</p></section>`
     : "";
 
   const sections: string[] = [];
