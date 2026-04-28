@@ -98,7 +98,7 @@ function AppShell() {
           <VitalisLogo variant="icon" size={22} title="Vitalis" />
           <span className="text-[15px] font-bold text-foreground tracking-tight">Vitalis</span>
           <span className="text-[11px] uppercase tracking-wider text-muted-foreground border-l border-border/50 pl-2.5 ml-1">
-            Clinic
+            AI Diagnostic Review
           </span>
         </div>
         <HeaderMenu
