@@ -637,7 +637,19 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
             <div className="flex justify-center pt-1">
               <button
                 type="button"
-                onClick={() => { setLatestResult(""); setChat([]); setScreen("idle"); }}
+                onClick={() => {
+                  setLatestResult("");
+                  setChat([]);
+                  setExtractedBiomarkers({});
+                  setLastFileName("");
+                  setScreen("idle");
+                  try {
+                    sessionStorage.removeItem(SS_RESULT);
+                    sessionStorage.removeItem(SS_BIOMARKERS);
+                    sessionStorage.removeItem(SS_FILENAME);
+                    sessionStorage.removeItem(SS_SCREEN);
+                  } catch { /* ignore */ }
+                }}
                 className="inline-flex items-center gap-1.5 min-h-[44px] px-4 text-xs font-medium text-muted-foreground hover:text-foreground active:scale-95 transition-all"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
