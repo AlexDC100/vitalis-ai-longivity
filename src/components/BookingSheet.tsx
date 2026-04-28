@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { CLINIC_PARTNERS, type ClinicPartner, type Severity } from "@/lib/clinic-partners";
 import { track } from "@/lib/analytics";
 import { supabase } from "@/integrations/supabase/client";
+import { describeBookingError } from "@/lib/booking-errors";
 
 /**
  * Mobile-friendly in-app booking flow.
@@ -50,6 +51,17 @@ const requestSchema = z.object({
 
 type Step = "choose" | "form" | "confirmed" | "blocked";
 
+/** How long the submit button stays locked after a successful submit. */
+const SUBMIT_LOCK_SECONDS = 60;
+/** Look for prior identical requests in the last N minutes when deduping. */
+const DEDUPE_WINDOW_MIN = 60;
+/** localStorage key — keyed per partner+specialty+email below. */
+const LOCK_KEY_PREFIX = "vitalis_booking_lock_";
+
+const normalizeEmail = (e: string) => e.trim().toLowerCase();
+const lockKey = (partnerId: string, specialty: string, email: string) =>
+  `${LOCK_KEY_PREFIX}${partnerId}::${specialty}::${normalizeEmail(email)}`;
+
 export function BookingSheet({
   open,
   onOpenChange,
@@ -65,6 +77,8 @@ export function BookingSheet({
   const [errors, setErrors] = useState<Partial<Record<keyof typeof form, string>>>({});
   const [blockedInfo, setBlockedInfo] = useState<{ partner: ClinicPartner; url: string; reason: string } | null>(null);
   const [copied, setCopied] = useState(false);
+  /** Seconds remaining on submit lock; 0 means unlocked. */
+  const [lockSeconds, setLockSeconds] = useState(0);
 
   const partner = partners.find(p => p.id === partnerId) ?? partners[0];
 
@@ -86,6 +100,27 @@ export function BookingSheet({
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  /** Recompute the remaining lock seconds for the current partner+specialty+email. */
+  useEffect(() => {
+    if (!partner || !form.email) {
+      setLockSeconds(0);
+      return;
+    }
+    const key = lockKey(partner.id, specialty, form.email);
+    const tick = () => {
+      try {
+        const until = Number(localStorage.getItem(key) ?? 0);
+        const remaining = Math.max(0, Math.ceil((until - Date.now()) / 1000));
+        setLockSeconds(remaining);
+      } catch {
+        setLockSeconds(0);
+      }
+    };
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, [partner, specialty, form.email]);
 
   const buildUrl = (p: ClinicPartner) =>
     p.buildBookingUrl ? p.buildBookingUrl(specialty) : p.bookingUrl;
@@ -150,6 +185,21 @@ export function BookingSheet({
 
   const submitRequest = async () => {
     if (!partner) return;
+
+    // Throttle: prevent re-submits within SUBMIT_LOCK_SECONDS
+    if (lockSeconds > 0) {
+      track({
+        name: "booking_request_throttled",
+        partnerId: partner.id,
+        specialty,
+        remaining_ms: lockSeconds * 1000,
+      });
+      toast.error("Please wait before submitting again", {
+        description: `You can submit another ${specialty} request in ${lockSeconds}s.`,
+      });
+      return;
+    }
+
     const parsed = requestSchema.safeParse(form);
     if (!parsed.success) {
       const fieldErrors: typeof errors = {};
@@ -165,24 +215,73 @@ export function BookingSheet({
     track({ name: "booking_request_submit", partnerId: partner.id, specialty });
     try {
       const { data: userRes } = await supabase.auth.getUser();
+      const normalizedEmail = normalizeEmail(parsed.data.email);
+
+      // Dedupe — look for an identical pending request in the recent window.
+      const sinceIso = new Date(Date.now() - DEDUPE_WINDOW_MIN * 60_000).toISOString();
+      const { data: existing, error: dupErr } = await supabase
+        .from("consultation_requests")
+        .select("id, created_at")
+        .eq("partner_id", partner.id)
+        .eq("specialty", specialty)
+        .eq("email", normalizedEmail)
+        .gte("created_at", sinceIso)
+        .limit(1);
+      if (dupErr) throw dupErr;
+      if (existing && existing.length > 0) {
+        track({ name: "booking_request_duplicate", partnerId: partner.id, specialty });
+        toast.error("Looks like a duplicate", {
+          description: `You already submitted this ${specialty} request to ${partner.name} in the last hour.`,
+        });
+        // Engage the lock so the button is visibly disabled.
+        try {
+          localStorage.setItem(
+            lockKey(partner.id, specialty, parsed.data.email),
+            String(Date.now() + SUBMIT_LOCK_SECONDS * 1000),
+          );
+        } catch {
+          /* ignore */
+        }
+        setLockSeconds(SUBMIT_LOCK_SECONDS);
+        setStep("confirmed");
+        return;
+      }
+
       const { error } = await supabase.from("consultation_requests").insert({
         user_id: userRes.user?.id ?? null,
         partner_id: partner.id,
         specialty,
         severity,
         full_name: parsed.data.fullName,
-        email: parsed.data.email,
+        email: normalizedEmail,
         phone: parsed.data.phone || null,
         preferred_time: parsed.data.preferredTime || null,
         notes: parsed.data.notes || null,
       });
       if (error) throw error;
+
+      // Engage the 60s lock for this partner+specialty+email combo.
+      try {
+        localStorage.setItem(
+          lockKey(partner.id, specialty, parsed.data.email),
+          String(Date.now() + SUBMIT_LOCK_SECONDS * 1000),
+        );
+      } catch {
+        /* ignore */
+      }
+      setLockSeconds(SUBMIT_LOCK_SECONDS);
+
       track({ name: "booking_request_success", partnerId: partner.id, specialty });
       setStep("confirmed");
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Unknown error";
-      track({ name: "booking_request_error", partnerId: partner.id, specialty, message });
-      toast.error("Couldn't submit request", { description: message });
+      const friendly = describeBookingError(err);
+      track({
+        name: "booking_request_error",
+        partnerId: partner.id,
+        specialty,
+        message: `${friendly.reason}: ${friendly.description}`,
+      });
+      toast.error(friendly.title, { description: friendly.description });
     } finally {
       setSubmitting(false);
     }
