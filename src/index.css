@@ -136,3 +136,29 @@
   mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
   -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
 }
+
+/* ─── Shared safe-area utility ──────────────────────────────────
+   Single source of truth for top/bottom/horizontal safe-area
+   padding so notched iOS Safari, Android Chrome, and PWA chrome
+   render identical Body-page edges. */
+.safe-area-px {
+  padding-left: max(1rem, env(safe-area-inset-left, 0px));
+  padding-right: max(1rem, env(safe-area-inset-right, 0px));
+}
+.safe-area-pt {
+  padding-top: calc(0.5rem + env(safe-area-inset-top, 0px));
+}
+.safe-area-pb {
+  /* leaves room for the bottom nav (~5.5rem) plus the device safe area */
+  padding-bottom: calc(7rem + env(safe-area-inset-bottom, 0px));
+}
+
+/* ─── Reduced-motion: kill non-essential animation ──────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
