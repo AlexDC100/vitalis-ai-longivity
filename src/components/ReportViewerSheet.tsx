@@ -7,7 +7,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Download, FileText, Link2, Mail, Loader2, Check, Printer, FileDown } from "lucide-react";
+import { Download, FileText, Link2, Mail, Loader2, Check, Printer, FileDown, AlertTriangle, RefreshCw, X } from "lucide-react";
 import {
   generateAIDoctorReportHtml,
   downloadAIDoctorReport,
@@ -40,6 +40,7 @@ export default function ReportViewerSheet({ open, onOpenChange, input, userId, u
   const [pdfBusy, setPdfBusy] = useState(false);
   const [copied, setCopied] = useState(false);
   const [confirm, setConfirm] = useState<null | "copy" | "email">(null);
+  const [actionError, setActionError] = useState<null | { action: "pdf" | "print"; message: string }>(null);
 
   // Report HTML — extend with print-friendly CSS so iframe printing
   // matches the HTML download exactly (margins + scaling).
@@ -68,13 +69,14 @@ export default function ReportViewerSheet({ open, onOpenChange, input, userId, u
   }, [open]);
 
   useEffect(() => {
-    if (!open) { setShareUrl(null); setCopied(false); setConfirm(null); }
+    if (!open) { setShareUrl(null); setCopied(false); setConfirm(null); setActionError(null); }
   }, [open]);
 
   // ---- Direct PDF download (no print dialog) ----
   const handlePdfDownload = async () => {
+    setActionError(null);
     if (!html) {
-      toast({ title: "Preview not ready", description: "Wait a moment and try again.", variant: "destructive" });
+      setActionError({ action: "pdf", message: "Preview isn't ready yet — wait a moment and retry." });
       return;
     }
     setPdfBusy(true);
@@ -107,10 +109,9 @@ export default function ReportViewerSheet({ open, onOpenChange, input, userId, u
         container.remove();
       }
     } catch (e: any) {
-      toast({
-        title: "Could not generate PDF",
-        description: e?.message || "Try the Print or HTML option instead.",
-        variant: "destructive",
+      setActionError({
+        action: "pdf",
+        message: e?.message || "Could not generate the PDF. Try Print or HTML instead.",
       });
     } finally {
       setPdfBusy(false);
@@ -119,16 +120,17 @@ export default function ReportViewerSheet({ open, onOpenChange, input, userId, u
 
   // ---- Print (uses iframe.print() with proper CSS) ----
   const handlePrint = () => {
+    setActionError(null);
     const win = iframeRef.current?.contentWindow;
     if (!win) {
-      toast({ title: "Preview not ready", description: "Wait a moment and try again.", variant: "destructive" });
+      setActionError({ action: "print", message: "Preview isn't ready yet — wait a moment and retry." });
       return;
     }
     try {
       win.focus();
       win.print();
     } catch (e: any) {
-      toast({ title: "Could not open print dialog", description: e?.message || "Try Save as PDF instead.", variant: "destructive" });
+      setActionError({ action: "print", message: e?.message || "Could not open the print dialog. Try Save as PDF instead." });
     }
   };
 
@@ -173,23 +175,39 @@ export default function ReportViewerSheet({ open, onOpenChange, input, userId, u
     const url = await ensureShareUrl();
     if (!url) return;
 
-    if (mode === "copy") {
-      try {
-        await navigator.clipboard.writeText(url);
-        setCopied(true);
-        toast({ title: "Link copied", description: `Expires ${expiresAt.toLocaleDateString()}.` });
-        setTimeout(() => setCopied(false), 2200);
-      } catch {
-        window.prompt("Copy this link:", url);
-      }
-    } else {
-      const subject = encodeURIComponent(`My Vitalis ${REPORT_TITLE}`);
-      const body = encodeURIComponent(
-        `Hi,\n\nHere is my latest ${REPORT_TITLE}:\n${url}\n\n(Link expires ${expiresAt.toLocaleDateString()}.)\n`
-      );
-      const to = userEmail ? encodeURIComponent(userEmail) : "";
-      window.location.href = `mailto:${to}?subject=${subject}&body=${body}`;
+    // Single combined flow: ALWAYS copy first, then for "email" also open the
+    // composer with the link pre-filled. This way the user has a fallback if
+    // the mailto handler doesn't open or strips the body.
+    let copiedOk = false;
+    try {
+      await navigator.clipboard.writeText(url);
+      copiedOk = true;
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2200);
+    } catch {
+      // Clipboard blocked — fall back to manual copy prompt for "copy" mode.
+      if (mode === "copy") window.prompt("Copy this link:", url);
     }
+
+    if (mode === "copy") {
+      toast({
+        title: copiedOk ? "Link copied" : "Link ready",
+        description: `Expires ${expiresAt.toLocaleDateString()}.`,
+      });
+      return;
+    }
+
+    // Email mode: link is now on the clipboard, open composer with it pre-filled.
+    const subject = encodeURIComponent(`My Vitalis ${REPORT_TITLE}`);
+    const body = encodeURIComponent(
+      `Hi,\n\nHere is my latest ${REPORT_TITLE}:\n${url}\n\n(Link expires ${expiresAt.toLocaleDateString()}.)\n`
+    );
+    const to = userEmail ? encodeURIComponent(userEmail) : "";
+    toast({
+      title: copiedOk ? "Link copied — opening email" : "Opening email",
+      description: copiedOk ? "Paste it anywhere if your email app doesn't fill it in." : undefined,
+    });
+    window.location.href = `mailto:${to}?subject=${subject}&body=${body}`;
   };
 
   return (
@@ -241,6 +259,39 @@ export default function ReportViewerSheet({ open, onOpenChange, input, userId, u
               <div className="text-[10px] mt-0.5 text-muted-foreground/80">
                 Expires {expiresAt.toLocaleDateString()}
               </div>
+            </div>
+          )}
+
+          {actionError && (
+            <div
+              role="alert"
+              className="mx-4 mb-2 px-3 py-2.5 rounded-lg bg-destructive/10 border border-destructive/30 flex items-start gap-2"
+            >
+              <AlertTriangle className="w-3.5 h-3.5 text-destructive mt-0.5 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="text-[11px] font-medium text-destructive">
+                  {actionError.action === "pdf" ? "PDF download failed" : "Print failed"}
+                </div>
+                <div className="text-[11px] text-muted-foreground break-words">{actionError.message}</div>
+              </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 px-2 text-[11px] gap-1"
+                onClick={() => actionError.action === "pdf" ? handlePdfDownload() : handlePrint()}
+              >
+                <RefreshCw className="w-3 h-3" />
+                Retry
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 w-7 p-0"
+                onClick={() => setActionError(null)}
+                aria-label="Dismiss"
+              >
+                <X className="w-3 h-3" />
+              </Button>
             </div>
           )}
 
