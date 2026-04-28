@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { z } from "zod";
 import { toast } from "sonner";
-import { CalendarCheck, ExternalLink, Loader2, CheckCircle2, ChevronRight } from "lucide-react";
+import { CalendarCheck, ExternalLink, Loader2, CheckCircle2, ChevronRight, Copy, Check, AlertTriangle } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -48,7 +48,7 @@ const requestSchema = z.object({
   notes: z.string().trim().max(1000).optional().or(z.literal("")),
 });
 
-type Step = "choose" | "form" | "confirmed";
+type Step = "choose" | "form" | "confirmed" | "blocked";
 
 export function BookingSheet({
   open,
@@ -63,6 +63,8 @@ export function BookingSheet({
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({ fullName: "", email: "", phone: "", preferredTime: "", notes: "" });
   const [errors, setErrors] = useState<Partial<Record<keyof typeof form, string>>>({});
+  const [blockedInfo, setBlockedInfo] = useState<{ partner: ClinicPartner; url: string; reason: string } | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const partner = partners.find(p => p.id === partnerId) ?? partners[0];
 
@@ -110,8 +112,39 @@ export function BookingSheet({
       const message = err instanceof Error ? err.message : "Unknown error";
       track({ name: "booking_click_blocked", partnerId: p.id, specialty, url, reason: message });
       toast.error("Couldn't open the booking page", {
-        description: `${p.name} link was blocked: ${message}. Try the in-app request instead.`,
+        description: `${p.name} link was blocked. Showing copy fallback.`,
       });
+      showBlockedFallback(p, url, message);
+    }
+  };
+
+  const showBlockedFallback = (p: ClinicPartner, url: string, reason: string) => {
+    setBlockedInfo({ partner: p, url, reason });
+    setCopied(false);
+    setStep("blocked");
+  };
+
+  const copyUrl = async (url: string) => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+      } else {
+        const ta = document.createElement("textarea");
+        ta.value = url;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      }
+      setCopied(true);
+      track({ name: "booking_url_copy", url });
+      toast.success("Link copied to clipboard");
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      toast.error("Couldn't copy link", { description: message });
     }
   };
 
@@ -313,6 +346,76 @@ export function BookingSheet({
             <Button className="w-full mt-2" onClick={() => onOpenChange(false)}>
               Done
             </Button>
+          </div>
+        )}
+
+        {step === "blocked" && blockedInfo && (
+          <div className="space-y-4 mt-4">
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 flex gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              <div className="text-xs text-foreground">
+                <p className="font-semibold">Link couldn't open automatically</p>
+                <p className="text-muted-foreground mt-1">
+                  Your browser blocked the popup to {blockedInfo.partner.name}. Copy the link below
+                  and paste it into a new tab, or try opening it again.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="bk-url">Booking URL</Label>
+              <Textarea
+                id="bk-url"
+                readOnly
+                value={blockedInfo.url}
+                rows={3}
+                className="font-mono text-xs break-all"
+                onFocus={(e) => e.currentTarget.select()}
+              />
+            </div>
+
+            <div className="flex gap-2">
+              <Button
+                variant="secondary"
+                className="flex-1"
+                onClick={() => copyUrl(blockedInfo.url)}
+              >
+                {copied ? (
+                  <><Check className="w-4 h-4 mr-1.5" /> Copied</>
+                ) : (
+                  <><Copy className="w-4 h-4 mr-1.5" /> Copy link</>
+                )}
+              </Button>
+              <Button
+                className="flex-1"
+                asChild
+              >
+                <a
+                  href={blockedInfo.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => track({ name: "booking_click", partnerId: blockedInfo.partner.id, specialty, url: blockedInfo.url, method: "anchor_fallback" })}
+                >
+                  Try opening <ExternalLink className="w-4 h-4 ml-1.5" />
+                </a>
+              </Button>
+            </div>
+
+            <div className="flex gap-2">
+              <Button variant="ghost" className="flex-1" onClick={() => setStep("choose")}>
+                Back
+              </Button>
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  setPartnerId(blockedInfo.partner.id);
+                  setStep("form");
+                }}
+              >
+                Request callback instead
+              </Button>
+            </div>
           </div>
         )}
       </SheetContent>

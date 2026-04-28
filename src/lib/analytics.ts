@@ -31,8 +31,9 @@ export type AnalyticsEvent =
   // Booking funnel
   | { name: "booking_sheet_open"; specialty: string; severity: string }
   | { name: "booking_partner_select"; partnerId: string; specialty: string }
-  | { name: "booking_click"; partnerId: string; specialty: string; url: string; method: "popup" | "top" | "anchor" }
+  | { name: "booking_click"; partnerId: string; specialty: string; url: string; method: "popup" | "top" | "anchor" | "anchor_fallback" }
   | { name: "booking_click_blocked"; partnerId: string; specialty: string; url: string; reason: string }
+  | { name: "booking_url_copy"; url: string }
   | { name: "booking_request_submit"; partnerId: string; specialty: string }
   | { name: "booking_request_success"; partnerId: string; specialty: string }
   | { name: "booking_request_error"; partnerId: string; specialty: string; message?: string };
