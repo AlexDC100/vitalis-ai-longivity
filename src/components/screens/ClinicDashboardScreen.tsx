@@ -225,6 +225,16 @@ export default function ClinicDashboardScreen() {
           .single();
         if (insErr || !row) throw insErr ?? new Error("Insert failed");
 
+        // Timeline: uploaded
+        await supabase.from("clinic_case_events").insert({
+          user_id: userId,
+          case_id: row.id,
+          event_type: "uploaded",
+          to_status: "analyzing",
+          note: `${file.name} (${detected})`,
+          metadata: { file_name: file.name, detected_category: detected, mime_type: file.type } as unknown as Json,
+        });
+
         let payload: { text?: string; base64?: string; mimeType?: string; fileName: string } = {
           fileName: file.name,
         };
@@ -283,6 +293,17 @@ export default function ClinicDashboardScreen() {
           })
           .eq("id", row.id);
 
+        // Timeline: AI assessment ready
+        await supabase.from("clinic_case_events").insert({
+          user_id: userId,
+          case_id: row.id,
+          event_type: "status_changed",
+          from_status: "analyzing",
+          to_status: "ready",
+          note: `Triaged as ${result.priority ?? "medium"}`,
+          metadata: { priority: result.priority, confidence: result.confidence } as unknown as Json,
+        });
+
         const finalPriority: Priority = PRIORITY_ORDER.includes(result.priority)
           ? result.priority
           : "medium";
@@ -309,6 +330,15 @@ export default function ClinicDashboardScreen() {
           .update({ status: "error" })
           .eq("user_id", userId)
           .eq("file_path", filePath);
+        // Timeline: failure
+        await supabase.from("clinic_case_events").insert({
+          user_id: userId,
+          case_id: null as unknown as string, // optional; will be set if available
+          event_type: "ai_failed",
+          to_status: "error",
+          note: e instanceof Error ? e.message : "AI processing failed",
+          metadata: { file_name: file.name } as unknown as Json,
+        }).then(() => {}, () => {});
       }
     }
 
