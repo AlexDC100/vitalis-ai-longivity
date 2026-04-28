@@ -36,14 +36,19 @@
       html.light #vitalis-splash { background-color: #F7F8FA; }
       #vitalis-splash[data-fading="true"] { opacity: 0; pointer-events: none; }
       #vitalis-splash .vs-dot {
-        width: 28px; height: 28px; border-radius: 50%;
-        border: 2px solid hsl(174 72% 46% / 0.25);
-        border-top-color: hsl(174 72% 46%);
-        animation: vs-spin 0.9s linear infinite;
+        width: 44px; height: 44px;
+        background-image: url("/favicon.svg");
+        background-repeat: no-repeat;
+        background-position: center;
+        background-size: contain;
+        animation: vs-pulse 1.6s ease-in-out infinite;
       }
-      @keyframes vs-spin { to { transform: rotate(360deg); } }
+      @keyframes vs-pulse {
+        0%, 100% { opacity: 0.55; transform: scale(0.96); }
+        50%      { opacity: 1;    transform: scale(1.04); }
+      }
       @media (prefers-reduced-motion: reduce) {
-        #vitalis-splash .vs-dot { animation: none; }
+        #vitalis-splash .vs-dot { animation: none; opacity: 1; transform: none; }
       }
     </style>
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -60,6 +65,7 @@
     <link rel="manifest" href="/manifest.json" />
     
     <!-- PWA Icons -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/pwa-icon-192.png" />
     <link rel="icon" type="image/png" sizes="192x192" href="/pwa-icon-192.png" />
     <link rel="icon" type="image/png" sizes="512x512" href="/pwa-icon-512.png" />

@@ -13,7 +13,7 @@ import { AlertTriangle, Stethoscope, User, Menu, Settings as SettingsIcon } from
 import CommandPalette, { type PaletteAction } from "@/components/CommandPalette";
 import SettingsSheet from "@/components/SettingsSheet";
 import ThemeToggle from "@/components/ThemeToggle";
-import vitalisLogo from "@/assets/vitalis-logo.png";
+import VitalisLogo from "@/components/brand/VitalisLogo";
 import { toast } from "sonner";
 
 type Screen = "diagnosis" | "body" | "doctor";
@@ -202,16 +202,16 @@ function AppShell() {
         onSignOut={signOut}
       />
       {/* Top Bar */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border/30">
-        <div className="flex items-center gap-2 min-w-0">
-          <img
-            src={vitalisLogo}
-            alt=""
-            aria-hidden="true"
-            className="h-7 w-7 rounded-md object-contain shrink-0"
-          />
-          <span className="text-base font-bold text-foreground tracking-tight">Vitalis</span>
-        </div>
+      <div className="flex items-center justify-between pl-6 pr-4 py-3 border-b border-border/30">
+        <button
+          type="button"
+          onClick={() => switchScreen("diagnosis")}
+          aria-label="Vitalis — go to home"
+          className="group flex items-center gap-2.5 min-w-0 -ml-1.5 px-1.5 py-1 rounded-md transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        >
+          <VitalisLogo variant="icon" size={22} title="Vitalis" />
+          <span className="text-[15px] font-bold text-foreground tracking-tight">Vitalis</span>
+        </button>
         <div className="flex items-center gap-1">
           <ThemeToggle />
           <button
