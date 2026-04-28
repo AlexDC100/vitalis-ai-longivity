@@ -521,18 +521,25 @@ function PriorityGroup({
 }
 
 function EmptyState({ filter }: { filter: Filt }) {
+  const isFirstRun = filter === "awaiting" || filter === "all";
   return (
     <div className="text-center py-16 px-6">
       <div className="w-12 h-12 rounded-full bg-primary/10 mx-auto mb-3 flex items-center justify-center">
         <ClipboardCheck className="w-5 h-5 text-primary" />
       </div>
       <h3 className="text-base font-semibold">
-        {filter === "reviewed" ? "No reviewed cases yet" : "Backlog is clear"}
+        {filter === "reviewed"
+          ? "No reviewed cases yet"
+          : isFirstRun
+          ? "No cases yet"
+          : "Backlog is clear"}
       </h3>
       <p className="text-sm text-muted-foreground mt-1">
         {filter === "reviewed"
           ? "Cases marked reviewed will appear here."
-          : "Upload a case to start triage."}
+          : isFirstRun
+          ? "Upload your first case to generate an AI-assisted assessment."
+          : "No cases match this filter — try “Awaiting” or “All”."}
       </p>
     </div>
   );

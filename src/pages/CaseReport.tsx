@@ -3,7 +3,8 @@ import { useNavigate, useParams, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import VitalisLogo from "@/components/brand/VitalisLogo";
-import { ArrowLeft, Loader2, Printer } from "lucide-react";
+import { ArrowLeft, Download, Loader2, Printer } from "lucide-react";
+import { downloadCaseReportHtml } from "@/lib/case-report-html";
 
 interface Row {
   id: string;
@@ -98,9 +99,14 @@ export default function CaseReport() {
               <ArrowLeft className="w-4 h-4 mr-2" /> Back to case
             </Link>
           </Button>
-          <Button size="sm" onClick={() => window.print()}>
-            <Printer className="w-4 h-4 mr-2" /> Print / Save as PDF
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={() => downloadCaseReportHtml(row)}>
+              <Download className="w-4 h-4 mr-2" /> HTML
+            </Button>
+            <Button size="sm" onClick={() => window.print()}>
+              <Printer className="w-4 h-4 mr-2" /> Print / Save as PDF
+            </Button>
+          </div>
         </div>
       </header>
 

@@ -19,7 +19,6 @@ import {
   Trash2,
   Download,
   Bell,
-  Ruler,
   Moon,
   ExternalLink,
   KeyRound,
@@ -31,10 +30,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { useHealth } from "@/lib/health-context";
 import { toast } from "sonner";
 import JSZip from "jszip";
-import { downloadHealthReport } from "@/lib/health-report";
-import { useSubstances } from "@/lib/use-substances";
-import MyConsultationsSheet from "@/components/MyConsultationsSheet";
-import { FileText, Calendar } from "lucide-react";
 import VitalisLogo from "@/components/brand/VitalisLogo";
 
 interface SettingsSheetProps {
@@ -43,11 +38,11 @@ interface SettingsSheetProps {
   onSignOut: () => void;
 }
 
-type Units = "metric" | "imperial";
-
 const PREF_KEYS = {
-  units: "vitalis_pref_units",
   notifications: "vitalis_pref_notifications",
+  alertCritical: "vitalis_pref_alert_critical",
+  alertHigh: "vitalis_pref_alert_high",
+  weeklySummary: "vitalis_pref_weekly_summary",
 };
 
 interface PrivacySettings {
@@ -71,13 +66,7 @@ const RETENTION_OPTIONS = [
 
 // Tables to include in CSV export
 const EXPORT_TABLES = [
-  "health_profiles",
-  "health_snapshots",
-  "medical_documents",
-  "user_substances",
-  "user_family_history",
-  "intake_sessions",
-  "action_completions",
+  "clinic_cases",
   "user_privacy_settings",
 ] as const;
 
@@ -106,12 +95,12 @@ export default function SettingsSheet({
   onSignOut,
 }: SettingsSheetProps) {
   const { profile, userId } = useHealth();
-  const { substances } = useSubstances();
   const [email, setEmail] = useState<string>("");
-  const [units, setUnits] = useState<Units>("metric");
   const [notifications, setNotifications] = useState<boolean>(true);
+  const [alertCritical, setAlertCritical] = useState<boolean>(true);
+  const [alertHigh, setAlertHigh] = useState<boolean>(true);
+  const [weeklySummary, setWeeklySummary] = useState<boolean>(true);
   const [busy, setBusy] = useState(false);
-  const [showConsultations, setShowConsultations] = useState(false);
 
   // Change password
   const [showPwForm, setShowPwForm] = useState(false);
@@ -126,30 +115,20 @@ export default function SettingsSheet({
   // Privacy
   const [privacy, setPrivacy] = useState<PrivacySettings>(DEFAULT_PRIVACY);
 
-  // ------- Data: HTML health report export -------
-  const exportHtmlReport = () => {
-    try {
-      downloadHealthReport({ profile, substances, email });
-      toast.success("HTML report downloaded", {
-        description: "Open it in any browser or print to PDF.",
-      });
-    } catch (e) {
-      toast.error("Couldn't generate report", {
-        description: (e as Error).message,
-      });
-    }
-  };
-
   useEffect(() => {
     if (!open) return;
     supabase.auth.getUser().then(({ data }) => {
       setEmail(data.user?.email ?? "");
     });
     try {
-      const u = localStorage.getItem(PREF_KEYS.units);
-      if (u === "metric" || u === "imperial") setUnits(u);
       const n = localStorage.getItem(PREF_KEYS.notifications);
       if (n !== null) setNotifications(n === "true");
+      const ac = localStorage.getItem(PREF_KEYS.alertCritical);
+      if (ac !== null) setAlertCritical(ac === "true");
+      const ah = localStorage.getItem(PREF_KEYS.alertHigh);
+      if (ah !== null) setAlertHigh(ah === "true");
+      const ws = localStorage.getItem(PREF_KEYS.weeklySummary);
+      if (ws !== null) setWeeklySummary(ws === "true");
     } catch {
       /* ignore */
     }
@@ -171,16 +150,6 @@ export default function SettingsSheet({
     }
   }, [open, userId]);
 
-  const saveUnits = (next: Units) => {
-    setUnits(next);
-    try {
-      localStorage.setItem(PREF_KEYS.units, next);
-    } catch {
-      /* ignore */
-    }
-    toast.success(`Units set to ${next}`);
-  };
-
   const saveNotifications = (next: boolean) => {
     setNotifications(next);
     try {
@@ -188,6 +157,11 @@ export default function SettingsSheet({
     } catch {
       /* ignore */
     }
+  };
+
+  const savePref = (key: string, value: boolean, setter: (v: boolean) => void) => {
+    setter(value);
+    try { localStorage.setItem(key, String(value)); } catch { /* ignore */ }
   };
 
   // ------- Account: Change password -------
@@ -302,18 +276,11 @@ export default function SettingsSheet({
   // ------- Data: delete data only -------
   const deleteAllData = async () => {
     if (!userId) return;
-    if (!confirm("Delete ALL your health data? This cannot be undone.")) return;
+    if (!confirm("Delete ALL your clinic cases? This cannot be undone.")) return;
     setBusy(true);
     try {
-      await Promise.all([
-        supabase.from("medical_documents").delete().eq("user_id", userId),
-        supabase.from("user_substances").delete().eq("user_id", userId),
-        supabase.from("user_family_history").delete().eq("user_id", userId),
-        supabase.from("health_snapshots").delete().eq("user_id", userId),
-        supabase.from("intake_sessions").delete().eq("user_id", userId),
-        supabase.from("action_completions").delete().eq("user_id", userId),
-      ]);
-      toast.success("All health data deleted");
+      await supabase.from("clinic_cases").delete().eq("user_id", userId);
+      toast.success("All clinic cases deleted");
     } catch {
       toast.error("Delete failed");
     } finally {
@@ -558,34 +525,12 @@ export default function SettingsSheet({
           </Section>
 
           {/* Preferences */}
-          <Section icon={SettingsIcon} title="Preferences">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Ruler className="w-4 h-4 text-muted-foreground" />
-                <Label className="text-sm">Units</Label>
-              </div>
-              <div className="flex rounded-lg bg-muted/40 p-0.5 text-xs">
-                {(["metric", "imperial"] as Units[]).map((u) => (
-                  <button
-                    key={u}
-                    onClick={() => saveUnits(u)}
-                    className={`px-3 py-1 rounded-md transition ${
-                      units === u
-                        ? "bg-primary text-primary-foreground"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {u === "metric" ? "kg / cm" : "lb / in"}
-                  </button>
-                ))}
-              </div>
-            </div>
-
+          <Section icon={Bell} title="Notifications">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Bell className="w-4 h-4 text-muted-foreground" />
                 <Label className="text-sm" htmlFor="notif-switch">
-                  Notifications
+                  Enable notifications
                 </Label>
               </div>
               <Switch
@@ -594,7 +539,31 @@ export default function SettingsSheet({
                 onCheckedChange={saveNotifications}
               />
             </div>
+            <div className="flex items-center justify-between">
+              <Label className="text-sm">Alert on Critical cases</Label>
+              <Switch
+                checked={alertCritical}
+                onCheckedChange={(v) => savePref(PREF_KEYS.alertCritical, v, setAlertCritical)}
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <Label className="text-sm">Alert on High priority cases</Label>
+              <Switch
+                checked={alertHigh}
+                onCheckedChange={(v) => savePref(PREF_KEYS.alertHigh, v, setAlertHigh)}
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <Label className="text-sm">Weekly backlog summary</Label>
+              <Switch
+                checked={weeklySummary}
+                onCheckedChange={(v) => savePref(PREF_KEYS.weeklySummary, v, setWeeklySummary)}
+              />
+            </div>
+          </Section>
 
+          {/* Appearance */}
+          <Section icon={SettingsIcon} title="Appearance">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Moon className="w-4 h-4 text-muted-foreground" />
@@ -612,32 +581,6 @@ export default function SettingsSheet({
               variant="vitalis-outline"
               size="sm"
               className="w-full justify-start gap-2"
-              onClick={exportHtmlReport}
-              disabled={busy}
-            >
-              <FileText className="w-4 h-4" />
-              Export HTML health report
-            </Button>
-            <p className="text-[11px] text-muted-foreground leading-relaxed -mt-1">
-              A printable summary of your diagnosis, biomarkers, and
-              recommended actions.
-            </p>
-
-            <Button
-              variant="vitalis-outline"
-              size="sm"
-              className="w-full justify-start gap-2"
-              onClick={() => setShowConsultations(true)}
-              disabled={busy}
-            >
-              <Calendar className="w-4 h-4" />
-              My consultation requests
-            </Button>
-
-            <Button
-              variant="vitalis-outline"
-              size="sm"
-              className="w-full justify-start gap-2"
               onClick={exportData}
               disabled={busy}
             >
@@ -645,8 +588,7 @@ export default function SettingsSheet({
               Export everything (.zip — JSON + CSV)
             </Button>
             <p className="text-[11px] text-muted-foreground leading-relaxed -mt-1">
-              Includes your profile, snapshots, documents, substances, family
-              history, intake sessions and action log.
+              Includes all your clinic cases and privacy settings.
             </p>
 
             <Button
@@ -755,11 +697,6 @@ export default function SettingsSheet({
         </div>
       </SheetContent>
     </Sheet>
-
-    <MyConsultationsSheet
-      open={showConsultations}
-      onOpenChange={setShowConsultations}
-    />
     </>
   );
 }
