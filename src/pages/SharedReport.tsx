@@ -79,11 +79,12 @@ export default function SharedReport() {
     if (!isValidShareToken(token)) { setState({ kind: "invalid" }); return; }
     let cancelled = false;
     (async () => {
-      const { data, error } = await supabase
-        .from("shared_health_reports")
-        .select("title, html, expires_at")
-        .eq("share_token", token)
-        .maybeSingle();
+      // Use a SECURITY DEFINER RPC so the table itself is not publicly readable.
+      // The function only returns a row when the caller supplies the exact token
+      // AND the report has not expired — preventing enumeration of all shares.
+      const { data: rows, error } = await supabase
+        .rpc("get_shared_report", { _token: token });
+      const data = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
 
       if (cancelled) return;
       if (error) {
