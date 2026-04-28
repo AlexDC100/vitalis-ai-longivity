@@ -104,6 +104,15 @@ export default function CaseDetail() {
   const [docUrl, setDocUrl] = useState<string | null>(null);
   const [authed, setAuthed] = useState<boolean | null>(null);
   const [regenerating, setRegenerating] = useState(false);
+  const [confirmRegenOpen, setConfirmRegenOpen] = useState(false);
+  const [lastRegenAt, setLastRegenAt] = useState<number>(0);
+  const [now, setNow] = useState<number>(Date.now());
+  const [events, setEvents] = useState<CaseEvent[]>([]);
+
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
