@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useSubstances } from "@/lib/use-substances";
 import {
   Send, Upload, Loader2, FileText, Stethoscope, AlertTriangle, ShieldCheck,
-  Activity, Siren, RefreshCw, CheckCircle2, Download,
+  Activity, Siren, RefreshCw, CheckCircle2, Download, ClipboardList,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from "react-markdown";
@@ -111,6 +111,23 @@ const SS_BIOMARKERS = "vitalis.aidoctor.biomarkers";
 const SS_RESULT = "vitalis.aidoctor.latestResult";
 const SS_SCREEN = "vitalis.aidoctor.screen";
 
+// ─── Triage / case-priority types ─────────────────────────────────
+type Priority = "HIGH" | "MEDIUM" | "LOW";
+interface TriageCase {
+  id: string;
+  file_name: string;
+  document_type: string;
+  main_finding: string;
+  priority: Priority;
+  review_window: string;
+  created_at: string;
+}
+const PRIORITY_META: Record<Priority, { label: string; tone: string; bg: string; border: string; dot: string; window: string }> = {
+  HIGH:   { label: "High",   tone: "text-red-400",     bg: "bg-red-500/10",     border: "border-red-500/25",     dot: "bg-red-400",     window: "Review within 24–48h" },
+  MEDIUM: { label: "Medium", tone: "text-amber-400",   bg: "bg-amber-500/10",   border: "border-amber-500/25",   dot: "bg-amber-400",   window: "Routine review" },
+  LOW:    { label: "Low",    tone: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/25", dot: "bg-emerald-400", window: "Stable" },
+};
+
 export default function AIDoctorScreen() {
   const { profile, updateField, longevityScore, biologicalAge, chronologicalAge, userId } = useHealth();
   const { toast } = useToast();
@@ -147,6 +164,49 @@ export default function AIDoctorScreen() {
     if (typeof window === "undefined") return {};
     try { return JSON.parse(sessionStorage.getItem(SS_BIOMARKERS) || "{}"); } catch { return {}; }
   });
+  // Latest case priority + clinical insight from the parse-document call.
+  const [latestCase, setLatestCase] = useState<{
+    main_finding: string;
+    clinical_insight: string;
+    priority: Priority;
+    review_window: string;
+    document_type: string;
+  } | null>(null);
+  // Triage list — all of the user's processed documents, sorted by priority.
+  // Only surfaced when the user has 2+ uploads (hospital backlog use case).
+  const [triage, setTriage] = useState<TriageCase[]>([]);
+
+  // Load triage list whenever we land on result/idle (after an upload completes).
+  const loadTriage = useCallback(async () => {
+    if (!userId) return;
+    const { data, error } = await supabase
+      .from("medical_documents")
+      .select("id, file_name, document_type, extracted_data, created_at, status")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(50);
+    if (error || !data) return;
+    const cases: TriageCase[] = data
+      .filter((d: any) => d.status === "reviewed" && d.extracted_data)
+      .map((d: any) => {
+        const ed = d.extracted_data || {};
+        const cp = ed.case_priority || {};
+        const lvl = (cp.level || ed.urgency || "LOW").toString().toUpperCase() as Priority;
+        const safe: Priority = lvl === "HIGH" || lvl === "MEDIUM" ? lvl : "LOW";
+        return {
+          id: d.id,
+          file_name: d.file_name,
+          document_type: d.document_type || "General",
+          main_finding: ed.main_finding || "",
+          priority: safe,
+          review_window: cp.review_window || PRIORITY_META[safe].window,
+          created_at: d.created_at,
+        };
+      });
+    setTriage(cases);
+  }, [userId]);
+
+  useEffect(() => { void loadTriage(); }, [loadTriage]);
 
   const fileRef = useRef<HTMLInputElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
@@ -426,6 +486,19 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
         });
         setExtractedBiomarkers(snap);
       }
+      // Capture case priority / clinical insight from the multi-modality parser.
+      if (result) {
+        const cp = result.case_priority || {};
+        const lvl = (cp.level || result.urgency || "LOW").toString().toUpperCase() as Priority;
+        const safe: Priority = lvl === "HIGH" || lvl === "MEDIUM" ? lvl : "LOW";
+        setLatestCase({
+          main_finding: result.main_finding || "",
+          clinical_insight: result.clinical_insight || "",
+          priority: safe,
+          review_window: cp.review_window || PRIORITY_META[safe].window,
+          document_type: result.document_type || "General",
+        });
+      }
       setLastFileName(file.name);
       const extractedCount = result?.biomarkers
         ? Object.keys(result.biomarkers).filter(k => result.biomarkers[k] > 0).length
@@ -440,13 +513,15 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
       setLatestResult(full);
       setScreen("result");
       toast({ title: "Report analyzed", description: `${extractedCount} biomarkers extracted.` });
+      // Refresh the triage list so the new case appears.
+      void loadTriage();
     } catch (err: any) {
       toast({ title: "Analysis failed", description: err?.message || "Please try again.", variant: "destructive" });
       setScreen("idle");
     } finally {
       if (fileRef.current) fileRef.current.value = "";
     }
-  }, [userId, updateField, streamChat, toast]);
+  }, [userId, updateField, streamChat, toast, loadTriage]);
 
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -594,7 +669,7 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
               {isDragging ? "Drop to upload" : "Upload your health report"}
             </h2>
             <p className="text-xs sm:text-sm text-muted-foreground mt-2 max-w-[260px]">
-              PDF, JPG, or PNG. We'll read it, extract your biomarkers, and tell you what matters most.
+              Blood tests, MRI/CT/X-ray, ECG, or radiology PDFs. We'll read it, flag what matters, and assign a case priority.
             </p>
             <button
               type="button"
@@ -618,11 +693,62 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
             <input
               ref={fileRef}
               type="file"
-              accept=".pdf,.jpg,.jpeg,.png"
+              accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.dcm,image/*"
               className="hidden"
               onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
             />
           </div>
+        )}
+
+        {/* ── Triage list (visible on idle when ≥2 processed cases exist) ── */}
+        {screen === "idle" && triage.length >= 2 && (
+          <section className="w-full max-w-md mx-auto mt-8 animate-fade-in">
+            <div className="flex items-center justify-between mb-3 px-1">
+              <div className="flex items-center gap-2">
+                <ClipboardList className="w-4 h-4 text-primary" />
+                <h3 className="text-sm font-semibold text-foreground">Case priority</h3>
+              </div>
+              <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                {triage.length} cases
+              </span>
+            </div>
+            <ul className="space-y-2">
+              {(["HIGH", "MEDIUM", "LOW"] as Priority[]).flatMap(level =>
+                triage
+                  .filter(c => c.priority === level)
+                  .map(c => {
+                    const meta = PRIORITY_META[c.priority];
+                    return (
+                      <li
+                        key={c.id}
+                        className={`flex items-start gap-3 rounded-2xl border ${meta.border} ${meta.bg} p-3`}
+                      >
+                        <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${meta.dot}`} aria-hidden />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-xs font-medium text-foreground truncate">
+                              {c.document_type} · <span className="text-muted-foreground">{c.file_name}</span>
+                            </p>
+                            <span className={`text-[10px] font-semibold uppercase tracking-wider ${meta.tone} shrink-0`}>
+                              {meta.label}
+                            </span>
+                          </div>
+                          {c.main_finding && (
+                            <p className="text-xs text-muted-foreground mt-1 leading-snug line-clamp-2">
+                              {c.main_finding}
+                            </p>
+                          )}
+                          <p className={`text-[10px] mt-1 ${meta.tone}`}>{c.review_window}</p>
+                        </div>
+                      </li>
+                    );
+                  })
+              )}
+            </ul>
+            <p className="text-[10px] text-center text-muted-foreground/70 mt-3 px-2">
+              AI-assisted triage. Does not replace a licensed physician.
+            </p>
+          </section>
         )}
 
         {/* ── ANALYZING: calm progress ── */}
@@ -654,7 +780,7 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
             {/* Main health issue */}
             <section className="text-center">
               <h2 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight leading-snug">
-                {summary.title}
+                {latestCase?.main_finding || summary.title}
               </h2>
               {summary.explanation && (
                 <p className="text-sm text-muted-foreground mt-2.5 leading-relaxed">
@@ -662,6 +788,29 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
                 </p>
               )}
             </section>
+
+            {/* Case priority + clinical insight (multi-modality triage) */}
+            {latestCase && (latestCase.main_finding || latestCase.clinical_insight) && (
+              <section className={`rounded-2xl border ${PRIORITY_META[latestCase.priority].border} ${PRIORITY_META[latestCase.priority].bg} p-4 space-y-2`}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <ClipboardList className={`w-4 h-4 ${PRIORITY_META[latestCase.priority].tone}`} />
+                    <p className="text-xs font-semibold text-foreground">Case priority</p>
+                  </div>
+                  <span className={`text-[10px] font-bold uppercase tracking-wider ${PRIORITY_META[latestCase.priority].tone}`}>
+                    {PRIORITY_META[latestCase.priority].label} · {latestCase.review_window}
+                  </span>
+                </div>
+                {latestCase.clinical_insight && (
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    {latestCase.clinical_insight}
+                  </p>
+                )}
+                <p className="text-[10px] text-muted-foreground/70 italic pt-1">
+                  AI-assisted analysis. Does not replace a licensed physician.
+                </p>
+              </section>
+            )}
 
             {/* 2–3 actions */}
             {actions.length > 0 && (
@@ -770,6 +919,7 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
                   setChat([]);
                   setExtractedBiomarkers({});
                   setLastFileName("");
+                  setLatestCase(null);
                   setScreen("idle");
                   try {
                     sessionStorage.removeItem(SS_RESULT);
