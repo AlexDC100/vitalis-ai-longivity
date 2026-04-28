@@ -50,6 +50,25 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<ThemeChoice>(() => readStored());
   const [resolved, setResolved] = useState<ResolvedTheme>(() => resolve(readStored()));
 
+  // Remove the pre-React splash painted by index.html. We do this once,
+  // on first mount, after the first paint so the user sees the themed
+  // shell before the splash fades. Measure how long the splash was up
+  // for performance tracking (`vitalis.splashMs` in console).
+  useEffect(() => {
+    const splash = document.getElementById("vitalis-splash");
+    if (!splash) return;
+    const startedAt =
+      (window as unknown as { __vitalisBootStart?: number }).__vitalisBootStart
+      ?? performance.timeOrigin;
+    requestAnimationFrame(() => {
+      splash.setAttribute("data-fading", "true");
+      const ms = Math.round(performance.now());
+      // eslint-disable-next-line no-console
+      console.log(`[vitalis.boot] splash visible for ~${ms}ms (origin ${Math.round(startedAt)})`);
+      setTimeout(() => splash.parentNode?.removeChild(splash), 220);
+    });
+  }, []);
+
   // Apply on change.
   useEffect(() => {
     const r = resolve(theme);
