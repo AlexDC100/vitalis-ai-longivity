@@ -313,6 +313,7 @@ export type Database = {
           medicine_stack: Json | null
           provider: string | null
           recommendations: Json | null
+          reviewed_at: string | null
           status: string
           updated_at: string
           user_id: string
@@ -327,6 +328,7 @@ export type Database = {
           medicine_stack?: Json | null
           provider?: string | null
           recommendations?: Json | null
+          reviewed_at?: string | null
           status?: string
           updated_at?: string
           user_id: string
@@ -341,6 +343,7 @@ export type Database = {
           medicine_stack?: Json | null
           provider?: string | null
           recommendations?: Json | null
+          reviewed_at?: string | null
           status?: string
           updated_at?: string
           user_id?: string

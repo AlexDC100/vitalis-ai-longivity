@@ -6,6 +6,7 @@ import { useSubstances } from "@/lib/use-substances";
 import {
   Send, Upload, Loader2, FileText, Stethoscope, AlertTriangle, ShieldCheck,
   Activity, Siren, RefreshCw, CheckCircle2, Download, ClipboardList,
+  Check, MessageSquare, Hospital,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from "react-markdown";
@@ -17,6 +18,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import AIDoctorTapAuditPanel from "@/components/AIDoctorTapAuditPanel";
+import { downloadCaseSummary } from "@/lib/case-summary";
 
 /**
  * AI Doctor — focused, single-action experience.
@@ -118,10 +120,13 @@ interface TriageCase {
   file_name: string;
   document_type: string;
   main_finding: string;
+  clinical_insight: string;
   priority: Priority;
   review_window: string;
   created_at: string;
+  reviewed_at: string | null;
 }
+const SS_HOSPITAL_MODE = "vitalis.aidoctor.hospitalMode";
 const PRIORITY_META: Record<Priority, { label: string; tone: string; bg: string; border: string; dot: string; window: string }> = {
   HIGH:   { label: "High",   tone: "text-red-400",     bg: "bg-red-500/10",     border: "border-red-500/25",     dot: "bg-red-400",     window: "Review within 24–48h" },
   MEDIUM: { label: "Medium", tone: "text-amber-400",   bg: "bg-amber-500/10",   border: "border-amber-500/25",   dot: "bg-amber-400",   window: "Routine review" },
@@ -175,13 +180,69 @@ export default function AIDoctorScreen() {
   // Triage list — all of the user's processed documents, sorted by priority.
   // Only surfaced when the user has 2+ uploads (hospital backlog use case).
   const [triage, setTriage] = useState<TriageCase[]>([]);
+  const [hospitalMode, setHospitalMode] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem(SS_HOSPITAL_MODE) === "1";
+  });
+  const [reviewingId, setReviewingId] = useState<string | null>(null);
+  const [activeCaseId, setActiveCaseId] = useState<string | null>(null);
+
+  useEffect(() => {
+    try { localStorage.setItem(SS_HOSPITAL_MODE, hospitalMode ? "1" : "0"); } catch { /* ignore */ }
+  }, [hospitalMode]);
+
+  /** Mark a triage case as reviewed (or undo). Optimistic + persisted. */
+  const handleMarkReviewed = useCallback(async (caseId: string, undo = false) => {
+    if (!userId) return;
+    setReviewingId(caseId);
+    const ts = undo ? null : new Date().toISOString();
+    // Optimistic update
+    setTriage(prev => prev.map(c => c.id === caseId ? { ...c, reviewed_at: ts } : c));
+    const { error } = await supabase
+      .from("medical_documents")
+      .update({ reviewed_at: ts })
+      .eq("id", caseId)
+      .eq("user_id", userId);
+    setReviewingId(null);
+    if (error) {
+      // Revert on failure.
+      setTriage(prev => prev.map(c => c.id === caseId ? { ...c, reviewed_at: undo ? ts : null } : c));
+      toast({ title: "Could not update", description: error.message, variant: "destructive" });
+      return;
+    }
+    toast({
+      title: undo ? "Marked as pending" : "Marked as reviewed",
+      description: undo ? "Case returned to the queue." : "Case removed from the active queue.",
+    });
+  }, [userId, toast]);
+
+  /** Continue the AI discussion using a triage case as context. */
+  const handleDiscussCase = useCallback((c: TriageCase) => {
+    setActiveCaseId(c.id);
+    setLatestCase({
+      main_finding: c.main_finding,
+      clinical_insight: c.clinical_insight,
+      priority: c.priority,
+      review_window: c.review_window,
+      document_type: c.document_type,
+    });
+    setLastFileName(c.file_name);
+    // Prime the chat with a single contextual user message that frames the case.
+    const primer = `Continue the discussion about my "${c.document_type}" case (${c.file_name}). Main finding: ${c.main_finding || "n/a"}. Clinical insight: ${c.clinical_insight || "n/a"}. Priority: ${c.priority} — ${c.review_window}. Help me understand what to do next.`;
+    setChat([]);
+    setScreen("result");
+    setTimeout(() => sendFollowUpRef.current?.(primer), 50);
+  }, []);
+
+  // Forward-ref pattern so handleDiscussCase (defined early) can call sendFollowUp (defined later).
+  const sendFollowUpRef = useRef<((text: string) => void) | null>(null);
 
   // Load triage list whenever we land on result/idle (after an upload completes).
   const loadTriage = useCallback(async () => {
     if (!userId) return;
     const { data, error } = await supabase
       .from("medical_documents")
-      .select("id, file_name, document_type, extracted_data, created_at, status")
+      .select("id, file_name, document_type, extracted_data, created_at, status, reviewed_at")
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .limit(50);
@@ -198,9 +259,11 @@ export default function AIDoctorScreen() {
           file_name: d.file_name,
           document_type: d.document_type || "General",
           main_finding: ed.main_finding || "",
+          clinical_insight: ed.clinical_insight || "",
           priority: safe,
           review_window: cp.review_window || PRIORITY_META[safe].window,
           created_at: d.created_at,
+          reviewed_at: d.reviewed_at || null,
         };
       });
     setTriage(cases);
@@ -591,6 +654,9 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
     }
   }, [input, isStreaming, chat, latestResult, streamChat, extractedBiomarkers, screen, toast]);
 
+  // Expose sendFollowUp through a ref so triage actions defined earlier can call it.
+  useEffect(() => { sendFollowUpRef.current = (t: string) => { void sendFollowUp(t); }; }, [sendFollowUp]);
+
   // ─── Derived from result ──────────────────────────────────────────
   const severity = latestResult ? parseSeverity(latestResult) : null;
   const specialty = latestResult ? (parseSpecialty(latestResult) || "General Practitioner") : null;
@@ -700,56 +766,178 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
           </div>
         )}
 
-        {/* ── Triage list (visible on idle when ≥2 processed cases exist) ── */}
-        {screen === "idle" && triage.length >= 2 && (
-          <section className="w-full max-w-md mx-auto mt-8 animate-fade-in">
-            <div className="flex items-center justify-between mb-3 px-1">
-              <div className="flex items-center gap-2">
-                <ClipboardList className="w-4 h-4 text-primary" />
-                <h3 className="text-sm font-semibold text-foreground">Case priority</h3>
+        {/* ── Triage list (visible on idle when ≥2 processed cases exist) ──
+            Hospital mode: groups by priority, dims reviewed cases, and
+            highlights the FIRST pending item in the queue (the next thing
+            the clinician should look at). Personal mode: simple flat list. */}
+        {screen === "idle" && triage.length >= 2 && (() => {
+          const pending = triage.filter(c => !c.reviewed_at);
+          const reviewed = triage.filter(c => !!c.reviewed_at);
+          const orderedPending = (["HIGH", "MEDIUM", "LOW"] as Priority[])
+            .flatMap(lvl => pending.filter(c => c.priority === lvl));
+          const firstPendingId = orderedPending[0]?.id ?? null;
+
+          const renderRow = (c: TriageCase) => {
+            const meta = PRIORITY_META[c.priority];
+            const isReviewed = !!c.reviewed_at;
+            const isFirst = hospitalMode && c.id === firstPendingId;
+            return (
+              <li
+                key={c.id}
+                className={`rounded-2xl border p-3 transition-all ${
+                  isReviewed
+                    ? "border-border bg-card/40 opacity-60"
+                    : isFirst
+                      ? `${meta.border} ${meta.bg} ring-2 ring-primary/40 shadow-lg`
+                      : `${meta.border} ${meta.bg}`
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${isReviewed ? "bg-muted" : meta.dot}`} aria-hidden />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs font-medium text-foreground truncate">
+                        {c.document_type} · <span className="text-muted-foreground">{c.file_name}</span>
+                      </p>
+                      <span className={`text-[10px] font-semibold uppercase tracking-wider shrink-0 ${isReviewed ? "text-muted-foreground" : meta.tone}`}>
+                        {isReviewed ? "Reviewed" : meta.label}
+                      </span>
+                    </div>
+                    {c.main_finding && (
+                      <p className="text-xs text-muted-foreground mt-1 leading-snug line-clamp-2">
+                        {c.main_finding}
+                      </p>
+                    )}
+                    {!isReviewed && (
+                      <p className={`text-[10px] mt-1 ${meta.tone}`}>
+                        {isFirst ? `Next up · ${c.review_window}` : c.review_window}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                {/* Per-row actions */}
+                <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border/40">
+                  <button
+                    type="button"
+                    onClick={() => handleDiscussCase(c)}
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 min-h-[40px] px-3 rounded-lg bg-primary/10 hover:bg-primary/15 text-primary text-[11px] font-medium transition-colors"
+                    aria-label={`Discuss ${c.file_name} with the AI Doctor`}
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    Discuss
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => downloadCaseSummary({
+                      file_name: c.file_name,
+                      document_type: c.document_type,
+                      main_finding: c.main_finding,
+                      clinical_insight: c.clinical_insight,
+                      priority: c.priority,
+                      review_window: c.review_window,
+                      reviewed_at: c.reviewed_at,
+                      created_at: c.created_at,
+                    })}
+                    className="inline-flex items-center justify-center gap-1.5 min-h-[40px] px-3 rounded-lg border border-border hover:bg-muted/40 text-foreground text-[11px] font-medium transition-colors"
+                    aria-label={`Download summary for ${c.file_name}`}
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    Summary
+                  </button>
+                  <button
+                    type="button"
+                    disabled={reviewingId === c.id}
+                    onClick={() => handleMarkReviewed(c.id, isReviewed)}
+                    className={`inline-flex items-center justify-center gap-1.5 min-h-[40px] px-3 rounded-lg text-[11px] font-medium transition-colors disabled:opacity-50 ${
+                      isReviewed
+                        ? "border border-border hover:bg-muted/40 text-muted-foreground"
+                        : "bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400"
+                    }`}
+                    aria-label={isReviewed ? `Mark ${c.file_name} as pending` : `Mark ${c.file_name} as reviewed`}
+                  >
+                    {reviewingId === c.id
+                      ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      : <Check className="w-3.5 h-3.5" />}
+                    {isReviewed ? "Undo" : "Reviewed"}
+                  </button>
+                </div>
+              </li>
+            );
+          };
+
+          return (
+            <section className="w-full max-w-md mx-auto mt-8 animate-fade-in">
+              <div className="flex items-center justify-between mb-3 px-1">
+                <div className="flex items-center gap-2">
+                  <ClipboardList className="w-4 h-4 text-primary" />
+                  <h3 className="text-sm font-semibold text-foreground">
+                    {hospitalMode ? "Review queue" : "Case priority"}
+                  </h3>
+                </div>
+                {/* Hospital mode toggle — minimal */}
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={hospitalMode}
+                  onClick={() => setHospitalMode(v => !v)}
+                  className={`inline-flex items-center gap-1.5 min-h-[32px] px-2.5 rounded-full border text-[10px] font-medium uppercase tracking-wider transition-colors ${
+                    hospitalMode
+                      ? "border-primary/40 bg-primary/10 text-primary"
+                      : "border-border text-muted-foreground hover:text-foreground"
+                  }`}
+                  aria-label={hospitalMode ? "Disable hospital mode" : "Enable hospital mode"}
+                >
+                  <Hospital className="w-3 h-3" />
+                  Hospital mode
+                </button>
               </div>
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                {triage.length} cases
-              </span>
-            </div>
-            <ul className="space-y-2">
-              {(["HIGH", "MEDIUM", "LOW"] as Priority[]).flatMap(level =>
-                triage
-                  .filter(c => c.priority === level)
-                  .map(c => {
-                    const meta = PRIORITY_META[c.priority];
-                    return (
-                      <li
-                        key={c.id}
-                        className={`flex items-start gap-3 rounded-2xl border ${meta.border} ${meta.bg} p-3`}
-                      >
-                        <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${meta.dot}`} aria-hidden />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="text-xs font-medium text-foreground truncate">
-                              {c.document_type} · <span className="text-muted-foreground">{c.file_name}</span>
+
+              {hospitalMode ? (
+                <>
+                  {orderedPending.length > 0 && (
+                    <ul className="space-y-2">
+                      {(["HIGH", "MEDIUM", "LOW"] as Priority[]).map(lvl => {
+                        const rows = pending.filter(c => c.priority === lvl);
+                        if (rows.length === 0) return null;
+                        return (
+                          <li key={lvl} className="space-y-2">
+                            <p className={`text-[10px] font-semibold uppercase tracking-wider px-1 ${PRIORITY_META[lvl].tone}`}>
+                              {PRIORITY_META[lvl].label} · {rows.length}
                             </p>
-                            <span className={`text-[10px] font-semibold uppercase tracking-wider ${meta.tone} shrink-0`}>
-                              {meta.label}
-                            </span>
-                          </div>
-                          {c.main_finding && (
-                            <p className="text-xs text-muted-foreground mt-1 leading-snug line-clamp-2">
-                              {c.main_finding}
-                            </p>
-                          )}
-                          <p className={`text-[10px] mt-1 ${meta.tone}`}>{c.review_window}</p>
-                        </div>
-                      </li>
-                    );
-                  })
+                            <ul className="space-y-2">{rows.map(renderRow)}</ul>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                  {reviewed.length > 0 && (
+                    <details className="mt-4">
+                      <summary className="text-[11px] text-muted-foreground cursor-pointer hover:text-foreground select-none px-1">
+                        Reviewed ({reviewed.length})
+                      </summary>
+                      <ul className="space-y-2 mt-2">{reviewed.map(renderRow)}</ul>
+                    </details>
+                  )}
+                  {orderedPending.length === 0 && reviewed.length > 0 && (
+                    <p className="text-xs text-center text-muted-foreground py-6">
+                      Queue clear. All cases reviewed.
+                    </p>
+                  )}
+                </>
+              ) : (
+                <ul className="space-y-2">
+                  {(["HIGH", "MEDIUM", "LOW"] as Priority[]).flatMap(lvl =>
+                    triage.filter(c => c.priority === lvl).map(renderRow)
+                  )}
+                </ul>
               )}
-            </ul>
-            <p className="text-[10px] text-center text-muted-foreground/70 mt-3 px-2">
-              AI-assisted triage. Does not replace a licensed physician.
-            </p>
-          </section>
-        )}
+
+              <p className="text-[10px] text-center text-muted-foreground/70 mt-3 px-2">
+                AI-assisted triage. Does not replace a licensed physician.
+              </p>
+            </section>
+          );
+        })()}
 
         {/* ── ANALYZING: calm progress ── */}
         {screen === "analyzing" && (
@@ -809,6 +997,23 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
                 <p className="text-[10px] text-muted-foreground/70 italic pt-1">
                   AI-assisted analysis. Does not replace a licensed physician.
                 </p>
+                <button
+                  type="button"
+                  onClick={() => downloadCaseSummary({
+                    file_name: lastFileName || "case",
+                    document_type: latestCase.document_type,
+                    main_finding: latestCase.main_finding,
+                    clinical_insight: latestCase.clinical_insight,
+                    priority: latestCase.priority,
+                    review_window: latestCase.review_window,
+                    created_at: new Date().toISOString(),
+                  })}
+                  className="w-full inline-flex items-center justify-center gap-1.5 mt-2 min-h-[40px] px-3 rounded-lg border border-border bg-background/40 hover:bg-background/70 text-foreground text-[11px] font-medium transition-colors"
+                  aria-label="Download case summary PDF"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Download summary
+                </button>
               </section>
             )}
 
@@ -920,6 +1125,7 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
                   setExtractedBiomarkers({});
                   setLastFileName("");
                   setLatestCase(null);
+                  setActiveCaseId(null);
                   setScreen("idle");
                   try {
                     sessionStorage.removeItem(SS_RESULT);
