@@ -152,6 +152,30 @@ export default function CaseDetail() {
     return () => { cancelled = true; };
   }, [row?.file_path]);
 
+  // Load case timeline + realtime
+  useEffect(() => {
+    if (!id) return;
+    let cancelled = false;
+    const load = async () => {
+      const { data } = await supabase
+        .from("clinic_case_events")
+        .select("id,event_type,from_status,to_status,actor_email,actor_name,note,created_at")
+        .eq("case_id", id)
+        .order("created_at", { ascending: true });
+      if (!cancelled) setEvents((data ?? []) as CaseEvent[]);
+    };
+    load();
+    const ch = supabase
+      .channel(`case_events_${id}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "clinic_case_events", filter: `case_id=eq.${id}` },
+        () => load(),
+      )
+      .subscribe();
+    return () => { cancelled = true; supabase.removeChannel(ch); };
+  }, [id]);
+
   if (authed === false) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-6">
