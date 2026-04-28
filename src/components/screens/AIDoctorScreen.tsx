@@ -6,6 +6,7 @@ import { useSubstances } from "@/lib/use-substances";
 import {
   Send, Upload, Loader2, FileText, Stethoscope, AlertTriangle, ShieldCheck,
   Activity, Siren, RefreshCw, CheckCircle2, Download, ClipboardList,
+  Check, MessageSquare, Hospital,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from "react-markdown";
@@ -17,6 +18,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import AIDoctorTapAuditPanel from "@/components/AIDoctorTapAuditPanel";
+import { downloadCaseSummary } from "@/lib/case-summary";
 
 /**
  * AI Doctor — focused, single-action experience.
@@ -118,10 +120,13 @@ interface TriageCase {
   file_name: string;
   document_type: string;
   main_finding: string;
+  clinical_insight: string;
   priority: Priority;
   review_window: string;
   created_at: string;
+  reviewed_at: string | null;
 }
+const SS_HOSPITAL_MODE = "vitalis.aidoctor.hospitalMode";
 const PRIORITY_META: Record<Priority, { label: string; tone: string; bg: string; border: string; dot: string; window: string }> = {
   HIGH:   { label: "High",   tone: "text-red-400",     bg: "bg-red-500/10",     border: "border-red-500/25",     dot: "bg-red-400",     window: "Review within 24–48h" },
   MEDIUM: { label: "Medium", tone: "text-amber-400",   bg: "bg-amber-500/10",   border: "border-amber-500/25",   dot: "bg-amber-400",   window: "Routine review" },
