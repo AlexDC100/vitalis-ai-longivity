@@ -710,3 +710,112 @@ function Field({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
+
+/* ---------- Timeline helpers ---------- */
+
+type EventCategory = "upload" | "ai" | "review";
+
+function classifyEvent(t: string): EventCategory {
+  if (t === "uploaded") return "upload";
+  if (t === "reviewed") return "review";
+  return "ai"; // ai_regenerated, ai_failed, status_changed (AI-driven)
+}
+
+function eventLabel(ev: CaseEvent): string {
+  switch (ev.event_type) {
+    case "uploaded": return "Case uploaded";
+    case "ai_regenerated": return "AI regeneration requested";
+    case "ai_failed": return "AI processing failed";
+    case "reviewed": return "Clinician marked reviewed";
+    case "status_changed":
+      return ev.from_status && ev.to_status
+        ? `Status changed: ${ev.from_status} → ${ev.to_status}`
+        : "Status changed";
+    default:
+      return ev.event_type;
+  }
+}
+
+function eventIcon(t: string): { I: React.ElementType; tone: string } {
+  switch (t) {
+    case "uploaded": return { I: Upload, tone: "text-muted-foreground" };
+    case "ai_regenerated": return { I: RefreshCw, tone: "text-amber-500" };
+    case "ai_failed": return { I: XCircle, tone: "text-destructive" };
+    case "reviewed": return { I: UserCheck, tone: "text-primary" };
+    case "status_changed": return { I: CheckCircle2, tone: "text-primary" };
+    default: return { I: CheckCircle2, tone: "text-muted-foreground" };
+  }
+}
+
+function TimelineItem({ ev }: { ev: CaseEvent }) {
+  const { I, tone } = eventIcon(ev.event_type);
+  const actor = ev.actor_name ?? ev.actor_email;
+  return (
+    <li className="relative">
+      <span className="absolute -left-[21px] top-1 w-3.5 h-3.5 rounded-full bg-card border border-border flex items-center justify-center">
+        <I className={`w-2.5 h-2.5 ${tone}`} />
+      </span>
+      <p className="text-sm">
+        <span className="font-medium">{eventLabel(ev)}</span>
+        {ev.from_status && ev.to_status && ev.event_type !== "status_changed" && (
+          <span className="text-muted-foreground"> · {ev.from_status} → {ev.to_status}</span>
+        )}
+        {actor && <span className="text-muted-foreground"> · {actor}</span>}
+      </p>
+      {ev.note && <p className="text-xs text-muted-foreground mt-0.5">{ev.note}</p>}
+      <p className="text-[10px] text-muted-foreground mt-0.5">
+        {new Date(ev.created_at).toLocaleString()}
+      </p>
+    </li>
+  );
+}
+
+function ChronologicalTimeline({ events }: { events: CaseEvent[] }) {
+  // Strict chronological order (ascending by created_at, stable by id)
+  const sorted = [...events].sort((a, b) => {
+    const d = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    return d !== 0 ? d : a.id.localeCompare(b.id);
+  });
+  return (
+    <ol className="relative pl-4 border-l border-border/60 space-y-4">
+      {sorted.map((ev) => <TimelineItem key={ev.id} ev={ev} />)}
+    </ol>
+  );
+}
+
+function GroupedTimeline({ events }: { events: CaseEvent[] }) {
+  const groups: { key: EventCategory; label: string; items: CaseEvent[] }[] = [
+    { key: "upload", label: "Upload", items: [] },
+    { key: "ai", label: "AI processing", items: [] },
+    { key: "review", label: "Clinician review", items: [] },
+  ];
+  for (const ev of events) {
+    const cat = classifyEvent(ev.event_type);
+    groups.find((g) => g.key === cat)!.items.push(ev);
+  }
+  // Each group sorted chronologically
+  for (const g of groups) {
+    g.items.sort((a, b) => {
+      const d = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      return d !== 0 ? d : a.id.localeCompare(b.id);
+    });
+  }
+  return (
+    <div className="space-y-5">
+      {groups.map((g) => (
+        <div key={g.key}>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">
+            {g.label} <span className="text-muted-foreground/60">({g.items.length})</span>
+          </p>
+          {g.items.length === 0 ? (
+            <p className="text-xs text-muted-foreground pl-4">No events yet.</p>
+          ) : (
+            <ol className="relative pl-4 border-l border-border/60 space-y-4">
+              {g.items.map((ev) => <TimelineItem key={ev.id} ev={ev} />)}
+            </ol>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
