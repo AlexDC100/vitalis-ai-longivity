@@ -145,7 +145,7 @@ export default function AIDoctorScreen() {
         throw new Error(`[AIDoctor.invariant] Multiple primary actions on "${screen}"`);
       }
     }
-  }, [screen, latestResult, chat.length, isSerious_unused_marker]);
+  }, [screen, latestResult, chat.length]);
 
   // ─── System prompt (preserves the structured response contract) ───
   const diagnosis = useMemo(() => runDiagnosis(profile, substances), [profile, substances]);
