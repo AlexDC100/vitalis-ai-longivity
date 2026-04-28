@@ -14,11 +14,15 @@ import {
   FileText,
   Loader2,
   Printer,
+  RefreshCw,
   ShieldAlert,
   Trash2,
+  UserCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { downloadCaseReportHtml } from "@/lib/case-report-html";
+import { extractTextFromFile } from "@/lib/pdf-utils";
+import type { Json } from "@/integrations/supabase/types";
 
 type Priority = "critical" | "high" | "medium" | "low";
 
@@ -41,6 +45,9 @@ interface Row {
   key_findings: unknown;
   missing_info: string | null;
   assigned_doctor: string | null;
+  detected_category: string | null;
+  reviewed_by_user_id: string | null;
+  reviewed_by_email: string | null;
   created_at: string;
   reviewed_at: string | null;
 }
@@ -67,6 +74,7 @@ export default function CaseDetail() {
   const [loading, setLoading] = useState(true);
   const [docUrl, setDocUrl] = useState<string | null>(null);
   const [authed, setAuthed] = useState<boolean | null>(null);
+  const [regenerating, setRegenerating] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
