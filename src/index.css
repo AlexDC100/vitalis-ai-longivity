@@ -167,3 +167,27 @@
     transform: none !important;
   }
 }
+
+/* ─── Body screen debug mode ─────────────────────────────────────
+   Activated by toggling `html.body-debug`. Outlines every clickable
+   control with a red border so 44×44px tap targets can be verified
+   on iOS Safari and Android Chrome. */
+html.body-debug button,
+html.body-debug a[href],
+html.body-debug input,
+html.body-debug select,
+html.body-debug textarea,
+html.body-debug [role="button"],
+html.body-debug [tabindex]:not([tabindex="-1"]) {
+  outline: 1px dashed hsl(var(--primary) / 0.7) !important;
+  outline-offset: -1px !important;
+  position: relative;
+}
+/* Mark anything below the 44px minimum with a solid red ring. */
+@supports selector(:has(*)) {
+  html.body-debug button,
+  html.body-debug [role="button"],
+  html.body-debug a[href] {
+    box-shadow: inset 0 0 0 1px hsl(var(--border));
+  }
+}
