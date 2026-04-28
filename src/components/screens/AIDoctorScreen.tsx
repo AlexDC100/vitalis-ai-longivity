@@ -833,6 +833,7 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <AIDoctorTapAuditPanel />
     </div>
   );
 }
