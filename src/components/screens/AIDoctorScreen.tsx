@@ -132,10 +132,9 @@ interface TriageCase {
 }
 const SS_HOSPITAL_MODE = "vitalis.aidoctor.hospitalMode";
 const LS_UPLOAD_CONSENT = "vitalis.aidoctor.uploadConsent.v1";
-const LS_ACTIVE_CASE = "vitalis.aidoctor.activeCaseId";
-/** Per-case chat storage key. Lets users switch between cases without losing
- *  the conversation they had with the AI Doctor for each case. */
-const caseChatKey = (caseId: string) => `vitalis.aidoctor.chat.${caseId}`;
+// Active-case + per-case chat persistence keys live in a shared module so
+// the e2e rehydration tests exercise the exact same contract the screen does.
+import { LS_ACTIVE_CASE, caseChatKey } from "@/lib/ai-doctor-rehydration";
 const PRIORITY_META: Record<Priority, { label: string; tone: string; bg: string; border: string; dot: string; window: string }> = {
   HIGH:   { label: "High",   tone: "text-red-400",     bg: "bg-red-500/10",     border: "border-red-500/25",     dot: "bg-red-400",     window: "Review within 24–48h" },
   MEDIUM: { label: "Medium", tone: "text-amber-400",   bg: "bg-amber-500/10",   border: "border-amber-500/25",   dot: "bg-amber-400",   window: "Routine review" },
