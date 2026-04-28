@@ -598,13 +598,19 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
   }, [systemPrompt, toast]);
 
   // ─── Upload + analyze flow ────────────────────────────────────────
-  const handleFile = useCallback(async (file: File) => {
+  const handleFile = useCallback(async (file: File, opts?: { batch?: boolean; queueId?: string }) => {
+    const batch = !!opts?.batch;
+    const qid = opts?.queueId;
     if (!userId) {
       toast({ title: "Sign in first", description: "Please sign in to analyze a report.", variant: "destructive" });
       return;
     }
-    setScreen("analyzing");
-    setAnalyzingLabel(`Reading ${file.name}`);
+    if (!batch) {
+      setScreen("analyzing");
+      setAnalyzingLabel(`Reading ${file.name}`);
+    } else if (qid) {
+      setUploadQueue(prev => prev.map(q => q.id === qid ? { ...q, status: "analyzing" } : q));
+    }
     try {
       const filePath = `${userId}/${Date.now()}_${file.name}`;
       await supabase.storage.from("medical-documents").upload(filePath, file);
@@ -613,7 +619,7 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
       }).select().single();
       if (!doc) throw new Error("Could not save document");
 
-      setAnalyzingLabel("Extracting biomarkers");
+      if (!batch) setAnalyzingLabel("Extracting biomarkers");
       const { data: result } = await supabase.functions.invoke("parse-document", {
         body: { documentId: doc.id, filePath },
       });
@@ -627,44 +633,103 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
         Object.entries(result.biomarkers).forEach(([k, v]) => {
           if (typeof v === "number" && v > 0) snap[k] = v as number;
         });
-        setExtractedBiomarkers(snap);
+        if (!batch) setExtractedBiomarkers(snap);
       }
       // Capture case priority / clinical insight from the multi-modality parser.
+      let detectedPriority: Priority = "LOW";
       if (result) {
         const cp = result.case_priority || {};
         const lvl = (cp.level || result.urgency || "LOW").toString().toUpperCase() as Priority;
         const safe: Priority = lvl === "HIGH" || lvl === "MEDIUM" ? lvl : "LOW";
-        setLatestCase({
-          main_finding: result.main_finding || "",
-          clinical_insight: result.clinical_insight || "",
-          priority: safe,
-          review_window: cp.review_window || PRIORITY_META[safe].window,
-          document_type: result.document_type || "General",
-        });
+        detectedPriority = safe;
+        if (!batch) {
+          setLatestCase({
+            main_finding: result.main_finding || "",
+            clinical_insight: result.clinical_insight || "",
+            priority: safe,
+            review_window: cp.review_window || PRIORITY_META[safe].window,
+            document_type: result.document_type || "General",
+          });
+        }
       }
-      setLastFileName(file.name);
+      if (!batch) setLastFileName(file.name);
       const extractedCount = result?.biomarkers
         ? Object.keys(result.biomarkers).filter(k => result.biomarkers[k] > 0).length
         : 0;
 
-      setAnalyzingLabel("Asking Vitalis AI Doctor");
-      const userText = `I just uploaded "${file.name}". ${extractedCount} biomarkers were extracted. Analyze the new results — what changed, what's concerning, and what I should do next.`;
-      let full = "";
-      full = await streamChat([{ role: "user", content: userText }], (partial) => {
-        setLatestResult(partial);
-      });
-      setLatestResult(full);
-      setScreen("result");
-      toast({ title: "Report analyzed", description: `${extractedCount} biomarkers extracted.` });
+      if (!batch) {
+        setAnalyzingLabel("Asking Vitalis AI Doctor");
+        const userText = `I just uploaded "${file.name}". ${extractedCount} biomarkers were extracted. Analyze the new results — what changed, what's concerning, and what I should do next.`;
+        let full = "";
+        full = await streamChat([{ role: "user", content: userText }], (partial) => {
+          setLatestResult(partial);
+        });
+        setLatestResult(full);
+        setScreen("result");
+        toast({ title: "Report analyzed", description: `${extractedCount} biomarkers extracted.` });
+      } else if (qid) {
+        setUploadQueue(prev => prev.map(q => q.id === qid ? {
+          ...q,
+          status: "completed",
+          priority: detectedPriority,
+          caseId: doc.id,
+          mainFinding: result?.main_finding || "",
+        } : q));
+      }
       // Refresh the triage list so the new case appears.
       void loadTriage();
     } catch (err: any) {
-      toast({ title: "Analysis failed", description: err?.message || "Please try again.", variant: "destructive" });
-      setScreen("idle");
+      if (batch && qid) {
+        setUploadQueue(prev => prev.map(q => q.id === qid ? { ...q, status: "error", error: err?.message || "Failed" } : q));
+      } else {
+        toast({ title: "Analysis failed", description: err?.message || "Please try again.", variant: "destructive" });
+        setScreen("idle");
+      }
     } finally {
-      if (fileRef.current) fileRef.current.value = "";
+      if (!batch && fileRef.current) fileRef.current.value = "";
     }
   }, [userId, updateField, streamChat, toast, loadTriage]);
+
+  /** Enqueue multiple files (hospital mode) and process them sequentially.
+   *  Each file gets its own status row (queued → analyzing → completed/error)
+   *  and, once parsed, the queue auto-sorts pending items by detected priority. */
+  const enqueueFiles = useCallback(async (files: File[]) => {
+    if (!userId) {
+      toast({ title: "Sign in first", description: "Please sign in to analyze reports.", variant: "destructive" });
+      return;
+    }
+    if (files.length === 0) return;
+    const items: QueueItem[] = files.map(f => ({
+      id: `q-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      file: f,
+      status: "queued",
+    }));
+    setUploadQueue(prev => [...prev, ...items]);
+    if (isBatchProcessing) return; // a worker is already draining the queue
+    setIsBatchProcessing(true);
+    try {
+      // Process one at a time to keep server load low and progress easy to follow.
+      // We re-read the queue each tick so newly-added files are picked up.
+      // Priority-aware ordering: pending items already analyzed once will be
+      // visible in the triage list (priority known); for the queue itself we
+      // process FIFO since we don't know priority before parsing.
+      while (true) {
+        const next = await new Promise<QueueItem | null>(resolve => {
+          setUploadQueue(prev => {
+            const n = prev.find(q => q.status === "queued") || null;
+            resolve(n);
+            return prev;
+          });
+        });
+        if (!next) break;
+        await handleFile(next.file, { batch: true, queueId: next.id });
+      }
+      toast({ title: "Batch complete", description: `${items.length} file(s) processed. Sorted by priority.` });
+    } finally {
+      setIsBatchProcessing(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }, [userId, handleFile, toast, isBatchProcessing]);
 
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
