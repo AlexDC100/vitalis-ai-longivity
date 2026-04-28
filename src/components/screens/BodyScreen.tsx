@@ -12,6 +12,8 @@ import {
 import { toast } from "sonner";
 import ScoreRing from "@/components/ScoreRing";
 import { runDiagnosis, getAllSystemScores } from "@/lib/diagnosis-engine";
+import { BodyDebugOverlay } from "@/components/BodyDebugOverlay";
+import { Crosshair } from "lucide-react";
 
 const FAMILY_CONDITIONS = [
   "Heart Disease", "Diabetes", "Cancer", "Alzheimer's", "Stroke",
@@ -1006,6 +1008,22 @@ export default function BodyScreen() {
           </div>
         </div>
       </section>
+
+      {/* ══════════ Debug overlay ══════════ */}
+      {/* Floating toggle: appears bottom-right above the bottom nav. Hidden in production
+          unless the user has explicitly enabled debug mode (`?debug=1` or localStorage). */}
+      {debug.enabled && (
+        <BodyDebugOverlay containerRef={rootRef} onClose={debug.toggle} />
+      )}
+      <button
+        type="button"
+        onClick={debug.toggle}
+        className={`fixed right-3 bottom-24 z-[55] min-h-[44px] min-w-[44px] w-11 h-11 rounded-full border border-border bg-card/90 backdrop-blur shadow-md flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors ${debug.enabled ? "ring-2 ring-primary text-primary" : ""}`}
+        aria-label={debug.enabled ? "Disable Body screen debug overlay" : "Enable Body screen debug overlay"}
+        aria-pressed={debug.enabled}
+      >
+        <Crosshair className="w-4 h-4" />
+      </button>
 
     </div>
   );
