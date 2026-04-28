@@ -206,11 +206,34 @@ export default function AIDoctorScreen() {
     return localStorage.getItem(SS_HOSPITAL_MODE) === "1";
   });
   const [reviewingId, setReviewingId] = useState<string | null>(null);
-  const [activeCaseId, setActiveCaseId] = useState<string | null>(null);
+  const [activeCaseId, setActiveCaseId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    try { return localStorage.getItem(LS_ACTIVE_CASE); } catch { return null; }
+  });
+  // Multi-file upload queue (hospital mode). Visible inline above the triage list.
+  const [uploadQueue, setUploadQueue] = useState<QueueItem[]>([]);
+  const [isBatchProcessing, setIsBatchProcessing] = useState(false);
 
   useEffect(() => {
     try { localStorage.setItem(SS_HOSPITAL_MODE, hospitalMode ? "1" : "0"); } catch { /* ignore */ }
   }, [hospitalMode]);
+
+  // Persist activeCaseId so AI discussion resumes across reloads.
+  useEffect(() => {
+    try {
+      if (activeCaseId) localStorage.setItem(LS_ACTIVE_CASE, activeCaseId);
+      else localStorage.removeItem(LS_ACTIVE_CASE);
+    } catch { /* ignore */ }
+  }, [activeCaseId]);
+
+  // Persist the chat associated with the active case so switching cases
+  // (and reloads) preserve the conversation thread per-case.
+  useEffect(() => {
+    if (!activeCaseId) return;
+    try {
+      sessionStorage.setItem(caseChatKey(activeCaseId), JSON.stringify(chat));
+    } catch { /* quota — ignore */ }
+  }, [chat, activeCaseId]);
 
   /** Mark a triage case as reviewed (or undo). Optimistic + persisted. */
   const handleMarkReviewed = useCallback(async (caseId: string, undo = false) => {
