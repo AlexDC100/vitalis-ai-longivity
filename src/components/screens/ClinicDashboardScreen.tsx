@@ -541,10 +541,17 @@ function PriorityGroup({
       <ul className="space-y-2">
         {items.map((c) => (
           <li key={c.id}>
-            <button
-              type="button"
+            <div
+              role="button"
+              tabIndex={0}
               onClick={() => onOpen(c.id)}
-              className={`w-full text-left rounded-xl border p-3.5 transition-colors hover:bg-card/80 ${meta.ring}`}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onOpen(c.id);
+                }
+              }}
+              className={`w-full text-left rounded-xl border p-3.5 transition-colors hover:bg-card/80 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/40 ${meta.ring}`}
             >
               <div className="flex items-start justify-between gap-3 mb-1.5">
                 <div className="flex items-center gap-2 min-w-0 flex-wrap">
@@ -555,13 +562,20 @@ function PriorityGroup({
                   <span className="text-[11px] uppercase tracking-wider font-semibold">
                     {c.case_type}
                   </span>
+                  {c.detected_category && c.detected_category !== c.case_type && (
+                    <Badge variant="outline" className="text-[9px] gap-1">
+                      <FileSearch className="w-2.5 h-2.5" />
+                      {c.detected_category}
+                    </Badge>
+                  )}
                   <span className="text-[11px] text-muted-foreground truncate max-w-[180px]">
                     · {c.file_name}
                   </span>
                 </div>
                 {c.status === "analyzing" ? (
                   <Badge variant="outline" className="text-[10px] gap-1 shrink-0">
-                    <Loader2 className="w-2.5 h-2.5 animate-spin" /> analyzing
+                    <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                    {c.detected_category ? `triaging ${c.detected_category}` : "analyzing"}
                   </Badge>
                 ) : c.status === "error" ? (
                   <Badge variant="destructive" className="text-[10px] shrink-0">error</Badge>
@@ -581,7 +595,39 @@ function PriorityGroup({
                   {c.suggested_specialist ? <>Suggest: <span className="text-foreground">{c.suggested_specialist}</span></> : null}
                 </p>
               )}
-            </button>
+              {(c.status === "ready" || c.status === "reviewed") && (
+                <div className="mt-3 flex items-center gap-1.5 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onOpen(c.id);
+                    }}
+                    className="inline-flex items-center gap-1 h-7 px-2.5 rounded-md border border-border bg-background/60 text-[11px] hover:bg-background"
+                  >
+                    <Printer className="w-3 h-3" /> Open report
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      downloadCaseReportHtml({
+                        ...c,
+                        key_findings: c.key_findings as unknown,
+                      });
+                    }}
+                    className="inline-flex items-center gap-1 h-7 px-2.5 rounded-md border border-border bg-background/60 text-[11px] hover:bg-background"
+                  >
+                    <Download className="w-3 h-3" /> Download HTML
+                  </button>
+                  {c.reviewed_by_email && c.reviewed_at && (
+                    <span className="text-[10px] text-muted-foreground ml-auto">
+                      Reviewed by {c.reviewed_by_email}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
           </li>
         ))}
       </ul>
