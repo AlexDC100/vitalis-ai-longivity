@@ -1,5 +1,5 @@
 import { useHealth } from "@/lib/health-context";
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useSubstances } from "@/lib/use-substances";
 import { useFamilyHistory } from "@/lib/use-family-history";
