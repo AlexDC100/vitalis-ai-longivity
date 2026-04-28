@@ -13,6 +13,7 @@ import { AlertTriangle, Stethoscope, User, Menu, Settings as SettingsIcon } from
 import CommandPalette, { type PaletteAction } from "@/components/CommandPalette";
 import SettingsSheet from "@/components/SettingsSheet";
 import ThemeToggle from "@/components/ThemeToggle";
+import vitalisLogo from "@/assets/vitalis-logo.png";
 import { toast } from "sonner";
 
 type Screen = "diagnosis" | "body" | "doctor";
@@ -202,7 +203,15 @@ function AppShell() {
       />
       {/* Top Bar */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border/30">
-        <span className="text-base font-bold text-foreground tracking-tight">Vitalis</span>
+        <div className="flex items-center gap-2 min-w-0">
+          <img
+            src={vitalisLogo}
+            alt=""
+            aria-hidden="true"
+            className="h-7 w-7 rounded-md object-contain shrink-0"
+          />
+          <span className="text-base font-bold text-foreground tracking-tight">Vitalis</span>
+        </div>
         <div className="flex items-center gap-1">
           <ThemeToggle />
           <button
