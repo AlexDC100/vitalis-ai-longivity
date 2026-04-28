@@ -363,28 +363,52 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
       </header>
 
       {/* ════════ MAIN STAGE ════════ */}
-      <main className="flex-1 flex flex-col items-center justify-start px-1">
+      <main ref={stageRef} className="flex-1 flex flex-col items-center justify-start px-1">
 
         {/* ── IDLE: single primary action ── */}
         {screen === "idle" && (
           <div
             ref={dropRef}
+            onDragEnter={(e) => {
+              e.preventDefault();
+              dragDepthRef.current += 1;
+              setIsDragging(true);
+            }}
             onDragOver={(e) => { e.preventDefault(); }}
-            onDrop={onDrop}
-            onClick={() => fileRef.current?.click()}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") fileRef.current?.click(); }}
-            className="w-full max-w-md mx-auto rounded-3xl border-2 border-dashed border-border hover:border-primary/60 active:border-primary transition-colors cursor-pointer p-10 sm:p-14 flex flex-col items-center text-center min-h-[260px] active:scale-[0.99] duration-150"
-            aria-label="Upload your health report"
+            onDragLeave={() => {
+              dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+              if (dragDepthRef.current === 0) setIsDragging(false);
+            }}
+            onDrop={(e) => { dragDepthRef.current = 0; setIsDragging(false); onDrop(e); }}
+            className={`w-full max-w-md mx-auto rounded-3xl border-2 border-dashed transition-all duration-200 p-10 sm:p-14 flex flex-col items-center text-center min-h-[280px] ${
+              isDragging
+                ? "border-primary bg-primary/5 scale-[1.01]"
+                : "border-border hover:border-primary/60 hover:bg-card/40"
+            }`}
+            aria-label="Drop your health report here, or use the upload button below"
           >
-            <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-5">
-              <Upload className="w-7 h-7 text-primary" />
+            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-5 transition-colors ${
+              isDragging ? "bg-primary/20" : "bg-primary/10"
+            }`}>
+              <Upload className={`w-7 h-7 transition-colors ${isDragging ? "text-primary" : "text-primary"}`} />
             </div>
-            <h2 className="text-lg sm:text-xl font-semibold text-foreground">Upload your health report</h2>
+            <h2 className="text-lg sm:text-xl font-semibold text-foreground">
+              {isDragging ? "Drop to upload" : "Upload your health report"}
+            </h2>
             <p className="text-xs sm:text-sm text-muted-foreground mt-2 max-w-[260px]">
               PDF, JPG, or PNG. We'll read it, extract your biomarkers, and tell you what matters most.
             </p>
+            <button
+              type="button"
+              data-primary-action
+              onClick={() => fileRef.current?.click()}
+              className="mt-6 inline-flex items-center justify-center gap-2 min-h-[48px] min-w-[44px] px-6 py-3 rounded-full bg-primary text-primary-foreground text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background hover:opacity-90 active:scale-95 transition-all"
+              aria-label="Choose a health report to upload"
+            >
+              <Upload className="w-4 h-4" />
+              Choose file
+            </button>
+            <p className="text-[10px] text-muted-foreground/70 mt-3">or drag and drop here</p>
             <input
               ref={fileRef}
               type="file"
@@ -440,12 +464,18 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
                   What to do next
                 </p>
                 {actions.map((a, i) => (
-                  <div key={i} className="flex items-start gap-3 bg-card border border-border rounded-2xl p-3.5 min-h-[60px]">
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => setActionConfirm({ index: i, text: a })}
+                    className="w-full text-left flex items-start gap-3 bg-card border border-border hover:border-primary/40 rounded-2xl p-3.5 min-h-[60px] active:scale-[0.99] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    aria-label={`Action ${i + 1}: ${a}. Tap for details.`}
+                  >
                     <div className="w-7 h-7 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0 text-xs font-bold">
                       {i + 1}
                     </div>
                     <p className="text-sm text-foreground leading-relaxed flex-1 pt-0.5">{a}</p>
-                  </div>
+                  </button>
                 ))}
               </section>
             )}
@@ -466,6 +496,7 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
                 </p>
                 {severity === "URGENT" ? (
                   <a
+                    data-primary-action
                     href="tel:112"
                     className={`flex items-center justify-center gap-2 w-full min-h-[44px] px-4 py-3 ${sevMeta.bg} border ${sevMeta.border} rounded-xl ${sevMeta.tone} text-sm font-semibold`}
                   >
@@ -474,6 +505,7 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
                   </a>
                 ) : (
                   <button
+                    data-primary-action
                     type="button"
                     onClick={() => setBookingSheet({ open: true, specialty, severity: severity! })}
                     className="flex items-center justify-center gap-2 w-full min-h-[44px] px-4 py-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold active:scale-[0.98] transition-transform"
@@ -560,6 +592,51 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
         specialty={bookingSheet.specialty}
         severity={bookingSheet.severity}
       />
+
+      {/* ════════ Action confirmation dialog ════════
+          Tapping a recommended action opens this calm modal explaining
+          what will happen if they proceed (we ask the AI Doctor for a
+          step-by-step plan tailored to that action). The screen state
+          NEVER changes back to idle from here — we either stay on the
+          result, or just open the chat with a contextual message. */}
+      <AlertDialog
+        open={!!actionConfirm}
+        onOpenChange={(open) => { if (!open) setActionConfirm(null); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-primary" />
+              <AlertDialogTitle className="text-base">
+                Action {actionConfirm ? actionConfirm.index + 1 : ""}
+              </AlertDialogTitle>
+            </div>
+            <AlertDialogDescription className="pt-2 text-sm leading-relaxed text-foreground">
+              {actionConfirm?.text}
+            </AlertDialogDescription>
+            <p className="pt-3 text-xs text-muted-foreground">
+              We'll ask the AI Doctor for a step-by-step plan tailored to
+              your numbers. You can keep reading the result while it answers.
+            </p>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="min-h-[44px]">Not now</AlertDialogCancel>
+            <AlertDialogAction
+              className="min-h-[44px]"
+              onClick={() => {
+                if (!actionConfirm) return;
+                const text = `Help me actually do this: "${actionConfirm.text}". Give me a concrete 7-day plan with specific doses, timing, and what to track. Reference my actual numbers.`;
+                setActionConfirm(null);
+                setInput(text);
+                // Defer one tick so the input value is in state before send.
+                setTimeout(() => sendFollowUp(), 0);
+              }}
+            >
+              Get my plan
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
