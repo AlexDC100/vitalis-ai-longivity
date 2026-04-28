@@ -430,6 +430,7 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
       await streamChat(history, (partial) => {
         setChat(prev => prev.map(m => m.id === assistantId ? { ...m, content: partial } : m));
       });
+      toast({ title: "Answer ready", description: "The AI Doctor finished responding." });
     } catch (err: any) {
       setChat(prev => prev.map(m => m.id === assistantId
         ? { ...m, content: `⚠️ ${err?.message || "Could not reach the AI Doctor."}` }
@@ -437,7 +438,7 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
     } finally {
       setIsStreaming(false);
     }
-  }, [input, isStreaming, chat, latestResult, streamChat, extractedBiomarkers]);
+  }, [input, isStreaming, chat, latestResult, streamChat, extractedBiomarkers, screen, toast]);
 
   // ─── Derived from result ──────────────────────────────────────────
   const severity = latestResult ? parseSeverity(latestResult) : null;
