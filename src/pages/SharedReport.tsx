@@ -115,16 +115,19 @@ export default function SharedReport() {
 
   // Live countdown — only ticks while a valid (not yet expired) report is loaded.
   useEffect(() => {
-    if (state.kind !== "ok") return;
+    // Tick while we have a usable expiry — either the loaded report or the
+    // cached expiry shown during reload.
+    if (state.kind !== "ok" && !(state.kind === "loading" && cachedExpiry)) return;
     const id = window.setInterval(() => {
       const t = Date.now();
       setNow(t);
-      if (new Date(state.expiresAt).getTime() <= t) {
+      const exp = state.kind === "ok" ? state.expiresAt : cachedExpiry!;
+      if (new Date(exp).getTime() <= t && state.kind === "ok") {
         setState({ kind: "expired", expiresAt: state.expiresAt, title: state.title });
       }
     }, 1000);
     return () => window.clearInterval(id);
-  }, [state]);
+  }, [state, cachedExpiry]);
 
   const handleRegenerate = (e: React.MouseEvent) => {
     if (signedIn === false) {
