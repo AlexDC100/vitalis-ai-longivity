@@ -814,6 +814,13 @@ ${diagnosisSummary}`;
         specialty={bookingSheet.specialty}
         severity={bookingSheet.severity}
       />
+      <ReportViewerSheet
+        open={reportOpen}
+        onOpenChange={setReportOpen}
+        input={reportOpen ? { profile, substances } : null}
+        userId={userId}
+        userEmail={userEmail}
+      />
     </div>
   );
 }
