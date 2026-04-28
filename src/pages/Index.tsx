@@ -7,9 +7,9 @@ import { track } from "@/lib/analytics";
 import IntakeChatScreen from "@/components/screens/IntakeChatScreen";
 import DiagnosisScreen from "@/components/screens/DiagnosisScreen";
 import BodyScreen from "@/components/screens/BodyScreen";
-import AIDoctorScreen from "@/components/screens/AIDoctorScreen";
+import ClinicDashboardScreen from "@/components/screens/ClinicDashboardScreen";
 import { Toaster } from "@/components/ui/toaster";
-import { AlertTriangle, Stethoscope, User } from "lucide-react";
+import { AlertTriangle, Stethoscope, User, ClipboardList } from "lucide-react";
 import CommandPalette, { type PaletteAction } from "@/components/CommandPalette";
 import SettingsSheet from "@/components/SettingsSheet";
 import HeaderMenu from "@/components/HeaderMenu";
@@ -182,7 +182,7 @@ function AppShell() {
   }
 
   const navItems: { id: Screen; label: string; icon: React.ElementType }[] = [
-    { id: "doctor", label: "AI Doctor", icon: Stethoscope },
+    { id: "doctor", label: "Clinic", icon: ClipboardList },
     { id: "diagnosis", label: "Diagnosis", icon: AlertTriangle },
     { id: "body", label: "Body", icon: User },
   ];
@@ -235,7 +235,7 @@ function AppShell() {
         <div key={screen} className={animClass}>
           {screen === "diagnosis" && <DiagnosisScreen />}
           {screen === "body" && <BodyScreen />}
-          {screen === "doctor" && <AIDoctorScreen />}
+          {screen === "doctor" && <ClinicDashboardScreen />}
         </div>
       </div>
 
