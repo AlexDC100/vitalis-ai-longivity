@@ -591,11 +591,16 @@ export default function BodyScreen() {
             <button
               type="button"
               onClick={retryScoring}
-              className={`mt-1 inline-flex items-center justify-center gap-1.5 min-h-[44px] min-w-[44px] px-4 py-2.5 rounded-full text-xs font-medium text-muted-foreground hover:text-foreground border border-border bg-card ${pressTight} transition-colors`}
-              aria-label="Retry computing longevity score"
+              disabled={retryDisabled}
+              className={`mt-1 inline-flex items-center justify-center gap-1.5 min-h-[44px] min-w-[44px] px-4 py-2.5 rounded-full text-xs font-medium text-muted-foreground hover:text-foreground border border-border bg-card ${pressTight} transition-colors disabled:opacity-50 disabled:cursor-not-allowed`}
+              aria-label={cooldownRemainingMs > 0
+                ? `Retry available in ${Math.ceil(cooldownRemainingMs / 1000)} seconds`
+                : "Retry computing longevity score"}
             >
-              <RefreshCw className="w-3.5 h-3.5" />
-              Retry scoring
+              <RefreshCw className={`w-3.5 h-3.5 ${cooldownRemainingMs > 0 || !sectionsReady ? "" : ""}`} />
+              {cooldownRemainingMs > 0
+                ? `Retry in ${Math.ceil(cooldownRemainingMs / 1000)}s`
+                : "Retry scoring"}
             </button>
           )}
         </section>
