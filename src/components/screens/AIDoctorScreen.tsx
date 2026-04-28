@@ -130,11 +130,21 @@ interface TriageCase {
   created_at: string;
   reviewed_at: string | null;
 }
-const SS_HOSPITAL_MODE = "vitalis.aidoctor.hospitalMode";
 const LS_UPLOAD_CONSENT = "vitalis.aidoctor.uploadConsent.v1";
-// Active-case + per-case chat persistence keys live in a shared module so
-// the e2e rehydration tests exercise the exact same contract the screen does.
-import { LS_ACTIVE_CASE, caseChatKey } from "@/lib/ai-doctor-rehydration";
+// Active-case + per-case chat + hospital-mode + upload-queue persistence keys
+// live in a shared module so the e2e rehydration tests exercise the exact
+// same contract the screen does.
+import {
+  LS_ACTIVE_CASE,
+  LS_HOSPITAL_MODE,
+  caseChatKey,
+  readHospitalMode,
+  writeHospitalMode,
+  readUploadQueue,
+  writeUploadQueue,
+  clearUploadQueue,
+  type RehydratableQueueItem,
+} from "@/lib/ai-doctor-rehydration";
 const PRIORITY_META: Record<Priority, { label: string; tone: string; bg: string; border: string; dot: string; window: string }> = {
   HIGH:   { label: "High",   tone: "text-red-400",     bg: "bg-red-500/10",     border: "border-red-500/25",     dot: "bg-red-400",     window: "Review within 24–48h" },
   MEDIUM: { label: "Medium", tone: "text-amber-400",   bg: "bg-amber-500/10",   border: "border-amber-500/25",   dot: "bg-amber-400",   window: "Routine review" },
@@ -202,7 +212,7 @@ export default function AIDoctorScreen() {
   const [triage, setTriage] = useState<TriageCase[]>([]);
   const [hospitalMode, setHospitalMode] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
-    return localStorage.getItem(SS_HOSPITAL_MODE) === "1";
+    return readHospitalMode();
   });
   const [reviewingId, setReviewingId] = useState<string | null>(null);
   const [activeCaseId, setActiveCaseId] = useState<string | null>(() => {
@@ -210,14 +220,46 @@ export default function AIDoctorScreen() {
     try { return localStorage.getItem(LS_ACTIVE_CASE); } catch { return null; }
   });
   // Multi-file upload queue (hospital mode). Visible inline above the triage list.
-  const [uploadQueue, setUploadQueue] = useState<QueueItem[]>([]);
+  // Rehydrate persisted (file-less) shape so refresh / tab-switch in hospital
+  // mode does not silently lose batch status. The actual File handle cannot be
+  // restored after refresh — items keep their reported status + priority but
+  // any "queued"/"analyzing" entries are surfaced as "error" so the user can
+  // re-upload them.
+  const [uploadQueue, setUploadQueue] = useState<QueueItem[]>(() => {
+    if (typeof window === "undefined") return [];
+    const restored = readUploadQueue();
+    if (!restored.length) return [];
+    return restored.map(r => ({
+      id: r.id,
+      file: new File([], r.fileName),
+      status: r.status === "queued" || r.status === "analyzing" ? "error" : r.status,
+      priority: (r.priority ?? undefined) as Priority | undefined,
+      error: r.status === "queued" || r.status === "analyzing"
+        ? "Interrupted — please re-upload"
+        : undefined,
+    }));
+  });
   const [isBatchProcessing, setIsBatchProcessing] = useState(false);
   const uploadQueueRef = useRef<QueueItem[]>([]);
   useEffect(() => { uploadQueueRef.current = uploadQueue; }, [uploadQueue]);
 
   useEffect(() => {
-    try { localStorage.setItem(SS_HOSPITAL_MODE, hospitalMode ? "1" : "0"); } catch { /* ignore */ }
+    writeHospitalMode(hospitalMode);
   }, [hospitalMode]);
+
+  // Persist the upload queue shape (status + priority) on every change so a
+  // refresh during a batch keeps the per-file completed/error markers visible.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!uploadQueue.length) { clearUploadQueue(); return; }
+    const serializable: RehydratableQueueItem[] = uploadQueue.map(q => ({
+      id: q.id,
+      fileName: q.file?.name ?? "file",
+      status: q.status,
+      priority: (q.priority ?? null) as RehydratableQueueItem["priority"],
+    }));
+    writeUploadQueue(serializable);
+  }, [uploadQueue]);
 
   // Persist activeCaseId so AI discussion resumes across reloads.
   useEffect(() => {
