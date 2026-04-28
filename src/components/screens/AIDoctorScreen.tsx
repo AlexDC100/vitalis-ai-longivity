@@ -6,7 +6,7 @@ import { useSubstances } from "@/lib/use-substances";
 import {
   Send, Upload, Loader2, FileText, Stethoscope, AlertTriangle, ShieldCheck,
   Activity, Siren, RefreshCw, CheckCircle2, Download, ClipboardList,
-  Check, MessageSquare, Hospital,
+  Check, MessageSquare, Hospital, ChevronDown, X, Clock, AlertCircle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from "react-markdown";
@@ -17,6 +17,10 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
+  DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import AIDoctorTapAuditPanel from "@/components/AIDoctorTapAuditPanel";
 import { downloadCaseSummary } from "@/lib/case-summary";
 
@@ -128,11 +132,27 @@ interface TriageCase {
 }
 const SS_HOSPITAL_MODE = "vitalis.aidoctor.hospitalMode";
 const LS_UPLOAD_CONSENT = "vitalis.aidoctor.uploadConsent.v1";
+const LS_ACTIVE_CASE = "vitalis.aidoctor.activeCaseId";
+/** Per-case chat storage key. Lets users switch between cases without losing
+ *  the conversation they had with the AI Doctor for each case. */
+const caseChatKey = (caseId: string) => `vitalis.aidoctor.chat.${caseId}`;
 const PRIORITY_META: Record<Priority, { label: string; tone: string; bg: string; border: string; dot: string; window: string }> = {
   HIGH:   { label: "High",   tone: "text-red-400",     bg: "bg-red-500/10",     border: "border-red-500/25",     dot: "bg-red-400",     window: "Review within 24–48h" },
   MEDIUM: { label: "Medium", tone: "text-amber-400",   bg: "bg-amber-500/10",   border: "border-amber-500/25",   dot: "bg-amber-400",   window: "Routine review" },
   LOW:    { label: "Low",    tone: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/25", dot: "bg-emerald-400", window: "Stable" },
 };
+
+// ─── Multi-file upload queue (hospital mode) ──────────────────────
+type QueueStatus = "queued" | "analyzing" | "completed" | "error";
+interface QueueItem {
+  id: string;
+  file: File;
+  status: QueueStatus;
+  priority?: Priority;
+  error?: string;
+  caseId?: string;       // medical_documents.id once known
+  mainFinding?: string;
+}
 
 export default function AIDoctorScreen() {
   const { profile, updateField, longevityScore, biologicalAge, chronologicalAge, userId } = useHealth();
@@ -186,11 +206,36 @@ export default function AIDoctorScreen() {
     return localStorage.getItem(SS_HOSPITAL_MODE) === "1";
   });
   const [reviewingId, setReviewingId] = useState<string | null>(null);
-  const [activeCaseId, setActiveCaseId] = useState<string | null>(null);
+  const [activeCaseId, setActiveCaseId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    try { return localStorage.getItem(LS_ACTIVE_CASE); } catch { return null; }
+  });
+  // Multi-file upload queue (hospital mode). Visible inline above the triage list.
+  const [uploadQueue, setUploadQueue] = useState<QueueItem[]>([]);
+  const [isBatchProcessing, setIsBatchProcessing] = useState(false);
+  const uploadQueueRef = useRef<QueueItem[]>([]);
+  useEffect(() => { uploadQueueRef.current = uploadQueue; }, [uploadQueue]);
 
   useEffect(() => {
     try { localStorage.setItem(SS_HOSPITAL_MODE, hospitalMode ? "1" : "0"); } catch { /* ignore */ }
   }, [hospitalMode]);
+
+  // Persist activeCaseId so AI discussion resumes across reloads.
+  useEffect(() => {
+    try {
+      if (activeCaseId) localStorage.setItem(LS_ACTIVE_CASE, activeCaseId);
+      else localStorage.removeItem(LS_ACTIVE_CASE);
+    } catch { /* ignore */ }
+  }, [activeCaseId]);
+
+  // Persist the chat associated with the active case so switching cases
+  // (and reloads) preserve the conversation thread per-case.
+  useEffect(() => {
+    if (!activeCaseId) return;
+    try {
+      sessionStorage.setItem(caseChatKey(activeCaseId), JSON.stringify(chat));
+    } catch { /* quota — ignore */ }
+  }, [chat, activeCaseId]);
 
   /** Mark a triage case as reviewed (or undo). Optimistic + persisted. */
   const handleMarkReviewed = useCallback(async (caseId: string, undo = false) => {
@@ -219,6 +264,11 @@ export default function AIDoctorScreen() {
 
   /** Continue the AI discussion using a triage case as context. */
   const handleDiscussCase = useCallback((c: TriageCase) => {
+    // Save the current case's chat before switching so the user doesn't
+    // lose their conversation. Each case keeps its own thread.
+    if (activeCaseId && activeCaseId !== c.id) {
+      try { sessionStorage.setItem(caseChatKey(activeCaseId), JSON.stringify(chat)); } catch { /* ignore */ }
+    }
     setActiveCaseId(c.id);
     setLatestCase({
       main_finding: c.main_finding,
@@ -228,12 +278,19 @@ export default function AIDoctorScreen() {
       document_type: c.document_type,
     });
     setLastFileName(c.file_name);
-    // Prime the chat with a single contextual user message that frames the case.
-    const primer = `Continue the discussion about my "${c.document_type}" case (${c.file_name}). Main finding: ${c.main_finding || "n/a"}. Clinical insight: ${c.clinical_insight || "n/a"}. Priority: ${c.priority} — ${c.review_window}. Help me understand what to do next.`;
-    setChat([]);
+    // Try to restore an existing chat for this case; otherwise prime a fresh one.
+    let saved: ChatMsg[] = [];
+    try {
+      const raw = sessionStorage.getItem(caseChatKey(c.id));
+      if (raw) saved = JSON.parse(raw) as ChatMsg[];
+    } catch { /* ignore */ }
+    setChat(saved);
     setScreen("result");
-    setTimeout(() => sendFollowUpRef.current?.(primer), 50);
-  }, []);
+    if (saved.length === 0) {
+      const primer = `Continue the discussion about my "${c.document_type}" case (${c.file_name}). Main finding: ${c.main_finding || "n/a"}. Clinical insight: ${c.clinical_insight || "n/a"}. Priority: ${c.priority} — ${c.review_window}. Help me understand what to do next.`;
+      setTimeout(() => sendFollowUpRef.current?.(primer), 50);
+    }
+  }, [activeCaseId, chat]);
 
   // Forward-ref pattern so handleDiscussCase (defined early) can call sendFollowUp (defined later).
   const sendFollowUpRef = useRef<((text: string) => void) | null>(null);
@@ -271,6 +328,30 @@ export default function AIDoctorScreen() {
   }, [userId]);
 
   useEffect(() => { void loadTriage(); }, [loadTriage]);
+
+  // Rehydrate the active case after triage loads (page refresh / reopen).
+  // We restore the case context (latestCase, lastFileName) and the per-case
+  // chat so the AI discussion resumes exactly where the user left off.
+  const didRehydrateRef = useRef(false);
+  useEffect(() => {
+    if (didRehydrateRef.current) return;
+    if (!activeCaseId || triage.length === 0) return;
+    const c = triage.find(t => t.id === activeCaseId);
+    if (!c) return;
+    didRehydrateRef.current = true;
+    setLatestCase({
+      main_finding: c.main_finding,
+      clinical_insight: c.clinical_insight,
+      priority: c.priority,
+      review_window: c.review_window,
+      document_type: c.document_type,
+    });
+    setLastFileName(c.file_name);
+    try {
+      const raw = sessionStorage.getItem(caseChatKey(c.id));
+      if (raw) setChat(JSON.parse(raw) as ChatMsg[]);
+    } catch { /* ignore */ }
+  }, [activeCaseId, triage]);
 
   const fileRef = useRef<HTMLInputElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
@@ -519,13 +600,19 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
   }, [systemPrompt, toast]);
 
   // ─── Upload + analyze flow ────────────────────────────────────────
-  const handleFile = useCallback(async (file: File) => {
+  const handleFile = useCallback(async (file: File, opts?: { batch?: boolean; queueId?: string }) => {
+    const batch = !!opts?.batch;
+    const qid = opts?.queueId;
     if (!userId) {
       toast({ title: "Sign in first", description: "Please sign in to analyze a report.", variant: "destructive" });
       return;
     }
-    setScreen("analyzing");
-    setAnalyzingLabel(`Reading ${file.name}`);
+    if (!batch) {
+      setScreen("analyzing");
+      setAnalyzingLabel(`Reading ${file.name}`);
+    } else if (qid) {
+      setUploadQueue(prev => prev.map(q => q.id === qid ? { ...q, status: "analyzing" } : q));
+    }
     try {
       const filePath = `${userId}/${Date.now()}_${file.name}`;
       await supabase.storage.from("medical-documents").upload(filePath, file);
@@ -534,7 +621,7 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
       }).select().single();
       if (!doc) throw new Error("Could not save document");
 
-      setAnalyzingLabel("Extracting biomarkers");
+      if (!batch) setAnalyzingLabel("Extracting biomarkers");
       const { data: result } = await supabase.functions.invoke("parse-document", {
         body: { documentId: doc.id, filePath },
       });
@@ -548,55 +635,116 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
         Object.entries(result.biomarkers).forEach(([k, v]) => {
           if (typeof v === "number" && v > 0) snap[k] = v as number;
         });
-        setExtractedBiomarkers(snap);
+        if (!batch) setExtractedBiomarkers(snap);
       }
       // Capture case priority / clinical insight from the multi-modality parser.
+      let detectedPriority: Priority = "LOW";
       if (result) {
         const cp = result.case_priority || {};
         const lvl = (cp.level || result.urgency || "LOW").toString().toUpperCase() as Priority;
         const safe: Priority = lvl === "HIGH" || lvl === "MEDIUM" ? lvl : "LOW";
-        setLatestCase({
-          main_finding: result.main_finding || "",
-          clinical_insight: result.clinical_insight || "",
-          priority: safe,
-          review_window: cp.review_window || PRIORITY_META[safe].window,
-          document_type: result.document_type || "General",
-        });
+        detectedPriority = safe;
+        if (!batch) {
+          setLatestCase({
+            main_finding: result.main_finding || "",
+            clinical_insight: result.clinical_insight || "",
+            priority: safe,
+            review_window: cp.review_window || PRIORITY_META[safe].window,
+            document_type: result.document_type || "General",
+          });
+        }
       }
-      setLastFileName(file.name);
+      if (!batch) setLastFileName(file.name);
       const extractedCount = result?.biomarkers
         ? Object.keys(result.biomarkers).filter(k => result.biomarkers[k] > 0).length
         : 0;
 
-      setAnalyzingLabel("Asking Vitalis AI Doctor");
-      const userText = `I just uploaded "${file.name}". ${extractedCount} biomarkers were extracted. Analyze the new results — what changed, what's concerning, and what I should do next.`;
-      let full = "";
-      full = await streamChat([{ role: "user", content: userText }], (partial) => {
-        setLatestResult(partial);
-      });
-      setLatestResult(full);
-      setScreen("result");
-      toast({ title: "Report analyzed", description: `${extractedCount} biomarkers extracted.` });
+      if (!batch) {
+        setAnalyzingLabel("Asking Vitalis AI Doctor");
+        const userText = `I just uploaded "${file.name}". ${extractedCount} biomarkers were extracted. Analyze the new results — what changed, what's concerning, and what I should do next.`;
+        let full = "";
+        full = await streamChat([{ role: "user", content: userText }], (partial) => {
+          setLatestResult(partial);
+        });
+        setLatestResult(full);
+        setScreen("result");
+        toast({ title: "Report analyzed", description: `${extractedCount} biomarkers extracted.` });
+      } else if (qid) {
+        setUploadQueue(prev => prev.map(q => q.id === qid ? {
+          ...q,
+          status: "completed",
+          priority: detectedPriority,
+          caseId: doc.id,
+          mainFinding: result?.main_finding || "",
+        } : q));
+      }
       // Refresh the triage list so the new case appears.
       void loadTriage();
     } catch (err: any) {
-      toast({ title: "Analysis failed", description: err?.message || "Please try again.", variant: "destructive" });
-      setScreen("idle");
+      if (batch && qid) {
+        setUploadQueue(prev => prev.map(q => q.id === qid ? { ...q, status: "error", error: err?.message || "Failed" } : q));
+      } else {
+        toast({ title: "Analysis failed", description: err?.message || "Please try again.", variant: "destructive" });
+        setScreen("idle");
+      }
     } finally {
-      if (fileRef.current) fileRef.current.value = "";
+      if (!batch && fileRef.current) fileRef.current.value = "";
     }
   }, [userId, updateField, streamChat, toast, loadTriage]);
 
+  /** Enqueue multiple files (hospital mode) and process them sequentially.
+   *  Each file gets its own status row (queued → analyzing → completed/error)
+   *  and, once parsed, the queue auto-sorts pending items by detected priority. */
+  const enqueueFiles = useCallback(async (files: File[]) => {
+    if (!userId) {
+      toast({ title: "Sign in first", description: "Please sign in to analyze reports.", variant: "destructive" });
+      return;
+    }
+    if (files.length === 0) return;
+    const items: QueueItem[] = files.map(f => ({
+      id: `q-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      file: f,
+      status: "queued",
+    }));
+    setUploadQueue(prev => [...prev, ...items]);
+    if (isBatchProcessing) return; // a worker is already draining the queue
+    setIsBatchProcessing(true);
+    try {
+      // Process one at a time to keep server load low and progress easy to follow.
+      // We re-read the queue each tick so newly-added files are picked up.
+      // Priority-aware ordering: pending items already analyzed once will be
+      // visible in the triage list (priority known); for the queue itself we
+      // process FIFO since we don't know priority before parsing.
+      while (true) {
+        // Yield a tick so any pending state updates flush.
+        await new Promise(r => setTimeout(r, 0));
+        const next = uploadQueueRef.current.find(q => q.status === "queued") || null;
+        if (!next) break;
+        await handleFile(next.file, { batch: true, queueId: next.id });
+      }
+      toast({ title: "Batch complete", description: `${items.length} file(s) processed. Sorted by priority.` });
+    } finally {
+      setIsBatchProcessing(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }, [userId, handleFile, toast, isBatchProcessing]);
+
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
-    const file = e.dataTransfer.files?.[0];
-    if (file) requestFileWithConsent(file);
-  }, []); // handler defined below; ref keeps deps stable
+    const files = Array.from(e.dataTransfer.files || []);
+    if (files.length === 0) return;
+    if (hospitalMode && files.length > 1) {
+      requestFilesWithConsent(files);
+    } else {
+      requestFileWithConsent(files[0]);
+    }
+  }, []); // handlers defined below; refs keep deps stable
 
   // ─── Pre-upload consent / disclaimer ──────────────────────────────
   // Required acknowledgment before any medical file is analyzed. Stored
   // in localStorage so we don't nag returning users on the same device.
   const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [pendingFiles, setPendingFiles] = useState<File[] | null>(null);
   const [pendingPickerAfterConsent, setPendingPickerAfterConsent] = useState(false);
   const hasConsented = useCallback(() => {
     try { return localStorage.getItem(LS_UPLOAD_CONSENT) === "1"; } catch { return false; }
@@ -609,6 +757,11 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
     if (hasConsented()) { void handleFile(file); return; }
     setPendingFile(file);
   }, [hasConsented, handleFile]);
+  /** Gate a multi-file batch (hospital mode) behind consent. */
+  const requestFilesWithConsent = useCallback((files: File[]) => {
+    if (hasConsented()) { void enqueueFiles(files); return; }
+    setPendingFiles(files);
+  }, [hasConsented, enqueueFiles]);
   /** Gate the file picker itself — opening the chooser requires consent. */
   const openFilePicker = useCallback(() => {
     if (hasConsented()) { fileRef.current?.click(); return; }
@@ -782,11 +935,93 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
             <input
               ref={fileRef}
               type="file"
+              multiple={hospitalMode}
               accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.dcm,image/*"
               className="hidden"
-              onChange={(e) => { const f = e.target.files?.[0]; if (f) requestFileWithConsent(f); }}
+              onChange={(e) => {
+                const files = Array.from(e.target.files || []);
+                if (files.length === 0) return;
+                if (hospitalMode && files.length > 1) requestFilesWithConsent(files);
+                else requestFileWithConsent(files[0]);
+              }}
             />
           </div>
+        )}
+
+        {/* ── Upload queue (hospital mode multi-file) ── */}
+        {screen === "idle" && uploadQueue.length > 0 && (
+          <section className="w-full max-w-md mx-auto mt-6 animate-fade-in">
+            <div className="flex items-center justify-between mb-2 px-1">
+              <div className="flex items-center gap-2">
+                <Upload className="w-4 h-4 text-primary" />
+                <h3 className="text-sm font-semibold text-foreground">
+                  Upload queue
+                </h3>
+                <span className="text-[10px] text-muted-foreground">
+                  {uploadQueue.filter(q => q.status === "completed").length}/{uploadQueue.length}
+                </span>
+              </div>
+              {!isBatchProcessing && uploadQueue.every(q => q.status === "completed" || q.status === "error") && (
+                <button
+                  type="button"
+                  onClick={() => setUploadQueue([])}
+                  className="inline-flex items-center gap-1 min-h-[32px] px-2 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                  aria-label="Clear upload queue"
+                >
+                  <X className="w-3 h-3" /> Clear
+                </button>
+              )}
+            </div>
+            <ul className="space-y-1.5">
+              {/* Sort: analyzing first, then queued, then completed/error; within completed sort by priority */}
+              {[...uploadQueue]
+                .sort((a, b) => {
+                  const order: Record<QueueStatus, number> = { analyzing: 0, queued: 1, completed: 2, error: 3 };
+                  if (order[a.status] !== order[b.status]) return order[a.status] - order[b.status];
+                  if (a.status === "completed" && b.status === "completed") {
+                    const p: Record<Priority, number> = { HIGH: 0, MEDIUM: 1, LOW: 2 };
+                    return p[a.priority || "LOW"] - p[b.priority || "LOW"];
+                  }
+                  return 0;
+                })
+                .map(q => {
+                  const meta = q.priority ? PRIORITY_META[q.priority] : null;
+                  return (
+                    <li
+                      key={q.id}
+                      className="flex items-center gap-2.5 rounded-xl border border-border bg-card/60 px-3 py-2"
+                    >
+                      <span className="shrink-0">
+                        {q.status === "queued" && <Clock className="w-3.5 h-3.5 text-muted-foreground" />}
+                        {q.status === "analyzing" && <Loader2 className="w-3.5 h-3.5 text-primary animate-spin" />}
+                        {q.status === "completed" && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />}
+                        {q.status === "error" && <AlertCircle className="w-3.5 h-3.5 text-red-400" />}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-foreground truncate">{q.file.name}</p>
+                        {q.status === "error" && q.error && (
+                          <p className="text-[10px] text-red-400 truncate">{q.error}</p>
+                        )}
+                        {q.status === "completed" && q.mainFinding && (
+                          <p className="text-[10px] text-muted-foreground truncate">{q.mainFinding}</p>
+                        )}
+                      </div>
+                      <span className={`text-[10px] font-semibold uppercase tracking-wider shrink-0 ${
+                        q.status === "completed" && meta ? meta.tone
+                        : q.status === "error" ? "text-red-400"
+                        : q.status === "analyzing" ? "text-primary"
+                        : "text-muted-foreground"
+                      }`}>
+                        {q.status === "completed" && meta ? meta.label : q.status}
+                      </span>
+                    </li>
+                  );
+                })}
+            </ul>
+            <p className="text-[10px] text-center text-muted-foreground/70 mt-2">
+              AI-assisted analysis. Does not replace a licensed physician.
+            </p>
+          </section>
         )}
 
         {/* ── Triage list (visible on idle when ≥2 processed cases exist) ──
@@ -978,6 +1213,71 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
         {screen === "result" && summary && (
           <div className="w-full max-w-md mx-auto space-y-5 animate-fade-in">
 
+            {/* Active-case header — shows which triage case is loaded and lets
+                the user switch between cases without losing the conversation
+                (each case has its own persisted chat thread). */}
+            {activeCaseId && triage.length > 0 && (() => {
+              const active = triage.find(t => t.id === activeCaseId);
+              if (!active) return null;
+              const meta = PRIORITY_META[active.priority];
+              const others = triage.filter(t => t.id !== activeCaseId);
+              return (
+                <div className={`rounded-2xl border ${meta.border} ${meta.bg} px-3 py-2.5 flex items-center gap-3`}>
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${meta.dot}`} aria-hidden />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                      Discussing case
+                    </p>
+                    <p className="text-xs font-semibold text-foreground truncate">
+                      {active.document_type} · {active.file_name}
+                    </p>
+                  </div>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 min-h-[36px] px-2.5 rounded-lg border border-border bg-background/50 hover:bg-background text-[11px] font-medium text-foreground transition-colors"
+                        aria-label="Switch to a different case"
+                      >
+                        Switch <ChevronDown className="w-3 h-3" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-64">
+                      <DropdownMenuLabel className="text-[10px] uppercase tracking-wider">
+                        Your cases
+                      </DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      {others.length === 0 && (
+                        <p className="px-2 py-3 text-xs text-muted-foreground text-center">
+                          No other cases yet.
+                        </p>
+                      )}
+                      {others.map(c => {
+                        const m = PRIORITY_META[c.priority];
+                        return (
+                          <DropdownMenuItem
+                            key={c.id}
+                            onSelect={() => handleDiscussCase(c)}
+                            className="flex items-start gap-2 py-2 cursor-pointer"
+                          >
+                            <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${m.dot}`} aria-hidden />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-medium text-foreground truncate">
+                                {c.document_type} · {c.file_name}
+                              </p>
+                              <p className={`text-[10px] ${m.tone}`}>
+                                {m.label} · {c.review_window}
+                              </p>
+                            </div>
+                          </DropdownMenuItem>
+                        );
+                      })}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              );
+            })()}
+
             {/* Severity pill */}
             {sevMeta && (
               <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border ${sevMeta.bg} ${sevMeta.border} mx-auto`}>
@@ -1155,6 +1455,7 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
                     sessionStorage.removeItem(SS_BIOMARKERS);
                     sessionStorage.removeItem(SS_FILENAME);
                     sessionStorage.removeItem(SS_SCREEN);
+                    localStorage.removeItem(LS_ACTIVE_CASE);
                   } catch { /* ignore */ }
                 }}
                 className="inline-flex items-center gap-1.5 min-h-[44px] px-4 text-xs font-medium text-muted-foreground hover:text-foreground active:scale-95 transition-all"
@@ -1282,9 +1583,9 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
           Persists in localStorage so returning users on the same device
           aren't prompted again. Cancel restores the idle state cleanly. */}
       <AlertDialog
-        open={!!pendingFile || pendingPickerAfterConsent}
+        open={!!pendingFile || !!pendingFiles || pendingPickerAfterConsent}
         onOpenChange={(open) => {
-          if (!open) { setPendingFile(null); setPendingPickerAfterConsent(false); }
+          if (!open) { setPendingFile(null); setPendingFiles(null); setPendingPickerAfterConsent(false); }
         }}
       >
         <AlertDialogContent>
@@ -1308,7 +1609,7 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
           <AlertDialogFooter>
             <AlertDialogCancel
               className="min-h-[44px]"
-              onClick={() => { setPendingFile(null); setPendingPickerAfterConsent(false); }}
+              onClick={() => { setPendingFile(null); setPendingFiles(null); setPendingPickerAfterConsent(false); }}
             >
               Cancel
             </AlertDialogCancel>
@@ -1317,10 +1618,13 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
               onClick={() => {
                 recordConsent();
                 const f = pendingFile;
+                const fs = pendingFiles;
                 const openPicker = pendingPickerAfterConsent;
                 setPendingFile(null);
+                setPendingFiles(null);
                 setPendingPickerAfterConsent(false);
                 if (f) void handleFile(f);
+                else if (fs) void enqueueFiles(fs);
                 else if (openPicker) setTimeout(() => fileRef.current?.click(), 0);
               }}
             >
