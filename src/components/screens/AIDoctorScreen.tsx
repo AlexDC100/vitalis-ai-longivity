@@ -5,12 +5,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { useSubstances } from "@/lib/use-substances";
 import {
   Send, Upload, Loader2, FileText, Stethoscope, AlertTriangle, ShieldCheck,
-  Activity, Siren, RefreshCw, CheckCircle2,
+  Activity, Siren, RefreshCw, CheckCircle2, Download,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import BookingSheet from "@/components/BookingSheet";
+import { downloadAIDoctorReport } from "@/lib/ai-doctor-report";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
