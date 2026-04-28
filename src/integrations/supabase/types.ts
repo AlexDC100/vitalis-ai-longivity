@@ -469,14 +469,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      get_shared_report: {
-        Args: { _token: string }
-        Returns: {
-          expires_at: string
-          html: string
-          title: string
-        }[]
-      }
+      [_ in never]: never
     }
     Enums: {
       [_ in never]: never
