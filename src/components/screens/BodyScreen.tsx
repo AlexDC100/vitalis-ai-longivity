@@ -96,6 +96,39 @@ function Skeleton({ className = "" }: { className?: string }) {
  */
 const SKELETON_MIN_REVEAL_MS = 280;
 
+/** Cooldown before "Retry scoring" can be tapped again, in ms. */
+const RETRY_COOLDOWN_MS = 3000;
+
+/**
+ * Lightweight debug-mode hook. Enabled when:
+ *   - URL has `?debug=1` (or `?bodyDebug=1`), OR
+ *   - localStorage has `body_debug=1`
+ * Toggling persists to localStorage so it survives reload.
+ */
+function useBodyDebug(): { enabled: boolean; toggle: () => void } {
+  const [enabled, setEnabled] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      if (sp.get("debug") === "1" || sp.get("bodyDebug") === "1") return true;
+      return window.localStorage.getItem("body_debug") === "1";
+    } catch { return false; }
+  });
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.documentElement.classList.toggle("body-debug", enabled);
+    return () => { document.documentElement.classList.remove("body-debug"); };
+  }, [enabled]);
+  const toggle = useCallback(() => {
+    setEnabled(prev => {
+      const next = !prev;
+      try { window.localStorage.setItem("body_debug", next ? "1" : "0"); } catch {}
+      return next;
+    });
+  }, []);
+  return { enabled, toggle };
+}
+
 export default function BodyScreen() {
   const {
     profile, updateField, userId, dataCompleteness,
@@ -114,6 +147,10 @@ export default function BodyScreen() {
   const press = reduceMotion ? "" : "active:scale-[0.985]";
   const pressTight = reduceMotion ? "" : "active:scale-95";
 
+  // ─── Debug overlay (hit-area outlines + perf panel + audit) ───
+  const debug = useBodyDebug();
+  const rootRef = useRef<HTMLDivElement>(null);
+
   // Vault state
   const [documents, setDocuments] = useState<any[]>([]);
   const [documentsLoading, setDocumentsLoading] = useState(true);
@@ -130,13 +167,42 @@ export default function BodyScreen() {
   const [sectionsReady, setSectionsReady] = useState(false);
   // Bump to force the shared skeleton gate to re-arm (used by "Retry scoring").
   const [revealNonce, setRevealNonce] = useState(0);
+  // Timestamp of last retry tap, used for cooldown disable state.
+  const [lastRetryAt, setLastRetryAt] = useState(0);
+  const [, forceCooldownTick] = useState(0);
+  // While cooldown is active, drive a 250ms ticker so the disabled UI updates.
+  useEffect(() => {
+    if (!lastRetryAt) return;
+    const id = setInterval(() => forceCooldownTick(t => t + 1), 250);
+    return () => clearInterval(id);
+  }, [lastRetryAt]);
+  const cooldownRemainingMs = Math.max(0, RETRY_COOLDOWN_MS - (Date.now() - lastRetryAt));
+  const retryDisabled = cooldownRemainingMs > 0 || !sectionsReady;
+
+  // ─── In-flight request lifecycle ──────────────────────────────
+  // Single AbortController shared with the active fetchInsights call.
+  // We abort it on unmount and on each new retry so navigation away/back
+  // never produces stale state writes.
+  const insightsAbortRef = useRef<AbortController | null>(null);
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      insightsAbortRef.current?.abort();
+      insightsAbortRef.current = null;
+    };
+  }, []);
+
   // Mark when the skeleton phase started, so we can measure time-to-first-content.
   const skeletonStartedAtRef = useRef<number>(performance.now());
   useEffect(() => {
     setSectionsReady(false);
     skeletonStartedAtRef.current = performance.now();
+    try { performance.mark?.("body:sections-skeleton-start"); } catch {}
     const minRevealMs = reduceMotion ? 0 : SKELETON_MIN_REVEAL_MS;
     const t = setTimeout(() => {
+      if (!isMountedRef.current) return;
       if (userId !== undefined && !documentsLoading) {
         setSectionsReady(true);
         const elapsed = Math.round(performance.now() - skeletonStartedAtRef.current);
@@ -149,10 +215,18 @@ export default function BodyScreen() {
         });
         try {
           performance.mark?.("body:sections-ready");
+          // Per-section measures so the in-app perf panel can chart them.
+          for (const name of ["longevity", "metrics", "profile", "labs"]) {
+            performance.measure?.(
+              `body:tfc:${name}`,
+              "body:sections-skeleton-start",
+              "body:sections-ready",
+            );
+          }
           performance.measure?.(
             "body:sections-skeleton",
-            { start: skeletonStartedAtRef.current } as any,
-            "body:sections-ready"
+            "body:sections-skeleton-start",
+            "body:sections-ready",
           );
         } catch { /* noop */ }
       }
@@ -168,12 +242,18 @@ export default function BodyScreen() {
    * once data settles).
    */
   const retryScoring = useCallback(() => {
+    // Cooldown guard — prevent rapid repeated recomputes while skeleton is active.
+    if (Date.now() - lastRetryAt < RETRY_COOLDOWN_MS) return;
+    setLastRetryAt(Date.now());
+    // Cancel any in-flight insights request so a fresh one wins.
+    insightsAbortRef.current?.abort();
+    insightsAbortRef.current = null;
     setSectionsReady(false);
     setRevealNonce(n => n + 1);
     // Re-fetch AI insights in parallel — the score itself is derived from
     // `profile` synchronously, so the recompute happens on next render.
     if (userId) fetchInsightsRef.current?.();
-  }, [userId]);
+  }, [userId, lastRetryAt]);
   // Forward-ref hack: fetchInsights is declared below. Wired via ref so we
   // can reference it without re-ordering the entire file.
   const fetchInsightsRef = useRef<(() => void) | null>(null);
@@ -300,6 +380,10 @@ export default function BodyScreen() {
   // ─── Fetch AI insights ─────────────────────────────────────
   const fetchInsights = useCallback(async () => {
     if (!userId) return;
+    // Abort any prior call & arm a fresh controller.
+    insightsAbortRef.current?.abort();
+    const ac = new AbortController();
+    insightsAbortRef.current = ac;
     setInsightsLoading(true);
     setInsightsError(null);
     try {
@@ -318,6 +402,9 @@ export default function BodyScreen() {
         },
       });
 
+      // If we were aborted (unmount or new retry), discard this result.
+      if (ac.signal.aborted || !isMountedRef.current) return;
+
       if (error) {
         const msg = error.message || "Failed to generate insights";
         setInsightsError(msg);
@@ -331,9 +418,13 @@ export default function BodyScreen() {
         setInsightsError("Unexpected AI response");
       }
     } catch (e: any) {
+      if (ac.signal.aborted || !isMountedRef.current) return;
       setInsightsError(e?.message || "Network error");
     } finally {
-      setInsightsLoading(false);
+      if (isMountedRef.current && insightsAbortRef.current === ac) {
+        setInsightsLoading(false);
+        insightsAbortRef.current = null;
+      }
     }
   }, [userId, profile, longevityScore, biologicalAge, chronologicalAge, systemHealth, completions]);
   useEffect(() => { fetchInsightsRef.current = fetchInsights; }, [fetchInsights]);
@@ -463,7 +554,7 @@ export default function BodyScreen() {
                              `Score ${trend.deltaScore >= 0 ? "+" : ""}${trend.deltaScore} pts over 30 days`;
 
   return (
-    <div className={`space-y-7 sm:space-y-8 safe-area-px safe-area-pt safe-area-pb ${fadeIn}`}>
+    <div ref={rootRef} className={`space-y-7 sm:space-y-8 safe-area-px safe-area-pt safe-area-pb ${fadeIn}`}>
 
       {/* ══════════ 1. HERO ══════════ */}
       <header className={`text-center space-y-2.5 sm:space-y-3 ${fadeInDelayed("animate-[fade-in_0.5s_ease-out]")}`}>
