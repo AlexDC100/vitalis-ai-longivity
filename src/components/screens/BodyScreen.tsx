@@ -99,6 +99,13 @@ export default function BodyScreen() {
   const [showProfile, setShowProfile] = useState(false);
   const [showVault, setShowVault] = useState(false);
 
+  // Respect prefers-reduced-motion across all decorative effects.
+  const reduceMotion = useReducedMotion();
+  const fadeIn = reduceMotion ? "" : "animate-fade-in";
+  const fadeInDelayed = (cls: string) => (reduceMotion ? "" : cls);
+  const press = reduceMotion ? "" : "active:scale-[0.985]";
+  const pressTight = reduceMotion ? "" : "active:scale-95";
+
   // Vault state
   const [documents, setDocuments] = useState<any[]>([]);
   const [documentsLoading, setDocumentsLoading] = useState(true);
