@@ -350,10 +350,27 @@ export default function ClinicDashboardScreen() {
     <div className="pb-32">
       {/* Header */}
       <header className="mb-6">
-        <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1">
-          AI Diagnostic Review
-        </p>
-        <h1 className="text-3xl font-bold tracking-tight">Diagnostic queue</h1>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1">
+              AI Diagnostic Review
+            </p>
+            <h1 className="text-3xl font-bold tracking-tight">Diagnostic queue</h1>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate("/notifications")}
+            className="relative inline-flex items-center justify-center w-9 h-9 rounded-full border border-border bg-card text-muted-foreground hover:text-foreground transition-colors"
+            aria-label="Notifications"
+          >
+            <Bell className="w-4 h-4" />
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center">
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </span>
+            )}
+          </button>
+        </div>
         <p className="text-sm text-muted-foreground mt-2">
           {loading ? "Loading…" : (
             <>
