@@ -157,9 +157,15 @@ export default function CaseDetail() {
   const isError = row.status === "error";
 
   const markReviewed = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
     await supabase
       .from("clinic_cases")
-      .update({ status: "reviewed", reviewed_at: new Date().toISOString() })
+      .update({
+        status: "reviewed",
+        reviewed_at: new Date().toISOString(),
+        reviewed_by_user_id: user?.id ?? null,
+        reviewed_by_email: user?.email ?? null,
+      })
       .eq("id", row.id);
     toast.success("Marked as reviewed");
     navigate("/");
@@ -169,6 +175,79 @@ export default function CaseDetail() {
     if (!confirm("Delete this case? This cannot be undone.")) return;
     await supabase.from("clinic_cases").delete().eq("id", row.id);
     navigate("/");
+  };
+
+  const regenerate = async () => {
+    if (!row.file_path) {
+      toast.error("Original file not found");
+      return;
+    }
+    setRegenerating(true);
+    try {
+      await supabase.from("clinic_cases").update({ status: "analyzing" }).eq("id", row.id);
+      const { data: blob, error: dlErr } = await supabase.storage
+        .from("medical-documents")
+        .download(row.file_path);
+      if (dlErr || !blob) throw dlErr ?? new Error("Could not download original file");
+      const file = new File([blob], row.file_name, { type: row.mime_type ?? blob.type });
+
+      let payload: { text?: string; base64?: string; mimeType?: string; fileName: string } = {
+        fileName: file.name,
+      };
+      if ((file.type || "").startsWith("image/")) {
+        const buf = await file.arrayBuffer();
+        const u8 = new Uint8Array(buf);
+        let bin = "";
+        for (let i = 0; i < u8.length; i += 8192) bin += String.fromCharCode(...u8.slice(i, i + 8192));
+        payload = { fileName: file.name, base64: btoa(bin), mimeType: file.type };
+      } else {
+        const ex = await extractTextFromFile(file);
+        payload = { fileName: file.name, text: ex.text, base64: ex.base64, mimeType: ex.mimeType };
+      }
+
+      const { data: ai, error: aiErr } = await supabase.functions.invoke("clinic-triage", {
+        body: payload,
+      });
+      if (aiErr) throw aiErr;
+      if ((ai as { error?: string })?.error) throw new Error((ai as { error: string }).error);
+
+      const r = ai as Record<string, unknown>;
+      const validPriorities = ["critical", "high", "medium", "low"] as const;
+      const newPriority = validPriorities.includes(r.priority as Priority)
+        ? (r.priority as Priority)
+        : "medium";
+
+      const { data: updated } = await supabase
+        .from("clinic_cases")
+        .update({
+          status: "ready",
+          case_type: (r.case_type as string) ?? row.case_type,
+          priority: newPriority,
+          urgency_label: r.urgency_label as string ?? null,
+          insight: r.insight as string ?? null,
+          explanation: r.explanation as string ?? null,
+          recommendation: r.recommendation as string ?? null,
+          suspected_area: (r.suspected_area as string) ?? null,
+          confidence: typeof r.confidence === "number" ? r.confidence : null,
+          suggested_specialist: (r.suggested_specialist as string) ?? null,
+          key_findings: ((r.key_findings as string[]) ?? []) as unknown as Json,
+          missing_info: (r.missing_info as string) ?? null,
+          raw_ai: r as unknown as Json,
+        })
+        .eq("id", row.id)
+        .select()
+        .single();
+      if (updated) setRow(updated as Row);
+      toast.success("AI assessment regenerated");
+    } catch (e) {
+      console.error("regenerate failed", e);
+      await supabase.from("clinic_cases").update({ status: "error" }).eq("id", row.id);
+      toast.error("Regeneration failed", {
+        description: e instanceof Error ? e.message : undefined,
+      });
+    } finally {
+      setRegenerating(false);
+    }
   };
 
   return (
