@@ -412,6 +412,27 @@ export default function CaseDetail() {
           AI-assisted review only. This output may include possible findings and is intended to support — not replace — a licensed clinician's diagnostic judgement.
         </p>
 
+        {/* Clinician review history */}
+        {row.reviewed_at && (
+          <section className="rounded-xl border border-border bg-card p-5 mb-4">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">
+              Clinician review history
+            </p>
+            <div className="flex items-start gap-2.5 text-sm">
+              <UserCheck className="w-4 h-4 mt-0.5 text-primary" />
+              <div>
+                <p>
+                  Marked reviewed by{" "}
+                  <span className="font-semibold">{row.reviewed_by_email ?? "Clinician"}</span>
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {new Date(row.reviewed_at).toLocaleString()}
+                </p>
+              </div>
+            </div>
+          </section>
+        )}
+
         {/* Actions */}
         <div className="flex flex-wrap gap-2">
           <Button asChild>
@@ -428,6 +449,19 @@ export default function CaseDetail() {
             <Download className="w-4 h-4 mr-2" />
             Download HTML
           </Button>
+          {!isProcessing && (
+            <Button
+              variant="outline"
+              onClick={regenerate}
+              disabled={regenerating || !row.file_path}
+            >
+              {regenerating ? (
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Regenerating…</>
+              ) : (
+                <><RefreshCw className="w-4 h-4 mr-2" /> Regenerate AI assessment</>
+              )}
+            </Button>
+          )}
           {row.status !== "reviewed" ? (
             <Button variant="outline" onClick={markReviewed}>
               <ClipboardCheck className="w-4 h-4 mr-2" />
