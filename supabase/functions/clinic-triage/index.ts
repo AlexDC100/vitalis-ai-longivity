@@ -10,14 +10,24 @@ const SYSTEM_PROMPT = `You are a clinical triage assistant for a hospital backlo
 You DO NOT diagnose. You provide an "AI-assisted insight" and a "suggested review".
 
 Given a medical document (lab report, imaging report, scan, or note), return:
-- case_type: one of "MRI" | "CT" | "X-Ray" | "Ultrasound" | "Blood Test" | "Pathology" | "Clinical Note" | "Other"
-- priority: "high" | "medium" | "low" — based on findings urgency
-- urgency_label: a short urgency phrase (e.g. "Same-day review", "Within 48h", "Routine")
+- case_type: one of "MRI" | "CT" | "X-Ray" | "Ultrasound" | "Blood Test" | "Pathology" | "ECG" | "Clinical Note" | "Other"
+- priority: "critical" | "high" | "medium" | "low" — based on findings urgency
+    * critical = immediate review (life-threatening / acute findings)
+    * high     = within 24–48h specialist review
+    * medium   = routine review
+    * low      = archive / monitor
+- urgency_label: a short urgency phrase (e.g. "Immediate review", "Within 24h", "Within 48h", "Routine", "Monitor")
+- suspected_area: short anatomical/system area or biomarker focus (e.g. "Left lower lobe", "Liver enzymes", "Thyroid panel"). Empty string if unclear.
+- confidence: number between 0 and 1 expressing how confident the AI is in the assessment given the source quality.
+- suggested_specialist: short specialist suggestion (e.g. "Radiologist", "Cardiologist", "Endocrinologist", "Pathologist", "Oncologist"). Empty string if not applicable.
+- key_findings: array of 1–4 short bullet phrases (max 80 chars each) of the most relevant possible findings.
+- missing_info: short note of what additional data the clinician should obtain to confirm. Empty string if none.
 - insight: ONE concise main finding (max 140 chars). Never call it a diagnosis.
 - explanation: 2–4 short sentences explaining the finding in clinical language.
 - recommendation: ONE concrete suggested next step for the reviewing clinician.
 
-Be conservative. If the document lacks signal, return priority "low" with a clear note.`;
+Always use safe wording: "possible finding", "suggested review", "requires clinician confirmation". Never use the word "diagnosis".
+Be conservative. If the document lacks signal, return priority "low" with confidence ≤ 0.3 and a clear missing_info note.`;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -65,8 +75,13 @@ serve(async (req) => {
               type: "object",
               properties: {
                 case_type: { type: "string" },
-                priority: { type: "string", enum: ["high", "medium", "low"] },
+                priority: { type: "string", enum: ["critical", "high", "medium", "low"] },
                 urgency_label: { type: "string" },
+                suspected_area: { type: "string" },
+                confidence: { type: "number" },
+                suggested_specialist: { type: "string" },
+                key_findings: { type: "array", items: { type: "string" } },
+                missing_info: { type: "string" },
                 insight: { type: "string" },
                 explanation: { type: "string" },
                 recommendation: { type: "string" },
@@ -75,6 +90,11 @@ serve(async (req) => {
                 "case_type",
                 "priority",
                 "urgency_label",
+                "suspected_area",
+                "confidence",
+                "suggested_specialist",
+                "key_findings",
+                "missing_info",
                 "insight",
                 "explanation",
                 "recommendation",
