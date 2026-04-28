@@ -318,7 +318,8 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
         .slice(0, 24)
         .map(([k, v]) => `${k}=${v}`)
         .join(", ");
-      const mainIssueLine = summary?.title ? `Main issue (from latest report): ${summary.title}` : "";
+      const currentSummary = latestResult ? extractSummary(stripTags(latestResult)) : null;
+      const mainIssueLine = currentSummary?.title ? `Main issue (from latest report): ${currentSummary.title}` : "";
       const primer = [mainIssueLine, bioLines && `Extracted biomarkers: ${bioLines}`]
         .filter(Boolean)
         .join("\n");
@@ -338,7 +339,7 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
     } finally {
       setIsStreaming(false);
     }
-  }, [input, isStreaming, chat, latestResult, streamChat, extractedBiomarkers, summary]);
+  }, [input, isStreaming, chat, latestResult, streamChat, extractedBiomarkers]);
 
   // ─── Derived from result ──────────────────────────────────────────
   const severity = latestResult ? parseSeverity(latestResult) : null;
