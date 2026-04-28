@@ -36,6 +36,8 @@ export type AnalyticsEvent =
   | { name: "booking_url_copy"; url: string }
   | { name: "booking_request_submit"; partnerId: string; specialty: string }
   | { name: "booking_request_success"; partnerId: string; specialty: string }
+  | { name: "booking_request_duplicate"; partnerId: string; specialty: string }
+  | { name: "booking_request_throttled"; partnerId: string; specialty: string; remaining_ms: number }
   | { name: "booking_request_error"; partnerId: string; specialty: string; message?: string };
 
 declare global {
