@@ -301,13 +301,13 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
   }, [handleFile]);
 
   // ─── Follow-up question (chat at bottom) ──────────────────────────
-  const sendFollowUp = useCallback(async () => {
-    const text = input.trim();
+  const sendFollowUp = useCallback(async (override?: string) => {
+    const text = (override ?? input).trim();
     if (!text || isStreaming) return;
     const userMsg: ChatMsg = { id: `u-${Date.now()}`, role: "user", content: text };
     const assistantId = `a-${Date.now() + 1}`;
     setChat(prev => [...prev, userMsg, { id: assistantId, role: "assistant", content: "" }]);
-    setInput("");
+    if (!override) setInput("");
     setIsStreaming(true);
     try {
       // Build a stable context primer so every follow-up automatically
