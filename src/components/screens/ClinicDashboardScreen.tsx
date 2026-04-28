@@ -325,20 +325,23 @@ export default function ClinicDashboardScreen() {
         toast.error(`Failed to process ${file.name}`, {
           description: e instanceof Error ? e.message : undefined,
         });
-        await supabase
+        const { data: errRow } = await supabase
           .from("clinic_cases")
           .update({ status: "error" })
           .eq("user_id", userId)
-          .eq("file_path", filePath);
-        // Timeline: failure
-        await supabase.from("clinic_case_events").insert({
-          user_id: userId,
-          case_id: null as unknown as string, // optional; will be set if available
-          event_type: "ai_failed",
-          to_status: "error",
-          note: e instanceof Error ? e.message : "AI processing failed",
-          metadata: { file_name: file.name } as unknown as Json,
-        }).then(() => {}, () => {});
+          .eq("file_path", filePath)
+          .select("id")
+          .maybeSingle();
+        if (errRow?.id) {
+          await supabase.from("clinic_case_events").insert({
+            user_id: userId,
+            case_id: errRow.id,
+            event_type: "ai_failed",
+            to_status: "error",
+            note: e instanceof Error ? e.message : "AI processing failed",
+            metadata: { file_name: file.name } as unknown as Json,
+          });
+        }
       }
     }
 
