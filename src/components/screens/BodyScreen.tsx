@@ -500,7 +500,7 @@ export default function BodyScreen() {
 
       {/* ══════════ 5. ACTIONS ══════════ */}
       {displayedActions && displayedActions.length > 0 && (
-        <section className="space-y-2.5 sm:space-y-3 animate-[fade-in_0.5s_ease-out]">
+        <section className={`space-y-2.5 sm:space-y-3 ${fadeInDelayed("animate-[fade-in_0.5s_ease-out]")}`}>
           <div className="flex items-center justify-between px-1">
             <div className="flex items-center gap-2">
               <Zap className="w-3.5 h-3.5 text-primary" />
@@ -518,7 +518,7 @@ export default function BodyScreen() {
                 <button
                   key={fixKey}
                   onClick={() => toggleFixStatus(fix.action)}
-                  className={`w-full min-h-[64px] text-left bg-card border rounded-xl p-3 sm:p-3.5 flex items-start gap-3 transition-all duration-200 ease-out active:scale-[0.985] hover:-translate-y-px ${
+                  className={`w-full min-h-[64px] text-left bg-card border rounded-xl p-3 sm:p-3.5 flex items-start gap-3 transition-all duration-200 ease-out ${press} ${reduceMotion ? "" : "hover:-translate-y-px"} ${
                     isDone     ? "border-emerald-500/30 bg-emerald-500/5"
                     : isStarted ? "border-primary/40 bg-primary/5"
                     :             "border-border hover:border-primary/30"
@@ -555,22 +555,32 @@ export default function BodyScreen() {
       <section>
         <button
           onClick={() => setShowMetrics(!showMetrics)}
-          className="w-full min-h-[44px] flex items-center justify-between py-2 px-1 rounded-lg active:bg-muted/40 transition-colors"
+          className={`w-full min-h-[44px] flex items-center justify-between py-2.5 px-2 rounded-lg ${pressTight} active:bg-muted/40 transition-colors`}
           aria-expanded={showMetrics}
         >
           <div className="flex items-center gap-2">
             <Activity className="w-3.5 h-3.5 text-muted-foreground" />
             <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Your metrics</span>
           </div>
-          <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform duration-300 ease-out ${showMetrics ? "rotate-90" : ""}`} />
+          <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform duration-300 ease-out ${showMetrics ? "rotate-90" : ""}`} aria-hidden />
         </button>
 
         <div
-          className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out ${
+          className={`grid ${reduceMotion ? "" : "transition-[grid-template-rows,opacity] duration-300 ease-out"} ${
             showMetrics ? "grid-rows-[1fr] opacity-100 mt-2" : "grid-rows-[0fr] opacity-0"
           }`}
         >
           <div className="overflow-hidden">
+            {!userId ? (
+              <div className="grid grid-cols-2 gap-2" aria-busy="true" aria-label="Loading metrics">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="bg-card border border-border rounded-lg p-2.5 min-h-[72px] space-y-1.5">
+                    <Skeleton className="h-2.5 w-12" />
+                    <Skeleton className="h-4 w-16" />
+                  </div>
+                ))}
+              </div>
+            ) : (
             <div className="grid grid-cols-2 gap-2">
             {[
               { key: "weight_kg",        label: "Weight",   unit: "kg",  icon: User },
@@ -583,7 +593,7 @@ export default function BodyScreen() {
               const Icon = m.icon;
               const val = (profile as any)[m.key];
               return (
-                <div key={m.key} className="bg-card border border-border rounded-lg p-2.5 transition-colors hover:border-primary/30 focus-within:border-primary/50">
+                <label key={m.key} className="bg-card border border-border rounded-lg p-2.5 min-h-[72px] flex flex-col justify-center transition-colors hover:border-primary/30 focus-within:border-primary/50 cursor-text">
                   <div className="flex items-center gap-1.5 mb-1">
                     <Icon className="w-3 h-3 text-muted-foreground" />
                     <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{m.label}</span>
@@ -593,14 +603,15 @@ export default function BodyScreen() {
                     inputMode="decimal"
                     value={val || ""}
                     onChange={(e) => updateField(m.key as any, parseFloat(e.target.value) || 0)}
-                    className="w-full text-base font-semibold tabular-nums bg-transparent text-foreground focus:outline-none"
+                    className="w-full text-base font-semibold tabular-nums bg-transparent text-foreground focus:outline-none min-h-[28px]"
                     placeholder="—"
                   />
                   {m.unit && <span className="text-[10px] text-muted-foreground">{m.unit}</span>}
-                </div>
+                </label>
               );
             })}
             </div>
+            )}
           </div>
         </div>
       </section>
@@ -609,22 +620,36 @@ export default function BodyScreen() {
       <section>
         <button
           onClick={() => setShowProfile(!showProfile)}
-          className="w-full min-h-[44px] flex items-center justify-between py-2 px-1 rounded-lg active:bg-muted/40 transition-colors"
+          className={`w-full min-h-[44px] flex items-center justify-between py-2.5 px-2 rounded-lg ${pressTight} active:bg-muted/40 transition-colors`}
           aria-expanded={showProfile}
         >
           <div className="flex items-center gap-2">
             <User className="w-3.5 h-3.5 text-muted-foreground" />
             <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Profile & history</span>
           </div>
-          <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform duration-300 ease-out ${showProfile ? "rotate-90" : ""}`} />
+          <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform duration-300 ease-out ${showProfile ? "rotate-90" : ""}`} aria-hidden />
         </button>
 
         <div
-          className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out ${
+          className={`grid ${reduceMotion ? "" : "transition-[grid-template-rows,opacity] duration-300 ease-out"} ${
             showProfile ? "grid-rows-[1fr] opacity-100 mt-2" : "grid-rows-[0fr] opacity-0"
           }`}
         >
           <div className="overflow-hidden">
+            {!userId ? (
+              <div className="bg-card border border-border rounded-xl p-3.5 space-y-3" aria-busy="true" aria-label="Loading profile">
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1.5"><Skeleton className="h-2.5 w-10" /><Skeleton className="h-8 w-full" /></div>
+                  <div className="space-y-1.5"><Skeleton className="h-2.5 w-10" /><Skeleton className="h-8 w-full" /></div>
+                </div>
+                <div className="space-y-1.5"><Skeleton className="h-2.5 w-24" />
+                  <div className="flex flex-wrap gap-1.5">
+                    {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-6 w-16 rounded-full" />)}
+                  </div>
+                </div>
+                <Skeleton className="h-2 w-full rounded-full" />
+              </div>
+            ) : (
             <div className="bg-card border border-border rounded-xl p-3.5 space-y-3">
             <div className="grid grid-cols-2 gap-2">
               <div>
@@ -637,7 +662,7 @@ export default function BodyScreen() {
                     const age = parseInt(e.target.value) || 30;
                     updateField("date_of_birth", `${new Date().getFullYear() - age}-01-01`);
                   }}
-                  className="w-full text-sm font-mono bg-muted border border-border rounded-lg px-2 py-1.5 text-foreground focus:outline-none focus:border-primary mt-1"
+                  className="w-full text-sm font-mono bg-muted border border-border rounded-lg px-2 py-2.5 min-h-[44px] text-foreground focus:outline-none focus:border-primary mt-1"
                 />
               </div>
               <div>
@@ -645,7 +670,7 @@ export default function BodyScreen() {
                 <select
                   value={profile.sex || ""}
                   onChange={(e) => updateField("sex", e.target.value)}
-                  className="w-full text-sm bg-muted border border-border rounded-lg px-2 py-1.5 text-foreground focus:outline-none focus:border-primary mt-1"
+                  className="w-full text-sm bg-muted border border-border rounded-lg px-2 py-2.5 min-h-[44px] text-foreground focus:outline-none focus:border-primary mt-1"
                 >
                   <option value="">—</option>
                   <option value="Male">Male</option>
@@ -659,12 +684,12 @@ export default function BodyScreen() {
                 <Dna className="w-3 h-3 text-muted-foreground" />
                 <label className="text-[10px] text-muted-foreground uppercase tracking-wider">Family history</label>
               </div>
-              <div className="flex flex-wrap gap-1">
+              <div className="flex flex-wrap gap-1.5">
                 {FAMILY_CONDITIONS.map(c => (
                   <button
                     key={c}
                     onClick={() => toggleFamilyCondition(c)}
-                    className={`text-[10px] px-2.5 py-1 rounded-full border transition-all duration-200 active:scale-95 ${
+                    className={`text-xs min-h-[44px] px-3.5 py-2 rounded-full border transition-all duration-200 ${pressTight} ${
                       familyHistory.includes(c)
                         ? "bg-primary/10 border-primary/30 text-primary font-medium"
                         : "bg-muted border-border text-muted-foreground"
@@ -684,6 +709,7 @@ export default function BodyScreen() {
               </div>
             </div>
             </div>
+            )}
           </div>
         </div>
       </section>
@@ -692,7 +718,7 @@ export default function BodyScreen() {
       <section>
         <button
           onClick={() => setShowVault(!showVault)}
-          className="w-full min-h-[44px] flex items-center justify-between py-2 px-1 rounded-lg active:bg-muted/40 transition-colors"
+          className={`w-full min-h-[44px] flex items-center justify-between py-2.5 px-2 rounded-lg ${pressTight} active:bg-muted/40 transition-colors`}
           aria-expanded={showVault}
         >
           <div className="flex items-center gap-2">
@@ -701,17 +727,19 @@ export default function BodyScreen() {
               Lab reports {documents.length > 0 && `· ${documents.length}`}
             </span>
           </div>
-          <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform duration-300 ease-out ${showVault ? "rotate-90" : ""}`} />
+          <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform duration-300 ease-out ${showVault ? "rotate-90" : ""}`} aria-hidden />
         </button>
 
         <div
-          className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out ${
+          className={`grid ${reduceMotion ? "" : "transition-[grid-template-rows,opacity] duration-300 ease-out"} ${
             showVault ? "grid-rows-[1fr] opacity-100 mt-2" : "grid-rows-[0fr] opacity-0"
           }`}
         >
           <div className="overflow-hidden space-y-2">
             <div
-              className={`border-2 border-dashed rounded-xl p-5 text-center transition-all duration-200 cursor-pointer active:scale-[0.99] ${dragOver ? "border-primary bg-primary/5 scale-[1.01]" : "border-border hover:border-primary/40"}`}
+              role="button"
+              tabIndex={0}
+              className={`border-2 border-dashed rounded-xl p-5 min-h-[88px] text-center transition-all duration-200 cursor-pointer ${press} ${dragOver && !reduceMotion ? "border-primary bg-primary/5 scale-[1.01]" : dragOver ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
               onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
               onDragLeave={() => setDragOver(false)}
               onDrop={(e) => { e.preventDefault(); setDragOver(false); handleFileUpload(e.dataTransfer.files); }}
@@ -733,14 +761,28 @@ export default function BodyScreen() {
               )}
             </div>
 
-            {documents.map(doc => (
-              <div key={doc.id} className="bg-card border border-border rounded-lg p-2.5 flex items-center gap-2 transition-colors hover:border-primary/30">
+            {documentsLoading && (
+              <div className="space-y-2" aria-busy="true" aria-label="Loading lab reports">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="bg-card border border-border rounded-lg p-2.5 min-h-[52px] flex items-center gap-2">
+                    <Skeleton className="w-4 h-4 rounded" />
+                    <div className="flex-1 space-y-1.5">
+                      <Skeleton className="h-3 w-2/3" />
+                      <Skeleton className="h-2 w-1/3" />
+                    </div>
+                    <Skeleton className="h-4 w-12 rounded-full" />
+                  </div>
+                ))}
+              </div>
+            )}
+            {!documentsLoading && documents.map(doc => (
+              <div key={doc.id} className="bg-card border border-border rounded-lg p-2.5 min-h-[52px] flex items-center gap-2 transition-colors hover:border-primary/30">
                 <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-medium text-foreground truncate">{doc.file_name}</p>
                   <p className="text-[10px] text-muted-foreground">{new Date(doc.created_at).toLocaleDateString()}</p>
                 </div>
-                <span className={`text-[9px] font-medium px-1.5 py-0.5 rounded-full ${doc.status === "reviewed" ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
+                <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${doc.status === "reviewed" ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
                   {doc.status === "reviewed" ? "Analyzed" : "New"}
                 </span>
               </div>
