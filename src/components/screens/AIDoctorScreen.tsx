@@ -186,7 +186,7 @@ export default function AIDoctorScreen() {
     if (!userId) return;
     const { data, error } = await supabase
       .from("medical_documents")
-      .select("id, file_name, document_type, extracted_data, created_at, status")
+      .select("id, file_name, document_type, extracted_data, created_at, status, reviewed_at")
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .limit(50);
@@ -203,9 +203,11 @@ export default function AIDoctorScreen() {
           file_name: d.file_name,
           document_type: d.document_type || "General",
           main_finding: ed.main_finding || "",
+          clinical_insight: ed.clinical_insight || "",
           priority: safe,
           review_window: cp.review_window || PRIORITY_META[safe].window,
           created_at: d.created_at,
+          reviewed_at: d.reviewed_at || null,
         };
       });
     setTriage(cases);
