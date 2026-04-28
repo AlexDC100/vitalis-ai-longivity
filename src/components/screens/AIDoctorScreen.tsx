@@ -716,13 +716,9 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
       // visible in the triage list (priority known); for the queue itself we
       // process FIFO since we don't know priority before parsing.
       while (true) {
-        const next = await new Promise<QueueItem | null>(resolve => {
-          setUploadQueue(prev => {
-            const n = prev.find(q => q.status === "queued") || null;
-            resolve(n);
-            return prev;
-          });
-        });
+        // Yield a tick so any pending state updates flush.
+        await new Promise(r => setTimeout(r, 0));
+        const next = uploadQueueRef.current.find(q => q.status === "queued") || null;
         if (!next) break;
         await handleFile(next.file, { batch: true, queueId: next.id });
       }
