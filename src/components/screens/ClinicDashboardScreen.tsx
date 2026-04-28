@@ -228,7 +228,7 @@ export default function ClinicDashboardScreen() {
             insight: result.insight,
             explanation: result.explanation,
             recommendation: result.recommendation,
-            raw_ai: result as unknown as Record<string, unknown>,
+            raw_ai: result as unknown as Json,
           })
           .eq("id", row.id);
       } catch (e) {
