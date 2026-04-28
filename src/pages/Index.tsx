@@ -9,7 +9,7 @@ import DiagnosisScreen from "@/components/screens/DiagnosisScreen";
 import BodyScreen from "@/components/screens/BodyScreen";
 import ClinicDashboardScreen from "@/components/screens/ClinicDashboardScreen";
 import { Toaster } from "@/components/ui/toaster";
-import { AlertTriangle, Stethoscope, User, ClipboardList } from "lucide-react";
+import { AlertTriangle, User, ClipboardList } from "lucide-react";
 import CommandPalette, { type PaletteAction } from "@/components/CommandPalette";
 import SettingsSheet from "@/components/SettingsSheet";
 import HeaderMenu from "@/components/HeaderMenu";
