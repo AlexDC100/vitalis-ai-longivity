@@ -4,20 +4,35 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import VitalisLogo from "@/components/brand/VitalisLogo";
+import NotificationBell from "@/components/NotificationBell";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   AlertOctagon,
   AlertTriangle,
   ArrowLeft,
   CheckCircle2,
   ClipboardCheck,
+  Clock,
   Download,
   FileText,
+  History,
   Loader2,
   Printer,
   RefreshCw,
   ShieldAlert,
   Trash2,
+  Upload,
   UserCheck,
+  XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { downloadCaseReportHtml } from "@/lib/case-report-html";
@@ -25,6 +40,8 @@ import { extractTextFromFile } from "@/lib/pdf-utils";
 import type { Json } from "@/integrations/supabase/types";
 
 type Priority = "critical" | "high" | "medium" | "low";
+
+const REGEN_COOLDOWN_MS = 30_000;
 
 interface Row {
   id: string;
@@ -48,8 +65,20 @@ interface Row {
   detected_category: string | null;
   reviewed_by_user_id: string | null;
   reviewed_by_email: string | null;
+  reviewed_by_name: string | null;
   created_at: string;
   reviewed_at: string | null;
+}
+
+interface CaseEvent {
+  id: string;
+  event_type: string;
+  from_status: string | null;
+  to_status: string | null;
+  actor_email: string | null;
+  actor_name: string | null;
+  note: string | null;
+  created_at: string;
 }
 
 const meta: Record<Priority, { label: string; icon: React.ElementType; tone: string; window: string }> = {
