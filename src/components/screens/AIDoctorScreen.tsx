@@ -265,6 +265,13 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
         Object.entries(result.biomarkers).forEach(([key, val]) => {
           if (val && typeof val === "number" && val > 0) updateField(key as any, val);
         });
+        // Snapshot the biomarkers so follow-up chat questions can be
+        // contextualized without re-reading the document.
+        const snap: Record<string, number> = {};
+        Object.entries(result.biomarkers).forEach(([k, v]) => {
+          if (typeof v === "number" && v > 0) snap[k] = v as number;
+        });
+        setExtractedBiomarkers(snap);
       }
       const extractedCount = result?.biomarkers
         ? Object.keys(result.biomarkers).filter(k => result.biomarkers[k] > 0).length
@@ -303,8 +310,20 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
     setInput("");
     setIsStreaming(true);
     try {
-      // Include the latest result for context, plus any prior follow-ups.
+      // Build a stable context primer so every follow-up automatically
+      // references the patient's main issue + extracted biomarkers without
+      // showing suggestion chips. The model already has the full patient
+      // profile via `systemPrompt`; this primer pins the *current report*.
+      const bioLines = Object.entries(extractedBiomarkers)
+        .slice(0, 24)
+        .map(([k, v]) => `${k}=${v}`)
+        .join(", ");
+      const mainIssueLine = summary?.title ? `Main issue (from latest report): ${summary.title}` : "";
+      const primer = [mainIssueLine, bioLines && `Extracted biomarkers: ${bioLines}`]
+        .filter(Boolean)
+        .join("\n");
       const history = [
+        ...(primer ? [{ role: "assistant" as const, content: `CONTEXT (do not repeat verbatim):\n${primer}` }] : []),
         ...(latestResult ? [{ role: "assistant" as const, content: latestResult }] : []),
         ...chat.map(m => ({ role: m.role, content: m.content })),
         { role: "user" as const, content: text },
@@ -319,7 +338,7 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
     } finally {
       setIsStreaming(false);
     }
-  }, [input, isStreaming, chat, latestResult, streamChat]);
+  }, [input, isStreaming, chat, latestResult, streamChat, extractedBiomarkers, summary]);
 
   // ─── Derived from result ──────────────────────────────────────────
   const severity = latestResult ? parseSeverity(latestResult) : null;
