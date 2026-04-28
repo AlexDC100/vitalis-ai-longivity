@@ -3,17 +3,18 @@ import { Link, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Clock, RefreshCw, Home, AlertTriangle, LogIn } from "lucide-react";
+import { toast } from "sonner";
 
 /**
- * A valid share token is the URL-encoded form of base64(18 random bytes) =>
- * 24 base64 chars. After decoding we accept any 22-32 char base64-ish string
- * (allowing `+ / = -` and `_`) to stay forgiving of providers' encoding.
+ * A valid share token is the URL-encoded form of base64(18 random bytes) — i.e.
+ * exactly 24 chars from the base64 alphabet (URL-safe `-`/`_` accepted, plus
+ * optional trailing `=` pad). Validated SYNCHRONOUSLY before any network call.
  */
 function isValidShareToken(raw: string | undefined): boolean {
   if (!raw) return false;
   let decoded = raw;
   try { decoded = decodeURIComponent(raw); } catch { return false; }
-  return /^[A-Za-z0-9+/=_-]{20,40}$/.test(decoded);
+  return /^[A-Za-z0-9+/_-]{24}={0,2}$/.test(decoded);
 }
 
 function formatCountdown(ms: number): string {
@@ -26,6 +27,23 @@ function formatCountdown(ms: number): string {
   if (days > 0) return `${days}d ${hours}h ${minutes}m`;
   if (hours > 0) return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+/**
+ * Cache the absolute `expires_at` in sessionStorage so a page reload can render
+ * the "Expires in …" bar instantly. The countdown itself is always derived
+ * from the absolute DB timestamp, so it's reload-safe by construction — this
+ * cache only avoids the loading flash.
+ */
+const cacheKey = (token: string) => `vitalis:shared-expiry:${token}`;
+function readCachedExpiry(token: string): string | null {
+  try { return sessionStorage.getItem(cacheKey(token)); } catch { return null; }
+}
+function writeCachedExpiry(token: string, isoExpiresAt: string) {
+  try { sessionStorage.setItem(cacheKey(token), isoExpiresAt); } catch { /* noop */ }
+}
+function clearCachedExpiry(token: string) {
+  try { sessionStorage.removeItem(cacheKey(token)); } catch { /* noop */ }
 }
 
 /**
@@ -43,14 +61,23 @@ export default function SharedReport() {
     | { kind: "missing" }
     | { kind: "invalid" }
     | { kind: "error"; message: string }
-  >({ kind: "loading" });
+  >(() => {
+    if (!token) return { kind: "missing" };
+    if (!isValidShareToken(token)) return { kind: "invalid" };
+    return { kind: "loading" };
+  });
   const [signedIn, setSignedIn] = useState<boolean | null>(null);
   const [showSignInPrompt, setShowSignInPrompt] = useState(false);
   const [now, setNow] = useState(() => Date.now());
+  const [cachedExpiry, setCachedExpiry] = useState<string | null>(() =>
+    token ? readCachedExpiry(token) : null
+  );
+  const [refreshNonce, setRefreshNonce] = useState(0);
 
   useEffect(() => {
     if (!token) { setState({ kind: "missing" }); return; }
     if (!isValidShareToken(token)) { setState({ kind: "invalid" }); return; }
+    let cancelled = false;
     (async () => {
       const { data, error } = await supabase
         .from("shared_health_reports")
@@ -58,16 +85,21 @@ export default function SharedReport() {
         .eq("share_token", token)
         .maybeSingle();
 
+      if (cancelled) return;
       if (error) { setState({ kind: "error", message: error.message }); return; }
-      if (!data) { setState({ kind: "missing" }); return; }
+      if (!data) { clearCachedExpiry(token); setState({ kind: "missing" }); return; }
       const expired = new Date(data.expires_at).getTime() < Date.now();
       if (expired) {
+        clearCachedExpiry(token);
         setState({ kind: "expired", expiresAt: data.expires_at, title: data.title });
         return;
       }
+      writeCachedExpiry(token, data.expires_at);
+      setCachedExpiry(data.expires_at);
       setState({ kind: "ok", html: data.html, title: data.title, expiresAt: data.expires_at });
     })();
-  }, [token]);
+    return () => { cancelled = true; };
+  }, [token, refreshNonce]);
 
   // Track auth state for the "Regenerate share link" sign-in gate.
   useEffect(() => {
@@ -98,10 +130,37 @@ export default function SharedReport() {
     if (signedIn === false) {
       e.preventDefault();
       setShowSignInPrompt(true);
+      return;
     }
+    // Signed in: confirm + auto-refresh the viewer when the user returns,
+    // so a freshly-issued share link's new expiry shows up automatically.
+    toast.success("Opening Vitalis to regenerate your link", {
+      description: "We'll refresh this view automatically when you return.",
+    });
+    if (token) clearCachedExpiry(token);
+    const onFocus = () => {
+      setState({ kind: "loading" });
+      setRefreshNonce((n) => n + 1);
+      window.removeEventListener("focus", onFocus);
+    };
+    window.addEventListener("focus", onFocus);
   };
 
   if (state.kind === "loading") {
+    if (cachedExpiry) {
+      const remaining = new Date(cachedExpiry).getTime() - now;
+      return (
+        <div className="w-screen h-screen flex flex-col bg-background">
+          <div className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] border-b border-border/40 bg-secondary/40 text-muted-foreground">
+            <Clock className="w-3 h-3" />
+            <span>Expires in <span className="font-medium tabular-nums">{formatCountdown(remaining)}</span></span>
+          </div>
+          <div className="flex-1 flex items-center justify-center">
+            <p className="text-sm text-muted-foreground">Loading report…</p>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <p className="text-sm text-muted-foreground">Loading report…</p>
