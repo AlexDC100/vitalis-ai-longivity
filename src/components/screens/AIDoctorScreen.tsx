@@ -184,6 +184,65 @@ export default function AIDoctorScreen() {
   }, [screen, latestResult, chat.length]);
 
   /**
+   * Mobile-friendly tap-target audit. Scans every interactive control
+   * inside the AI Doctor stage and logs any element whose rendered
+   * bounding box is smaller than 44×44 CSS pixels — the iOS Human
+   * Interface Guidelines minimum. Logs a CSS selector and the box so
+   * each offender can be located quickly during QA.
+   *
+   * Re-runs on every screen-state / result / chat change because the
+   * subtree changes shape between idle/analyzing/result.
+   */
+  useEffect(() => {
+    const root = stageRef.current;
+    if (!root) return;
+    // Defer one frame so freshly-mounted nodes have layout.
+    const raf = requestAnimationFrame(() => {
+      const SELECTOR = 'button, a[href], input, select, textarea, [role="button"], [role="link"], [role="tab"], [role="menuitem"], [tabindex]:not([tabindex="-1"])';
+      const nodes = Array.from(root.querySelectorAll<HTMLElement>(SELECTOR));
+      const offenders: { selector: string; w: number; h: number; box: DOMRect; el: HTMLElement }[] = [];
+      for (const el of nodes) {
+        // Skip hidden / off-screen controls — they aren't tappable.
+        const cs = window.getComputedStyle(el);
+        if (cs.display === "none" || cs.visibility === "hidden" || cs.pointerEvents === "none") continue;
+        const box = el.getBoundingClientRect();
+        if (box.width === 0 && box.height === 0) continue;
+        if (box.width < 44 || box.height < 44) {
+          // Build a short, debuggable selector path.
+          const id = el.id ? `#${el.id}` : "";
+          const cls = el.className && typeof el.className === "string"
+            ? "." + el.className.trim().split(/\s+/).slice(0, 2).join(".")
+            : "";
+          const label =
+            el.getAttribute("aria-label") ||
+            el.getAttribute("title") ||
+            el.textContent?.trim().slice(0, 30) ||
+            "";
+          const selector = `${el.tagName.toLowerCase()}${id}${cls}${label ? ` [${label}]` : ""}`;
+          offenders.push({
+            selector,
+            w: Math.round(box.width),
+            h: Math.round(box.height),
+            box,
+            el,
+          });
+        }
+      }
+      if (offenders.length > 0) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[AIDoctor.tapAudit] ${offenders.length} control(s) below 44×44 on screen "${screen}":`,
+          offenders.map(o => ({ selector: o.selector, width: o.w, height: o.h, box: o.box })),
+        );
+      } else if (import.meta.env.DEV) {
+        // eslint-disable-next-line no-console
+        console.log(`[AIDoctor.tapAudit] PASS ✅ all controls ≥ 44×44 on screen "${screen}"`);
+      }
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [screen, latestResult, chat.length]);
+
+  /**
    * Dev-only test harness: rapidly cycles the screen state machine to
    * verify the single-primary-action invariant under fast updates.
    * Triggered by `?aidoctor-test=1` in the URL or
