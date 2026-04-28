@@ -127,6 +127,7 @@ interface TriageCase {
   reviewed_at: string | null;
 }
 const SS_HOSPITAL_MODE = "vitalis.aidoctor.hospitalMode";
+const LS_UPLOAD_CONSENT = "vitalis.aidoctor.uploadConsent.v1";
 const PRIORITY_META: Record<Priority, { label: string; tone: string; bg: string; border: string; dot: string; window: string }> = {
   HIGH:   { label: "High",   tone: "text-red-400",     bg: "bg-red-500/10",     border: "border-red-500/25",     dot: "bg-red-400",     window: "Review within 24–48h" },
   MEDIUM: { label: "Medium", tone: "text-amber-400",   bg: "bg-amber-500/10",   border: "border-amber-500/25",   dot: "bg-amber-400",   window: "Routine review" },
@@ -589,8 +590,30 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     const file = e.dataTransfer.files?.[0];
-    if (file) handleFile(file);
-  }, [handleFile]);
+    if (file) requestFileWithConsent(file);
+  }, []); // handler defined below; ref keeps deps stable
+
+  // ─── Pre-upload consent / disclaimer ──────────────────────────────
+  // Required acknowledgment before any medical file is analyzed. Stored
+  // in localStorage so we don't nag returning users on the same device.
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [pendingPickerAfterConsent, setPendingPickerAfterConsent] = useState(false);
+  const hasConsented = useCallback(() => {
+    try { return localStorage.getItem(LS_UPLOAD_CONSENT) === "1"; } catch { return false; }
+  }, []);
+  const recordConsent = useCallback(() => {
+    try { localStorage.setItem(LS_UPLOAD_CONSENT, "1"); } catch { /* ignore */ }
+  }, []);
+  /** Gate any upload (drop, file picker, or programmatic) behind consent. */
+  const requestFileWithConsent = useCallback((file: File) => {
+    if (hasConsented()) { void handleFile(file); return; }
+    setPendingFile(file);
+  }, [hasConsented, handleFile]);
+  /** Gate the file picker itself — opening the chooser requires consent. */
+  const openFilePicker = useCallback(() => {
+    if (hasConsented()) { fileRef.current?.click(); return; }
+    setPendingPickerAfterConsent(true);
+  }, [hasConsented]);
 
   // ─── Follow-up question (chat at bottom) ──────────────────────────
   const sendFollowUp = useCallback(async (override?: string) => {
@@ -705,7 +728,7 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
-                fileRef.current?.click();
+                openFilePicker();
               }
             }}
             onDragEnter={(e) => {
@@ -740,7 +763,7 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
             <button
               type="button"
               data-primary-action
-              onClick={() => fileRef.current?.click()}
+              onClick={openFilePicker}
               className="mt-6 inline-flex items-center justify-center gap-2 min-h-[48px] min-w-[44px] px-6 py-3 rounded-full bg-primary text-primary-foreground text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background hover:opacity-90 active:scale-95 transition-all"
               aria-label="Choose a health report to upload"
             >
@@ -761,7 +784,7 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
               type="file"
               accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.dcm,image/*"
               className="hidden"
-              onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) requestFileWithConsent(f); }}
             />
           </div>
         )}
@@ -1253,6 +1276,60 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ════════ Pre-upload consent / disclaimer ════════
+          Required acknowledgment before any medical file is analyzed.
+          Persists in localStorage so returning users on the same device
+          aren't prompted again. Cancel restores the idle state cleanly. */}
+      <AlertDialog
+        open={!!pendingFile || pendingPickerAfterConsent}
+        onOpenChange={(open) => {
+          if (!open) { setPendingFile(null); setPendingPickerAfterConsent(false); }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-primary" />
+              <AlertDialogTitle className="text-base">Before we analyze your file</AlertDialogTitle>
+            </div>
+            <AlertDialogDescription className="pt-2 text-sm leading-relaxed text-foreground space-y-2">
+              <span className="block">
+                Vitalis uses AI to read and summarize your medical document.
+                The output is <span className="font-semibold">AI-assisted analysis</span> and
+                does <span className="font-semibold">not replace a licensed physician</span>.
+              </span>
+              <span className="block text-muted-foreground text-xs">
+                Your file is uploaded to your private storage and processed
+                securely. Do not upload files for anyone else without their permission.
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              className="min-h-[44px]"
+              onClick={() => { setPendingFile(null); setPendingPickerAfterConsent(false); }}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="min-h-[44px]"
+              onClick={() => {
+                recordConsent();
+                const f = pendingFile;
+                const openPicker = pendingPickerAfterConsent;
+                setPendingFile(null);
+                setPendingPickerAfterConsent(false);
+                if (f) void handleFile(f);
+                else if (openPicker) setTimeout(() => fileRef.current?.click(), 0);
+              }}
+            >
+              I understand — continue
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <AIDoctorTapAuditPanel />
     </div>
   );
