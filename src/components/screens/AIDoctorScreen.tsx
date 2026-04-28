@@ -213,6 +213,8 @@ export default function AIDoctorScreen() {
   // Multi-file upload queue (hospital mode). Visible inline above the triage list.
   const [uploadQueue, setUploadQueue] = useState<QueueItem[]>([]);
   const [isBatchProcessing, setIsBatchProcessing] = useState(false);
+  const uploadQueueRef = useRef<QueueItem[]>([]);
+  useEffect(() => { uploadQueueRef.current = uploadQueue; }, [uploadQueue]);
 
   useEffect(() => {
     try { localStorage.setItem(SS_HOSPITAL_MODE, hospitalMode ? "1" : "0"); } catch { /* ignore */ }
