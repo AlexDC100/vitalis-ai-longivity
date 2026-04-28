@@ -728,7 +728,7 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
-                fileRef.current?.click();
+                openFilePicker();
               }
             }}
             onDragEnter={(e) => {
@@ -763,7 +763,7 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
             <button
               type="button"
               data-primary-action
-              onClick={() => fileRef.current?.click()}
+              onClick={openFilePicker}
               className="mt-6 inline-flex items-center justify-center gap-2 min-h-[48px] min-w-[44px] px-6 py-3 rounded-full bg-primary text-primary-foreground text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background hover:opacity-90 active:scale-95 transition-all"
               aria-label="Choose a health report to upload"
             >
@@ -784,7 +784,7 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
               type="file"
               accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.dcm,image/*"
               className="hidden"
-              onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) requestFileWithConsent(f); }}
             />
           </div>
         )}
