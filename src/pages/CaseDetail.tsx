@@ -10,6 +10,7 @@ import {
   ArrowLeft,
   CheckCircle2,
   ClipboardCheck,
+  Download,
   FileText,
   Loader2,
   Printer,
@@ -17,6 +18,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { downloadCaseReportHtml } from "@/lib/case-report-html";
 
 type Priority = "critical" | "high" | "medium" | "low";
 
@@ -48,6 +50,14 @@ const meta: Record<Priority, { label: string; icon: React.ElementType; tone: str
   high: { label: "High", icon: AlertOctagon, tone: "text-amber-500", window: "Within 24–48h" },
   medium: { label: "Medium", icon: AlertTriangle, tone: "text-primary", window: "Routine review" },
   low: { label: "Low", icon: CheckCircle2, tone: "text-muted-foreground", window: "Archive / monitor" },
+};
+
+const statusLabel: Record<string, string> = {
+  pending: "Uploaded",
+  analyzing: "AI processing",
+  ready: "Awaiting clinician review",
+  reviewed: "Reviewed",
+  error: "Processing failed",
 };
 
 export default function CaseDetail() {
@@ -134,6 +144,9 @@ export default function CaseDetail() {
     ? (row.key_findings as string[]).filter((f): f is string => typeof f === "string")
     : [];
   const conf = typeof row.confidence === "number" ? Math.round(row.confidence * 100) : null;
+  const uploadedAt = new Date(row.created_at).toLocaleString();
+  const isProcessing = row.status === "analyzing" || row.status === "pending";
+  const isError = row.status === "error";
 
   const markReviewed = async () => {
     await supabase
@@ -196,7 +209,42 @@ export default function CaseDetail() {
           </p>
         </div>
 
+        {/* Case summary */}
+        <section className="rounded-xl border border-border bg-card p-5 mb-4">
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-3">
+            Case summary
+          </p>
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Document type" value={row.case_type} />
+            <Field label="Uploaded" value={uploadedAt} />
+            <Field label="Status" value={statusLabel[row.status] ?? row.status} />
+            <Field label="Review window" value={m.window} />
+          </div>
+        </section>
+
+        {/* Processing / error states */}
+        {isProcessing && (
+          <section className="rounded-xl border border-primary/40 bg-primary/5 p-5 mb-4 flex items-center gap-3">
+            <Loader2 className="w-4 h-4 animate-spin text-primary" />
+            <div>
+              <p className="text-sm font-semibold">AI-assisted assessment in progress…</p>
+              <p className="text-xs text-muted-foreground">
+                Detecting document type, extracting key information and triaging urgency.
+              </p>
+            </div>
+          </section>
+        )}
+        {isError && (
+          <section className="rounded-xl border border-destructive/40 bg-destructive/5 p-5 mb-4">
+            <p className="text-sm font-semibold text-destructive">Processing failed</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              We couldn't generate an AI-assisted assessment for this file. You can delete and re-upload it from the queue.
+            </p>
+          </section>
+        )}
+
         {/* AI assessment */}
+        {!isProcessing && !isError && (
         <section className="rounded-xl border border-border bg-card p-5 mb-4">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-3">
             AI-assisted assessment
@@ -225,6 +273,7 @@ export default function CaseDetail() {
           {row.missing_info && <Field label="Missing information" value={row.missing_info} />}
           {row.recommendation && <Field label="Recommended next step" value={row.recommendation} />}
         </section>
+        )}
 
         {/* Document preview */}
         {row.file_path && (
@@ -270,6 +319,14 @@ export default function CaseDetail() {
               <Printer className="w-4 h-4 mr-2" />
               Doctor-ready report
             </Link>
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => downloadCaseReportHtml(row)}
+            disabled={isProcessing || isError}
+          >
+            <Download className="w-4 h-4 mr-2" />
+            Download HTML
           </Button>
           {row.status !== "reviewed" ? (
             <Button variant="outline" onClick={markReviewed}>
