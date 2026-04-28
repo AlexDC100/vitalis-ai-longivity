@@ -63,6 +63,31 @@ interface CompletionRow {
   status: "started" | "done";
 }
 
+/**
+ * Respect prefers-reduced-motion. Used to gate decorative entrance
+ * animations & micro-interactions on the Body page so the experience
+ * stays comfortable for vestibular-sensitive users.
+ */
+function useReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(() =>
+    typeof window !== "undefined" &&
+    window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+  );
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const onChange = () => setReduced(mq.matches);
+    mq.addEventListener?.("change", onChange);
+    return () => mq.removeEventListener?.("change", onChange);
+  }, []);
+  return reduced;
+}
+
+/** Inline skeleton block — matches surrounding card padding/radius. */
+function Skeleton({ className = "" }: { className?: string }) {
+  return <div className={`rounded-md bg-muted animate-pulse ${className}`} />;
+}
+
 export default function BodyScreen() {
   const {
     profile, updateField, userId, dataCompleteness,
