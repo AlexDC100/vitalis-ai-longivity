@@ -523,6 +523,16 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
   const isSerious = !!sevMeta?.serious;
   const summary = useMemo(() => latestResult ? extractSummary(stripTags(latestResult)) : null, [latestResult]);
   const actions = useMemo(() => latestResult ? extractActions(stripTags(latestResult)) : [], [latestResult]);
+  const findings = useMemo(() => latestResult ? extractKeyFindings(stripTags(latestResult)) : [], [latestResult]);
+
+  const handleDownloadReport = useCallback(() => {
+    try {
+      downloadAIDoctorReport({ profile, substances });
+      toast({ title: "Report downloaded", description: "Your full health report was saved." });
+    } catch (err: any) {
+      toast({ title: "Download failed", description: err?.message || "Please try again.", variant: "destructive" });
+    }
+  }, [profile, substances, toast]);
 
   return (
     <div className="min-h-full flex flex-col safe-area-px safe-area-pt safe-area-pb">
