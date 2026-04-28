@@ -382,6 +382,26 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
   const sendFollowUp = useCallback(async (override?: string) => {
     const text = (override ?? input).trim();
     if (!text || isStreaming) return;
+    // Guardrail: must have an extracted biomarker snapshot OR a parsed
+    // main issue from a prior result before chatting. Otherwise the AI
+    // has no patient context and replies are generic.
+    const hasBiomarkers = Object.keys(extractedBiomarkers).length > 0;
+    const hasResult = !!latestResult;
+    if (!hasBiomarkers && !hasResult) {
+      toast({
+        title: "Upload a report first",
+        description: "The AI Doctor needs your biomarkers before it can answer questions.",
+        variant: "destructive",
+      });
+      if (screen !== "analyzing") {
+        setScreen("idle");
+        setTimeout(() => {
+          const btn = stageRef.current?.querySelector<HTMLButtonElement>("[data-primary-action]");
+          btn?.focus();
+        }, 50);
+      }
+      return;
+    }
     const userMsg: ChatMsg = { id: `u-${Date.now()}`, role: "user", content: text };
     const assistantId = `a-${Date.now() + 1}`;
     setChat(prev => [...prev, userMsg, { id: assistantId, role: "assistant", content: "" }]);
