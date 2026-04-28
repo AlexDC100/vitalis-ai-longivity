@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useSubstances } from "@/lib/use-substances";
 import {
   Send, Upload, Loader2, FileText, Stethoscope, AlertTriangle, ShieldCheck,
-  Activity, Siren, RefreshCw, CheckCircle2, Download,
+  Activity, Siren, RefreshCw, CheckCircle2, Download, ClipboardList,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from "react-markdown";
@@ -110,6 +110,23 @@ const SS_FILENAME = "vitalis.aidoctor.fileName";
 const SS_BIOMARKERS = "vitalis.aidoctor.biomarkers";
 const SS_RESULT = "vitalis.aidoctor.latestResult";
 const SS_SCREEN = "vitalis.aidoctor.screen";
+
+// ─── Triage / case-priority types ─────────────────────────────────
+type Priority = "HIGH" | "MEDIUM" | "LOW";
+interface TriageCase {
+  id: string;
+  file_name: string;
+  document_type: string;
+  main_finding: string;
+  priority: Priority;
+  review_window: string;
+  created_at: string;
+}
+const PRIORITY_META: Record<Priority, { label: string; tone: string; bg: string; border: string; dot: string; window: string }> = {
+  HIGH:   { label: "High",   tone: "text-red-400",     bg: "bg-red-500/10",     border: "border-red-500/25",     dot: "bg-red-400",     window: "Review within 24–48h" },
+  MEDIUM: { label: "Medium", tone: "text-amber-400",   bg: "bg-amber-500/10",   border: "border-amber-500/25",   dot: "bg-amber-400",   window: "Routine review" },
+  LOW:    { label: "Low",    tone: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/25", dot: "bg-emerald-400", window: "Stable" },
+};
 
 export default function AIDoctorScreen() {
   const { profile, updateField, longevityScore, biologicalAge, chronologicalAge, userId } = useHealth();
