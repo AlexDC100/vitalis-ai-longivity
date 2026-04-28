@@ -1,3 +1,8 @@
+<!--
+  Vitalis favicon — uses literal hex stops because the favicon is
+  loaded standalone (no CSS context). These hexes match the canonical
+  brand gradient defined by --brand-grad-* in src/index.css.
+-->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
   <defs>
     <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
