@@ -10,7 +10,7 @@ import remarkGfm from "remark-gfm";
 import { pickPartners } from "@/lib/clinic-partners";
 import AIDoctorTestMode from "@/components/AIDoctorTestMode";
 import BookingSheet from "@/components/BookingSheet";
-import { downloadAIDoctorReport, previewAIDoctorReport } from "@/lib/ai-doctor-report";
+import { downloadAIDoctorReport } from "@/lib/ai-doctor-report";
 import ReportViewerSheet from "@/components/ReportViewerSheet";
 
 interface ChatMsg {
