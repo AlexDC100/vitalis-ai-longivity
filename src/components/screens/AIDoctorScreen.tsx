@@ -468,6 +468,15 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
         {screen === "idle" && (
           <div
             ref={dropRef}
+            role="button"
+            tabIndex={0}
+            aria-describedby="aidoctor-drop-instructions"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                fileRef.current?.click();
+              }
+            }}
             onDragEnter={(e) => {
               e.preventDefault();
               dragDepthRef.current += 1;
@@ -479,12 +488,12 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
               if (dragDepthRef.current === 0) setIsDragging(false);
             }}
             onDrop={(e) => { dragDepthRef.current = 0; setIsDragging(false); onDrop(e); }}
-            className={`w-full max-w-md mx-auto rounded-3xl border-2 border-dashed transition-all duration-200 p-10 sm:p-14 flex flex-col items-center text-center min-h-[280px] ${
+            className={`w-full max-w-md mx-auto rounded-3xl border-2 border-dashed transition-all duration-200 p-10 sm:p-14 flex flex-col items-center text-center min-h-[280px] focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/40 ${
               isDragging
                 ? "border-primary bg-primary/5 scale-[1.01]"
                 : "border-border hover:border-primary/60 hover:bg-card/40"
             }`}
-            aria-label="Drop your health report here, or use the upload button below"
+            aria-label="Drop your health report here, or press Enter to choose a file"
           >
             <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-5 transition-colors ${
               isDragging ? "bg-primary/20" : "bg-primary/10"
