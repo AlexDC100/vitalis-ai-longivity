@@ -411,7 +411,7 @@ export default function BodyScreen() {
       </header>
 
       {/* ══════════ 2. LONGEVITY SCORE ══════════ */}
-      <section className="flex flex-col items-center gap-3 animate-[scale-in_0.4s_ease-out_0.1s_both] [will-change:transform]">
+      <section className={`flex flex-col items-center gap-3 ${fadeInDelayed("animate-[scale-in_0.4s_ease-out_0.1s_both] [will-change:transform]")}`}>
         <div className="sm:hidden"><ScoreRing score={longevityScore} size={184} strokeWidth={12} /></div>
         <div className="hidden sm:block"><ScoreRing score={longevityScore} size={220} strokeWidth={14} /></div>
         <div className="text-center">
@@ -423,7 +423,7 @@ export default function BodyScreen() {
       </section>
 
       {/* ══════════ 3. BODY SYSTEMS ══════════ */}
-      <section className="space-y-2.5 sm:space-y-3 animate-[fade-in_0.5s_ease-out_0.2s_both]">
+      <section className={`space-y-2.5 sm:space-y-3 ${fadeInDelayed("animate-[fade-in_0.5s_ease-out_0.2s_both]")}`}>
         <div className="flex items-baseline justify-between px-1">
           <h2 className="text-sm font-semibold text-foreground">Body systems</h2>
           <span className="text-[10px] text-muted-foreground uppercase tracking-wider">0–100</span>
@@ -436,8 +436,8 @@ export default function BodyScreen() {
             return (
               <div
                 key={sys.id}
-                className="bg-card border border-border rounded-xl p-3 sm:p-3.5 animate-[fade-in_0.4s_ease-out_both]"
-                style={{ animationDelay: `${0.25 + i * 0.07}s` }}
+                className={`bg-card border border-border rounded-xl p-3 sm:p-3.5 ${fadeInDelayed("animate-[fade-in_0.4s_ease-out_both]")}`}
+                style={reduceMotion ? undefined : { animationDelay: `${0.25 + i * 0.07}s` }}
               >
                 <div className="flex items-center gap-3 mb-2">
                   <Icon className="w-4 h-4 text-muted-foreground shrink-0" />
@@ -458,7 +458,7 @@ export default function BodyScreen() {
 
       {/* ══════════ 4. MAIN ISSUE (AI) ══════════ */}
       {displayedIssue ? (
-        <section className="bg-gradient-to-br from-rose-500/10 to-amber-500/5 border border-rose-500/20 rounded-2xl p-4 sm:p-5 space-y-2 animate-[fade-in_0.5s_ease-out]">
+        <section className={`bg-gradient-to-br from-rose-500/10 to-amber-500/5 border border-rose-500/20 rounded-2xl p-4 sm:p-5 space-y-2 ${fadeInDelayed("animate-[fade-in_0.5s_ease-out]")}`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <AlertCircle className="w-4 h-4 text-rose-400" />
