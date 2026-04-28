@@ -766,56 +766,178 @@ Internal diagnosis: ${diagnosis.title} (${diagnosis.severity}, risk ${diagnosis.
           </div>
         )}
 
-        {/* ── Triage list (visible on idle when ≥2 processed cases exist) ── */}
-        {screen === "idle" && triage.length >= 2 && (
-          <section className="w-full max-w-md mx-auto mt-8 animate-fade-in">
-            <div className="flex items-center justify-between mb-3 px-1">
-              <div className="flex items-center gap-2">
-                <ClipboardList className="w-4 h-4 text-primary" />
-                <h3 className="text-sm font-semibold text-foreground">Case priority</h3>
+        {/* ── Triage list (visible on idle when ≥2 processed cases exist) ──
+            Hospital mode: groups by priority, dims reviewed cases, and
+            highlights the FIRST pending item in the queue (the next thing
+            the clinician should look at). Personal mode: simple flat list. */}
+        {screen === "idle" && triage.length >= 2 && (() => {
+          const pending = triage.filter(c => !c.reviewed_at);
+          const reviewed = triage.filter(c => !!c.reviewed_at);
+          const orderedPending = (["HIGH", "MEDIUM", "LOW"] as Priority[])
+            .flatMap(lvl => pending.filter(c => c.priority === lvl));
+          const firstPendingId = orderedPending[0]?.id ?? null;
+
+          const renderRow = (c: TriageCase) => {
+            const meta = PRIORITY_META[c.priority];
+            const isReviewed = !!c.reviewed_at;
+            const isFirst = hospitalMode && c.id === firstPendingId;
+            return (
+              <li
+                key={c.id}
+                className={`rounded-2xl border p-3 transition-all ${
+                  isReviewed
+                    ? "border-border bg-card/40 opacity-60"
+                    : isFirst
+                      ? `${meta.border} ${meta.bg} ring-2 ring-primary/40 shadow-lg`
+                      : `${meta.border} ${meta.bg}`
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${isReviewed ? "bg-muted" : meta.dot}`} aria-hidden />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs font-medium text-foreground truncate">
+                        {c.document_type} · <span className="text-muted-foreground">{c.file_name}</span>
+                      </p>
+                      <span className={`text-[10px] font-semibold uppercase tracking-wider shrink-0 ${isReviewed ? "text-muted-foreground" : meta.tone}`}>
+                        {isReviewed ? "Reviewed" : meta.label}
+                      </span>
+                    </div>
+                    {c.main_finding && (
+                      <p className="text-xs text-muted-foreground mt-1 leading-snug line-clamp-2">
+                        {c.main_finding}
+                      </p>
+                    )}
+                    {!isReviewed && (
+                      <p className={`text-[10px] mt-1 ${meta.tone}`}>
+                        {isFirst ? `Next up · ${c.review_window}` : c.review_window}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                {/* Per-row actions */}
+                <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border/40">
+                  <button
+                    type="button"
+                    onClick={() => handleDiscussCase(c)}
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 min-h-[40px] px-3 rounded-lg bg-primary/10 hover:bg-primary/15 text-primary text-[11px] font-medium transition-colors"
+                    aria-label={`Discuss ${c.file_name} with the AI Doctor`}
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    Discuss
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => downloadCaseSummary({
+                      file_name: c.file_name,
+                      document_type: c.document_type,
+                      main_finding: c.main_finding,
+                      clinical_insight: c.clinical_insight,
+                      priority: c.priority,
+                      review_window: c.review_window,
+                      reviewed_at: c.reviewed_at,
+                      created_at: c.created_at,
+                    })}
+                    className="inline-flex items-center justify-center gap-1.5 min-h-[40px] px-3 rounded-lg border border-border hover:bg-muted/40 text-foreground text-[11px] font-medium transition-colors"
+                    aria-label={`Download summary for ${c.file_name}`}
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    Summary
+                  </button>
+                  <button
+                    type="button"
+                    disabled={reviewingId === c.id}
+                    onClick={() => handleMarkReviewed(c.id, isReviewed)}
+                    className={`inline-flex items-center justify-center gap-1.5 min-h-[40px] px-3 rounded-lg text-[11px] font-medium transition-colors disabled:opacity-50 ${
+                      isReviewed
+                        ? "border border-border hover:bg-muted/40 text-muted-foreground"
+                        : "bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400"
+                    }`}
+                    aria-label={isReviewed ? `Mark ${c.file_name} as pending` : `Mark ${c.file_name} as reviewed`}
+                  >
+                    {reviewingId === c.id
+                      ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      : <Check className="w-3.5 h-3.5" />}
+                    {isReviewed ? "Undo" : "Reviewed"}
+                  </button>
+                </div>
+              </li>
+            );
+          };
+
+          return (
+            <section className="w-full max-w-md mx-auto mt-8 animate-fade-in">
+              <div className="flex items-center justify-between mb-3 px-1">
+                <div className="flex items-center gap-2">
+                  <ClipboardList className="w-4 h-4 text-primary" />
+                  <h3 className="text-sm font-semibold text-foreground">
+                    {hospitalMode ? "Review queue" : "Case priority"}
+                  </h3>
+                </div>
+                {/* Hospital mode toggle — minimal */}
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={hospitalMode}
+                  onClick={() => setHospitalMode(v => !v)}
+                  className={`inline-flex items-center gap-1.5 min-h-[32px] px-2.5 rounded-full border text-[10px] font-medium uppercase tracking-wider transition-colors ${
+                    hospitalMode
+                      ? "border-primary/40 bg-primary/10 text-primary"
+                      : "border-border text-muted-foreground hover:text-foreground"
+                  }`}
+                  aria-label={hospitalMode ? "Disable hospital mode" : "Enable hospital mode"}
+                >
+                  <Hospital className="w-3 h-3" />
+                  Hospital mode
+                </button>
               </div>
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                {triage.length} cases
-              </span>
-            </div>
-            <ul className="space-y-2">
-              {(["HIGH", "MEDIUM", "LOW"] as Priority[]).flatMap(level =>
-                triage
-                  .filter(c => c.priority === level)
-                  .map(c => {
-                    const meta = PRIORITY_META[c.priority];
-                    return (
-                      <li
-                        key={c.id}
-                        className={`flex items-start gap-3 rounded-2xl border ${meta.border} ${meta.bg} p-3`}
-                      >
-                        <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${meta.dot}`} aria-hidden />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="text-xs font-medium text-foreground truncate">
-                              {c.document_type} · <span className="text-muted-foreground">{c.file_name}</span>
+
+              {hospitalMode ? (
+                <>
+                  {orderedPending.length > 0 && (
+                    <ul className="space-y-2">
+                      {(["HIGH", "MEDIUM", "LOW"] as Priority[]).map(lvl => {
+                        const rows = pending.filter(c => c.priority === lvl);
+                        if (rows.length === 0) return null;
+                        return (
+                          <li key={lvl} className="space-y-2">
+                            <p className={`text-[10px] font-semibold uppercase tracking-wider px-1 ${PRIORITY_META[lvl].tone}`}>
+                              {PRIORITY_META[lvl].label} · {rows.length}
                             </p>
-                            <span className={`text-[10px] font-semibold uppercase tracking-wider ${meta.tone} shrink-0`}>
-                              {meta.label}
-                            </span>
-                          </div>
-                          {c.main_finding && (
-                            <p className="text-xs text-muted-foreground mt-1 leading-snug line-clamp-2">
-                              {c.main_finding}
-                            </p>
-                          )}
-                          <p className={`text-[10px] mt-1 ${meta.tone}`}>{c.review_window}</p>
-                        </div>
-                      </li>
-                    );
-                  })
+                            <ul className="space-y-2">{rows.map(renderRow)}</ul>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                  {reviewed.length > 0 && (
+                    <details className="mt-4">
+                      <summary className="text-[11px] text-muted-foreground cursor-pointer hover:text-foreground select-none px-1">
+                        Reviewed ({reviewed.length})
+                      </summary>
+                      <ul className="space-y-2 mt-2">{reviewed.map(renderRow)}</ul>
+                    </details>
+                  )}
+                  {orderedPending.length === 0 && reviewed.length > 0 && (
+                    <p className="text-xs text-center text-muted-foreground py-6">
+                      Queue clear. All cases reviewed.
+                    </p>
+                  )}
+                </>
+              ) : (
+                <ul className="space-y-2">
+                  {(["HIGH", "MEDIUM", "LOW"] as Priority[]).flatMap(lvl =>
+                    triage.filter(c => c.priority === lvl).map(renderRow)
+                  )}
+                </ul>
               )}
-            </ul>
-            <p className="text-[10px] text-center text-muted-foreground/70 mt-3 px-2">
-              AI-assisted triage. Does not replace a licensed physician.
-            </p>
-          </section>
-        )}
+
+              <p className="text-[10px] text-center text-muted-foreground/70 mt-3 px-2">
+                AI-assisted triage. Does not replace a licensed physician.
+              </p>
+            </section>
+          );
+        })()}
 
         {/* ── ANALYZING: calm progress ── */}
         {screen === "analyzing" && (
