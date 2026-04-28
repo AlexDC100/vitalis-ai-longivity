@@ -262,6 +262,11 @@ export default function AIDoctorScreen() {
 
   /** Continue the AI discussion using a triage case as context. */
   const handleDiscussCase = useCallback((c: TriageCase) => {
+    // Save the current case's chat before switching so the user doesn't
+    // lose their conversation. Each case keeps its own thread.
+    if (activeCaseId && activeCaseId !== c.id) {
+      try { sessionStorage.setItem(caseChatKey(activeCaseId), JSON.stringify(chat)); } catch { /* ignore */ }
+    }
     setActiveCaseId(c.id);
     setLatestCase({
       main_finding: c.main_finding,
@@ -271,12 +276,19 @@ export default function AIDoctorScreen() {
       document_type: c.document_type,
     });
     setLastFileName(c.file_name);
-    // Prime the chat with a single contextual user message that frames the case.
-    const primer = `Continue the discussion about my "${c.document_type}" case (${c.file_name}). Main finding: ${c.main_finding || "n/a"}. Clinical insight: ${c.clinical_insight || "n/a"}. Priority: ${c.priority} — ${c.review_window}. Help me understand what to do next.`;
-    setChat([]);
+    // Try to restore an existing chat for this case; otherwise prime a fresh one.
+    let saved: ChatMsg[] = [];
+    try {
+      const raw = sessionStorage.getItem(caseChatKey(c.id));
+      if (raw) saved = JSON.parse(raw) as ChatMsg[];
+    } catch { /* ignore */ }
+    setChat(saved);
     setScreen("result");
-    setTimeout(() => sendFollowUpRef.current?.(primer), 50);
-  }, []);
+    if (saved.length === 0) {
+      const primer = `Continue the discussion about my "${c.document_type}" case (${c.file_name}). Main finding: ${c.main_finding || "n/a"}. Clinical insight: ${c.clinical_insight || "n/a"}. Priority: ${c.priority} — ${c.review_window}. Help me understand what to do next.`;
+      setTimeout(() => sendFollowUpRef.current?.(primer), 50);
+    }
+  }, [activeCaseId, chat]);
 
   // Forward-ref pattern so handleDiscussCase (defined early) can call sendFollowUp (defined later).
   const sendFollowUpRef = useRef<((text: string) => void) | null>(null);
