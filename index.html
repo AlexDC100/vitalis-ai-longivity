@@ -4,6 +4,22 @@
 <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="theme-color" content="#10b981" />
+    <!-- No-flicker theme bootstrap: must run before React mounts. -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem("vitalis.theme");
+          var sysDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          var dark = stored ? stored === "dark" : true; // dark is the default
+          if (stored === "system") dark = sysDark;
+          document.documentElement.classList.toggle("dark", dark);
+          document.documentElement.classList.toggle("light", !dark);
+          document.documentElement.style.colorScheme = dark ? "dark" : "light";
+        } catch (e) {
+          document.documentElement.classList.add("dark");
+        }
+      })();
+    </script>
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Vitalis" />
