@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useParams, Link } from "react-router-dom";
+import { useNavigate, useParams, Link, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -108,6 +108,7 @@ const statusLabel: Record<string, string> = {
 export default function CaseDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [row, setRow] = useState<Row | null>(null);
   const [loading, setLoading] = useState(true);
   const [docUrl, setDocUrl] = useState<string | null>(null);
@@ -117,8 +118,54 @@ export default function CaseDetail() {
   const [lastRegenAt, setLastRegenAt] = useState<number>(0);
   const [now, setNow] = useState<number>(Date.now());
   const [events, setEvents] = useState<CaseEvent[]>([]);
-  const [timelineView, setTimelineView] = useState<"chronological" | "grouped">("chronological");
-  const [eventSearch, setEventSearch] = useState("");
+  const TL_VIEW_KEY = "vitalis.caseDetail.timelineView";
+  const TL_SEARCH_KEY = "vitalis.caseDetail.timelineSearch";
+  const initialView = ((): "chronological" | "grouped" => {
+    const fromUrl = searchParams.get("tl");
+    if (fromUrl === "chronological" || fromUrl === "grouped") return fromUrl;
+    if (typeof window !== "undefined") {
+      const stored = window.localStorage.getItem(TL_VIEW_KEY);
+      if (stored === "chronological" || stored === "grouped") return stored;
+    }
+    return "chronological";
+  })();
+  const initialSearch = ((): string => {
+    const fromUrl = searchParams.get("q");
+    if (fromUrl !== null) return fromUrl;
+    if (typeof window !== "undefined") {
+      return window.localStorage.getItem(TL_SEARCH_KEY) ?? "";
+    }
+    return "";
+  })();
+  const [timelineView, setTimelineView] = useState<"chronological" | "grouped">(initialView);
+  const [eventSearch, setEventSearch] = useState(initialSearch);
+
+  // Persist timeline preferences to URL + localStorage
+  useEffect(() => {
+    try { window.localStorage.setItem(TL_VIEW_KEY, timelineView); } catch { /* ignore */ }
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (timelineView === "chronological") next.delete("tl");
+        else next.set("tl", timelineView);
+        return next;
+      },
+      { replace: true },
+    );
+  }, [timelineView, setSearchParams]);
+
+  useEffect(() => {
+    try { window.localStorage.setItem(TL_SEARCH_KEY, eventSearch); } catch { /* ignore */ }
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (eventSearch.trim() === "") next.delete("q");
+        else next.set("q", eventSearch);
+        return next;
+      },
+      { replace: true },
+    );
+  }, [eventSearch, setSearchParams]);
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
