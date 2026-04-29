@@ -553,3 +553,38 @@ export default function NotificationsPage() {
     </div>
   );
 }
+
+function DeliveryTimestampList({
+  channel,
+  entries,
+}: {
+  channel: "in_app" | "email";
+  entries: { label: string; value: string | null; hint?: string }[];
+}) {
+  const ChannelIcon = channel === "in_app" ? MonitorSmartphone : Mail;
+  return (
+    <div className="text-xs">
+      <div className="flex items-center gap-2 mb-2 text-muted-foreground">
+        <ChannelIcon className="w-3.5 h-3.5" />
+        <span className="text-[10px] uppercase tracking-wider font-semibold">
+          {channel === "in_app" ? "In-app channel" : "Email channel"}
+        </span>
+      </div>
+      <ul className="space-y-1.5">
+        {entries.map((e) => (
+          <li key={e.label} className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="font-medium">{e.label}</p>
+              {e.hint && (
+                <p className="text-[10px] text-muted-foreground">{e.hint}</p>
+              )}
+            </div>
+            <span className="text-[10px] text-muted-foreground whitespace-nowrap shrink-0">
+              {e.value ? new Date(e.value).toLocaleString() : "—"}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
