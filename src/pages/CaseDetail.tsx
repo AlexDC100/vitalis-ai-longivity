@@ -3,6 +3,13 @@ import { useNavigate, useParams, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import VitalisLogo from "@/components/brand/VitalisLogo";
 import NotificationBell from "@/components/NotificationBell";
 import {
@@ -28,6 +35,7 @@ import {
   Loader2,
   Printer,
   RefreshCw,
+  Search,
   ShieldAlert,
   Trash2,
   Upload,
@@ -110,6 +118,7 @@ export default function CaseDetail() {
   const [now, setNow] = useState<number>(Date.now());
   const [events, setEvents] = useState<CaseEvent[]>([]);
   const [timelineView, setTimelineView] = useState<"chronological" | "grouped">("chronological");
+  const [eventSearch, setEventSearch] = useState("");
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -228,6 +237,30 @@ export default function CaseDetail() {
     : 0;
   const cooldownSec = Math.ceil(cooldownLeft / 1000);
   const onCooldown = cooldownLeft > 0;
+  const cooldownExpiresAt =
+    onCooldown && effectiveRegenAt > 0
+      ? new Date(effectiveRegenAt + REGEN_COOLDOWN_MS)
+      : null;
+
+  const filteredEvents = (() => {
+    const q = eventSearch.trim().toLowerCase();
+    if (!q) return events;
+    return events.filter((ev) => {
+      const hay = [
+        ev.actor_name,
+        ev.actor_email,
+        ev.event_type,
+        eventLabel(ev),
+        ev.note,
+        ev.from_status,
+        ev.to_status,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  })();
 
   const userDisplayName = (
     u: { user_metadata?: Record<string, unknown> } | null,
@@ -403,6 +436,7 @@ export default function CaseDetail() {
 
   return (
     <div className="min-h-screen bg-background">
+    <TooltipProvider delayDuration={150}>
       <header className="sticky top-0 z-20 backdrop-blur-md bg-background/85 border-b border-border/50">
         <div className="max-w-3xl mx-auto px-5 h-14 flex items-center justify-between">
           <button
@@ -491,7 +525,7 @@ export default function CaseDetail() {
               {regenerating ? (
                 <><Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> Regenerating…</>
               ) : onCooldown ? (
-                <><Clock className="w-3.5 h-3.5 mr-2" /> Retry in {cooldownSec}s</>
+                <CooldownLabel size="sm" seconds={cooldownSec} expiresAt={cooldownExpiresAt} />
               ) : (
                 <><RefreshCw className="w-3.5 h-3.5 mr-2" /> Regenerate AI assessment</>
               )}
@@ -602,7 +636,9 @@ export default function CaseDetail() {
             </p>
             <div className="flex items-center gap-2">
               <span className="text-[10px] text-muted-foreground">
-                {events.length} event{events.length === 1 ? "" : "s"}
+                {eventSearch
+                  ? `${filteredEvents.length} / ${events.length}`
+                  : `${events.length} event${events.length === 1 ? "" : "s"}`}
               </span>
               <div className="flex rounded-md border border-border overflow-hidden">
                 {(["chronological", "grouped"] as const).map((v) => (
@@ -622,12 +658,34 @@ export default function CaseDetail() {
               </div>
             </div>
           </div>
+          {events.length > 0 && (
+            <div className="relative mb-3">
+              <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={eventSearch}
+                onChange={(e) => setEventSearch(e.target.value)}
+                placeholder="Search by actor, event type, or note…"
+                className="h-8 pl-8 text-xs"
+              />
+            </div>
+          )}
           {events.length === 0 ? (
             <p className="text-xs text-muted-foreground">No timeline events yet.</p>
+          ) : filteredEvents.length === 0 ? (
+            <p className="text-xs text-muted-foreground">
+              No events match “{eventSearch}”.{" "}
+              <button
+                type="button"
+                className="underline hover:text-foreground"
+                onClick={() => setEventSearch("")}
+              >
+                Clear search
+              </button>
+            </p>
           ) : timelineView === "grouped" ? (
-            <GroupedTimeline events={events} />
+            <GroupedTimeline events={filteredEvents} />
           ) : (
-            <ChronologicalTimeline events={events} />
+            <ChronologicalTimeline events={filteredEvents} />
           )}
         </section>
 
@@ -656,7 +714,7 @@ export default function CaseDetail() {
               {regenerating ? (
                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Regenerating…</>
               ) : onCooldown ? (
-                <><Clock className="w-4 h-4 mr-2" /> Retry in {cooldownSec}s</>
+                <CooldownLabel size="md" seconds={cooldownSec} expiresAt={cooldownExpiresAt} />
               ) : (
                 <><RefreshCw className="w-4 h-4 mr-2" /> Regenerate AI assessment</>
               )}
@@ -698,6 +756,7 @@ export default function CaseDetail() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </TooltipProvider>
     </div>
   );
 }
@@ -708,6 +767,40 @@ function Field({ label, value }: { label: string; value: string }) {
       <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">{label}</p>
       <p className="text-sm leading-relaxed whitespace-pre-wrap">{value}</p>
     </div>
+  );
+}
+
+function CooldownLabel({
+  size,
+  seconds,
+  expiresAt,
+}: {
+  size: "sm" | "md";
+  seconds: number;
+  expiresAt: Date | null;
+}) {
+  const iconCls = size === "sm" ? "w-3.5 h-3.5 mr-2" : "w-4 h-4 mr-2";
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex items-center">
+          <Clock className={iconCls} /> Retry in {seconds}s
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="text-xs">
+        {expiresAt ? (
+          <div className="space-y-0.5">
+            <p className="font-semibold">Cooldown expires</p>
+            <p>{expiresAt.toLocaleString()}</p>
+            <p className="text-muted-foreground">
+              ISO: {expiresAt.toISOString()}
+            </p>
+          </div>
+        ) : (
+          <p>Cooldown active</p>
+        )}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
