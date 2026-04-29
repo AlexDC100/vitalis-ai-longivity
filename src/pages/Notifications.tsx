@@ -489,42 +489,51 @@ export default function NotificationsPage() {
                           </div>
                         </div>
                         {detailDeliveryView === "in_app" ? (
-                          <div className="text-xs flex items-start gap-2">
-                            <MonitorSmartphone className="w-3.5 h-3.5 mt-0.5 text-muted-foreground" />
-                            <div>
-                              <p>
-                                {n.delivered_in_app
-                                  ? "Delivered to in-app notification center"
-                                  : "Not delivered in-app"}
-                              </p>
-                              <p className="text-[10px] text-muted-foreground mt-0.5">
-                                Created {new Date(n.created_at).toLocaleString()}
-                                {n.read_at && (
-                                  <> · Read {new Date(n.read_at).toLocaleString()}</>
-                                )}
-                              </p>
-                            </div>
-                          </div>
+                          <DeliveryTimestampList
+                            channel="in_app"
+                            entries={[
+                              {
+                                label: "Created",
+                                value: n.created_at,
+                                hint: "Notification record created on server",
+                              },
+                              {
+                                label: "Delivered in-app",
+                                value: n.delivered_in_app ? n.created_at : null,
+                                hint: n.delivered_in_app
+                                  ? "Visible in notification center"
+                                  : "Not delivered to in-app center",
+                              },
+                              {
+                                label: "Read by clinician",
+                                value: n.read_at,
+                                hint: n.read_at ? "Marked read in-app" : "Not yet read",
+                              },
+                            ]}
+                          />
                         ) : (
-                          <div className="text-xs flex items-start gap-2">
-                            {n.delivered_email ? (
-                              <Mail className="w-3.5 h-3.5 mt-0.5 text-primary" />
-                            ) : (
-                              <MailX className="w-3.5 h-3.5 mt-0.5 text-muted-foreground" />
-                            )}
-                            <div>
-                              <p>
-                                {n.delivered_email
-                                  ? "Email sent to clinician inbox"
-                                  : "Email delivery is disabled for this organisation"}
-                              </p>
-                              <p className="text-[10px] text-muted-foreground mt-0.5">
-                                {n.delivered_email
-                                  ? `Sent ${new Date(n.created_at).toLocaleString()}`
-                                  : "Enable email alerts in organisation settings to receive these."}
-                              </p>
-                            </div>
-                          </div>
+                          <DeliveryTimestampList
+                            channel="email"
+                            entries={[
+                              {
+                                label: "Created",
+                                value: n.created_at,
+                                hint: "Notification record created on server",
+                              },
+                              {
+                                label: "Email sent",
+                                value: n.delivered_email ? n.created_at : null,
+                                hint: n.delivered_email
+                                  ? "Sent to clinician inbox"
+                                  : "Email delivery disabled for this organisation",
+                              },
+                              {
+                                label: "Email read",
+                                value: null,
+                                hint: "Email read receipts are not tracked",
+                              },
+                            ]}
+                          />
                         )}
                       </div>
                     )}
