@@ -18,6 +18,8 @@ import {
   Mail,
   MailX,
   Trash2,
+  RefreshCw,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -43,6 +45,23 @@ export default function NotificationsPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [detailDeliveryView, setDetailDeliveryView] = useState<"in_app" | "email">("in_app");
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchItems = async (silent = false) => {
+    if (!silent) setRefreshing(true);
+    const { data, error } = await supabase
+      .from("clinic_notifications")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(200);
+    if (error) {
+      if (!silent) toast.error("Could not load notifications");
+    } else {
+      setItems((data ?? []) as Notification[]);
+    }
+    if (!silent) setRefreshing(false);
+    return !error;
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -54,16 +73,8 @@ export default function NotificationsPage() {
         setLoading(false);
         return;
       }
-      const { data, error } = await supabase
-        .from("clinic_notifications")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(200);
-      if (!cancelled) {
-        if (error) toast.error("Could not load notifications");
-        setItems((data ?? []) as Notification[]);
-        setLoading(false);
-      }
+      await fetchItems(true);
+      if (!cancelled) setLoading(false);
     })();
     return () => { cancelled = true; };
   }, []);
@@ -117,18 +128,63 @@ export default function NotificationsPage() {
     const now = new Date().toISOString();
     await supabase.from("clinic_notifications").update({ read_at: now }).in("id", ids);
     setItems((prev) => prev.map((n) => (ids.includes(n.id) ? { ...n, read_at: now } : n)));
+    // Re-fetch from server so list + bell badge reflect authoritative state
+    await fetchItems(true);
     toast.success(`Marked ${ids.length} as read`);
   };
 
   const bulkDelete = async () => {
     const ids = Array.from(selected);
     if (ids.length === 0) return;
-    if (!confirm(`Delete ${ids.length} notification${ids.length === 1 ? "" : "s"}? This cannot be undone.`)) return;
+    const snapshot = items.filter((n) => ids.includes(n.id));
+    if (snapshot.length === 0) return;
+    // Optimistic delete
     await supabase.from("clinic_notifications").delete().in("id", ids);
     setItems((prev) => prev.filter((n) => !ids.includes(n.id)));
     setSelected(new Set());
-    toast.success(`Deleted ${ids.length} notification${ids.length === 1 ? "" : "s"}`);
+    let undone = false;
+    toast.success(
+      `Deleted ${snapshot.length} notification${snapshot.length === 1 ? "" : "s"}`,
+      {
+        duration: 6000,
+        action: {
+          label: "Undo",
+          onClick: async () => {
+            undone = true;
+            // Re-insert snapshots; user_id preserved via RLS (own rows)
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) return;
+            const restore = snapshot.map((n) => ({
+              id: n.id,
+              user_id: user.id,
+              case_id: n.case_id,
+              case_ref: n.case_ref,
+              priority: n.priority,
+              title: n.title,
+              body: n.body,
+              read_at: n.read_at,
+              delivered_email: n.delivered_email,
+              delivered_in_app: n.delivered_in_app,
+              created_at: n.created_at,
+            }));
+            const { error } = await supabase.from("clinic_notifications").insert(restore);
+            if (error) {
+              toast.error("Could not restore notifications");
+              return;
+            }
+            await fetchItems(true);
+            toast.success("Notifications restored");
+          },
+        },
+      },
+    );
+    // Refresh after grace period if not undone, to sync bell badge
+    setTimeout(() => {
+      if (!undone) fetchItems(true);
+    }, 6500);
   };
+
+  const clearSelection = () => setSelected(new Set());
 
   const toggleSelectAllVisible = (visible: Notification[]) => {
     const visibleIds = visible.map((n) => n.id);
@@ -244,6 +300,16 @@ export default function NotificationsPage() {
               {selected.size > 0 ? `${selected.size} selected` : "Select all"}
             </label>
             <div className="ml-auto flex items-center gap-1.5">
+            {selected.size > 0 && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={clearSelection}
+                className="text-muted-foreground"
+              >
+                <X className="w-3.5 h-3.5 mr-1.5" /> Clear selection
+              </Button>
+            )}
               <Button
                 size="sm"
                 variant="outline"
@@ -261,6 +327,17 @@ export default function NotificationsPage() {
               >
                 <Trash2 className="w-3.5 h-3.5 mr-1.5" /> Delete
               </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => fetchItems(false)}
+              disabled={refreshing}
+              className="text-muted-foreground"
+              title="Refresh from server"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${refreshing ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
             </div>
           </div>
         )}
@@ -412,42 +489,51 @@ export default function NotificationsPage() {
                           </div>
                         </div>
                         {detailDeliveryView === "in_app" ? (
-                          <div className="text-xs flex items-start gap-2">
-                            <MonitorSmartphone className="w-3.5 h-3.5 mt-0.5 text-muted-foreground" />
-                            <div>
-                              <p>
-                                {n.delivered_in_app
-                                  ? "Delivered to in-app notification center"
-                                  : "Not delivered in-app"}
-                              </p>
-                              <p className="text-[10px] text-muted-foreground mt-0.5">
-                                Created {new Date(n.created_at).toLocaleString()}
-                                {n.read_at && (
-                                  <> · Read {new Date(n.read_at).toLocaleString()}</>
-                                )}
-                              </p>
-                            </div>
-                          </div>
+                          <DeliveryTimestampList
+                            channel="in_app"
+                            entries={[
+                              {
+                                label: "Created",
+                                value: n.created_at,
+                                hint: "Notification record created on server",
+                              },
+                              {
+                                label: "Delivered in-app",
+                                value: n.delivered_in_app ? n.created_at : null,
+                                hint: n.delivered_in_app
+                                  ? "Visible in notification center"
+                                  : "Not delivered to in-app center",
+                              },
+                              {
+                                label: "Read by clinician",
+                                value: n.read_at,
+                                hint: n.read_at ? "Marked read in-app" : "Not yet read",
+                              },
+                            ]}
+                          />
                         ) : (
-                          <div className="text-xs flex items-start gap-2">
-                            {n.delivered_email ? (
-                              <Mail className="w-3.5 h-3.5 mt-0.5 text-primary" />
-                            ) : (
-                              <MailX className="w-3.5 h-3.5 mt-0.5 text-muted-foreground" />
-                            )}
-                            <div>
-                              <p>
-                                {n.delivered_email
-                                  ? "Email sent to clinician inbox"
-                                  : "Email delivery is disabled for this organisation"}
-                              </p>
-                              <p className="text-[10px] text-muted-foreground mt-0.5">
-                                {n.delivered_email
-                                  ? `Sent ${new Date(n.created_at).toLocaleString()}`
-                                  : "Enable email alerts in organisation settings to receive these."}
-                              </p>
-                            </div>
-                          </div>
+                          <DeliveryTimestampList
+                            channel="email"
+                            entries={[
+                              {
+                                label: "Created",
+                                value: n.created_at,
+                                hint: "Notification record created on server",
+                              },
+                              {
+                                label: "Email sent",
+                                value: n.delivered_email ? n.created_at : null,
+                                hint: n.delivered_email
+                                  ? "Sent to clinician inbox"
+                                  : "Email delivery disabled for this organisation",
+                              },
+                              {
+                                label: "Email read",
+                                value: null,
+                                hint: "Email read receipts are not tracked",
+                              },
+                            ]}
+                          />
                         )}
                       </div>
                     )}
@@ -464,6 +550,41 @@ export default function NotificationsPage() {
           be confirmed by a licensed clinician.
         </p>
       </main>
+    </div>
+  );
+}
+
+function DeliveryTimestampList({
+  channel,
+  entries,
+}: {
+  channel: "in_app" | "email";
+  entries: { label: string; value: string | null; hint?: string }[];
+}) {
+  const ChannelIcon = channel === "in_app" ? MonitorSmartphone : Mail;
+  return (
+    <div className="text-xs">
+      <div className="flex items-center gap-2 mb-2 text-muted-foreground">
+        <ChannelIcon className="w-3.5 h-3.5" />
+        <span className="text-[10px] uppercase tracking-wider font-semibold">
+          {channel === "in_app" ? "In-app channel" : "Email channel"}
+        </span>
+      </div>
+      <ul className="space-y-1.5">
+        {entries.map((e) => (
+          <li key={e.label} className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="font-medium">{e.label}</p>
+              {e.hint && (
+                <p className="text-[10px] text-muted-foreground">{e.hint}</p>
+              )}
+            </div>
+            <span className="text-[10px] text-muted-foreground whitespace-nowrap shrink-0">
+              {e.value ? new Date(e.value).toLocaleString() : "—"}
+            </span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
