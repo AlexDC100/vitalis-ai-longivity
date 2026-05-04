@@ -3,12 +3,11 @@ import { useHealth } from "@/lib/health-context";
 import { runDiagnosis } from "@/lib/diagnosis-engine";
 import { supabase } from "@/integrations/supabase/client";
 import { useSubstances } from "@/lib/use-substances";
-import { Send, Mic, Bot, User, Stethoscope, Upload, Loader2, Calendar, ExternalLink, MapPin, Paperclip, AlertTriangle, ShieldCheck, Activity, Siren, CalendarCheck, Trash2, FileText, Download } from "lucide-react";
+import { Send, Mic, Bot, User, Upload, Loader2, ExternalLink, MapPin, Paperclip, AlertTriangle, ShieldCheck, Activity, Siren, CalendarCheck, Trash2, FileText } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { pickPartners } from "@/lib/clinic-partners";
-import AIDoctorTestMode from "@/components/AIDoctorTestMode";
 import BookingSheet from "@/components/BookingSheet";
 import { downloadAIDoctorReport } from "@/lib/ai-doctor-report";
 import ReportViewerSheet from "@/components/ReportViewerSheet";
@@ -90,6 +89,8 @@ export default function AIDoctorScreen() {
   });
   const [reportOpen, setReportOpen] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragCounter = useRef(0);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUserEmail(data?.user?.email ?? null));
@@ -483,11 +484,45 @@ ${diagnosisSummary}`;
     sendMessage("Based on my data, what type of specialist should I see, and how soon? Be specific and practical.");
   };
 
+  // Drag & drop — accept files dropped anywhere on the chat surface.
+  const processDroppedFile = useCallback(async (file: File) => {
+    if (!file || !userId) return;
+    // Reuse the same upload pipeline as the paperclip button.
+    const fakeEvent = {
+      target: { files: [file], value: "" },
+    } as unknown as React.ChangeEvent<HTMLInputElement>;
+    await handleFileUpload(fakeEvent);
+  }, [userId, handleFileUpload]);
+
+  const onDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (e.dataTransfer?.types?.includes("Files")) {
+      dragCounter.current += 1;
+      setIsDragging(true);
+    }
+  };
+  const onDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounter.current -= 1;
+    if (dragCounter.current <= 0) {
+      dragCounter.current = 0;
+      setIsDragging(false);
+    }
+  };
+  const onDragOver = (e: React.DragEvent) => { e.preventDefault(); };
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounter.current = 0;
+    setIsDragging(false);
+    const file = e.dataTransfer?.files?.[0];
+    if (file) processDroppedFile(file);
+  };
+
   const quickPrompts = [
-    "What's my #1 health risk right now?",
-    "Compare all my biomarkers vs optimal",
-    "Give me a 30-day protocol",
-    "What labs should I retest and when?",
+    "What's my biggest health risk?",
+    "Generate a full health report",
+    "Compare my biomarkers vs optimal",
+    "What labs should I retest?",
   ];
 
   // Render generic Care Recommendation card (no hard-coded providers).
@@ -585,111 +620,74 @@ ${diagnosisSummary}`;
   );
 
   return (
-    <div className="flex flex-col h-full pb-20 -mx-4 -mt-3">
+    <div
+      className="relative flex flex-col h-full pb-20 -mx-4 -mt-3"
+      onDragEnter={onDragEnter}
+      onDragLeave={onDragLeave}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+    >
       <input ref={fileRef} type="file" className="hidden" onChange={handleFileUpload} accept=".pdf,.jpg,.png,.jpeg" />
 
-      {/* Minimal header */}
-      <div className="px-5 pt-4 pb-3 flex items-center gap-3">
-        <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center">
-          <Stethoscope className="w-5 h-5 text-primary" />
-        </div>
-        <div className="flex-1">
-          <h1 className="text-lg font-bold text-foreground">AI Doctor</h1>
-          <p className="text-[11px] text-muted-foreground">Clinical-grade health intelligence</p>
-        </div>
+      {/* Minimal Apple-style header */}
+      <div className="px-5 pt-5 pb-3 flex items-center gap-2">
+        <h1 className="flex-1 text-[15px] font-semibold text-foreground tracking-tight">AI Doctor</h1>
         {messages.length > 0 && (
           <button
             onClick={clearChat}
-            className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
+            className="p-1.5 rounded-full text-muted-foreground/70 hover:text-foreground hover:bg-secondary/60 transition-colors"
             aria-label="Clear chat history"
             title="Clear chat history"
           >
-            <Trash2 className="w-4 h-4" />
+            <Trash2 className="w-3.5 h-3.5" />
           </button>
         )}
         <button
           onClick={() => generateReport("preview")}
-          className="p-2 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+          className="p-1.5 rounded-full text-muted-foreground/70 hover:text-primary hover:bg-primary/10 transition-colors"
           aria-label="Generate health report"
           title="Generate health report"
         >
-          <FileText className="w-4 h-4" />
+          <FileText className="w-3.5 h-3.5" />
         </button>
       </div>
 
-      {/* Persistent safety disclaimer */}
-      <div className="mx-4 mb-2 flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-500/5 border border-amber-500/20">
-        <ShieldCheck className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-        <p className="text-[10.5px] leading-tight text-muted-foreground">
-          <span className="text-amber-400/90 font-medium">This app does not replace a licensed doctor.</span>
-          {" "}Use AI guidance to inform your decisions, not replace professional care.
-        </p>
-      </div>
-
-      {/* Test mode — verify mandatory 5-block structure */}
-      <AIDoctorTestMode runPrompt={runTestPrompt} />
+      {/* Subtle safety disclaimer */}
+      <p className="px-5 pb-2 text-[10px] text-muted-foreground/60 leading-tight">
+        AI guidance — not a substitute for a licensed doctor.
+      </p>
 
       {/* Messages */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 space-y-4">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 space-y-5">
         {messages.length === 0 && (
-          <div className="flex flex-col items-center justify-center pt-8 space-y-5">
-            <div className="w-16 h-16 rounded-3xl bg-primary/10 flex items-center justify-center">
-              <Stethoscope className="w-8 h-8 text-primary" />
-            </div>
-            <div className="text-center space-y-1.5">
-              <p className="text-lg font-semibold text-foreground">Your AI Doctor</p>
-              <p className="text-xs text-muted-foreground max-w-[280px]">
-                Ask me anything about your health. I'll analyze your biomarkers and give you specific protocols.
+          <div className="flex flex-col items-center justify-center min-h-[60vh] px-2 space-y-7">
+            <div className="text-center space-y-2">
+              <p className="text-2xl font-semibold text-foreground tracking-tight">
+                How can I help with your health?
+              </p>
+              <p className="text-[12px] text-muted-foreground">
+                Ask anything · drop a lab report · I'll analyze and respond.
               </p>
             </div>
 
-            {/* Smart contextual actions — integrated in chat */}
-            <div className="w-full max-w-sm space-y-2">
-              {isHighRisk && (
-                <button
-                  onClick={handleBookSpecialist}
-                  className="w-full flex items-center gap-3 p-3 bg-red-500/10 border border-red-500/20 rounded-2xl hover:bg-red-500/15 transition-colors text-left"
-                >
-                  <Calendar className="w-5 h-5 text-red-400 shrink-0" />
-                  <div>
-                    <p className="text-sm font-semibold text-red-400">Ask about a specialist</p>
-                    <p className="text-[11px] text-muted-foreground">{diagnosis.severity} risk — let me find you the right doctor</p>
-                  </div>
-                </button>
-              )}
-              <button
-                onClick={() => generateReport("preview")}
-                className="w-full flex items-center gap-3 p-3 bg-emerald-500/5 border border-emerald-500/20 rounded-2xl hover:bg-emerald-500/10 transition-colors text-left"
-              >
-                <FileText className="w-5 h-5 text-emerald-400 shrink-0" />
-                <div className="flex-1">
-                  <p className="text-sm font-semibold text-foreground">Generate health report</p>
-                  <p className="text-[11px] text-muted-foreground">Your values vs normal · underlying issues · which doctor to see</p>
-                </div>
-                <Download className="w-4 h-4 text-muted-foreground shrink-0" onClick={(e) => { e.stopPropagation(); generateReport("download"); }} />
-              </button>
-              <button
-                onClick={() => fileRef.current?.click()}
-                className="w-full flex items-center gap-3 p-3 bg-primary/5 border border-primary/20 rounded-2xl hover:bg-primary/10 transition-colors text-left"
-              >
-                <Upload className="w-5 h-5 text-primary shrink-0" />
-                <div>
-                  <p className="text-sm font-semibold text-foreground">Upload lab results</p>
-                  <p className="text-[11px] text-muted-foreground">PDF or photo — I'll extract and analyze everything</p>
-                </div>
-              </button>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 w-full max-w-sm">
+            <div className="w-full max-w-md flex flex-col gap-1.5">
               {quickPrompts.map(q => (
                 <button
                   key={q}
                   onClick={() => sendMessage(q)}
-                  className="text-left text-xs px-3 py-2.5 rounded-xl bg-card border border-border/50 text-muted-foreground hover:text-foreground hover:border-primary/30 transition-all"
+                  className="text-left text-[13px] px-3.5 py-2.5 rounded-xl text-muted-foreground hover:text-foreground hover:bg-secondary/40 transition-all"
                 >
                   {q}
                 </button>
               ))}
+              {isHighRisk && (
+                <button
+                  onClick={handleBookSpecialist}
+                  className="text-left text-[13px] px-3.5 py-2.5 rounded-xl text-orange-400/90 hover:text-orange-300 hover:bg-orange-500/5 transition-all"
+                >
+                  Which specialist should I see?
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -772,12 +770,12 @@ ${diagnosisSummary}`;
 
       {/* Input bar with integrated upload */}
       <div className="px-4 pt-3 pb-2">
-        <div className="flex items-center gap-2 bg-card border border-border/50 rounded-2xl px-3 py-2">
+        <div className="flex items-center gap-2 bg-card/80 backdrop-blur border border-border/40 rounded-3xl px-3 py-2 shadow-sm">
           <button
             onClick={() => fileRef.current?.click()}
             disabled={isUploading}
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors shrink-0"
-            title="Upload lab report"
+            className="w-8 h-8 rounded-full flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors shrink-0"
+            title="Attach a file"
           >
             {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Paperclip className="w-4 h-4" />}
           </button>
@@ -786,8 +784,12 @@ ${diagnosisSummary}`;
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => e.key === "Enter" && sendMessage(input)}
-            placeholder="Ask your AI Doctor..."
-            className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
+            onPaste={(e) => {
+              const file = e.clipboardData?.files?.[0];
+              if (file) { e.preventDefault(); processDroppedFile(file); }
+            }}
+            placeholder="Ask anything, or drop a report…"
+            className="flex-1 bg-transparent text-[14px] text-foreground placeholder:text-muted-foreground/70 outline-none py-1"
             disabled={isStreaming}
           />
           <button
@@ -795,19 +797,31 @@ ${diagnosisSummary}`;
             onTouchEnd={handleHoldEnd}
             onMouseDown={handleHoldStart}
             onMouseUp={handleHoldEnd}
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors shrink-0"
+            className="w-8 h-8 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors shrink-0"
           >
             <Mic className="w-4 h-4" />
           </button>
           <button
             onClick={() => sendMessage(input)}
             disabled={!input.trim() || isStreaming}
-            className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center disabled:opacity-30 transition-opacity shrink-0"
+            className="w-8 h-8 rounded-full bg-primary flex items-center justify-center disabled:opacity-30 transition-opacity shrink-0"
           >
             <Send className="w-4 h-4 text-primary-foreground" />
           </button>
         </div>
       </div>
+
+      {/* Drag overlay */}
+      {isDragging && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm pointer-events-none">
+          <div className="px-6 py-5 rounded-2xl border-2 border-dashed border-primary/50 bg-primary/5 flex flex-col items-center gap-2">
+            <Upload className="w-7 h-7 text-primary" />
+            <p className="text-sm font-semibold text-foreground">Drop to analyze</p>
+            <p className="text-[11px] text-muted-foreground">PDF, image, or lab report</p>
+          </div>
+        </div>
+      )}
+
       <BookingSheet
         open={bookingSheet.open}
         onOpenChange={(open) => setBookingSheet(s => ({ ...s, open }))}
