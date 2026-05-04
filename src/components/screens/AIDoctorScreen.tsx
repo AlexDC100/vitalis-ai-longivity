@@ -90,6 +90,8 @@ export default function AIDoctorScreen() {
   });
   const [reportOpen, setReportOpen] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragCounter = useRef(0);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUserEmail(data?.user?.email ?? null));
@@ -483,11 +485,45 @@ ${diagnosisSummary}`;
     sendMessage("Based on my data, what type of specialist should I see, and how soon? Be specific and practical.");
   };
 
+  // Drag & drop — accept files dropped anywhere on the chat surface.
+  const processDroppedFile = useCallback(async (file: File) => {
+    if (!file || !userId) return;
+    // Reuse the same upload pipeline as the paperclip button.
+    const fakeEvent = {
+      target: { files: [file], value: "" },
+    } as unknown as React.ChangeEvent<HTMLInputElement>;
+    await handleFileUpload(fakeEvent);
+  }, [userId, handleFileUpload]);
+
+  const onDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (e.dataTransfer?.types?.includes("Files")) {
+      dragCounter.current += 1;
+      setIsDragging(true);
+    }
+  };
+  const onDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounter.current -= 1;
+    if (dragCounter.current <= 0) {
+      dragCounter.current = 0;
+      setIsDragging(false);
+    }
+  };
+  const onDragOver = (e: React.DragEvent) => { e.preventDefault(); };
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounter.current = 0;
+    setIsDragging(false);
+    const file = e.dataTransfer?.files?.[0];
+    if (file) processDroppedFile(file);
+  };
+
   const quickPrompts = [
-    "What's my #1 health risk right now?",
-    "Compare all my biomarkers vs optimal",
-    "Give me a 30-day protocol",
-    "What labs should I retest and when?",
+    "What's my biggest health risk?",
+    "Generate a full health report",
+    "Compare my biomarkers vs optimal",
+    "What labs should I retest?",
   ];
 
   // Render generic Care Recommendation card (no hard-coded providers).
