@@ -269,7 +269,6 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
     { label: "Product", href: "#product" },
     { label: "How it works", href: "#how" },
     { label: "Pricing", href: "#pricing" },
-    { label: "For Clinics", href: "#audiences" },
     { label: "Security", href: "#security" },
   ];
 
