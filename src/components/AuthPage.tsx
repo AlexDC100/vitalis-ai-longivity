@@ -356,21 +356,26 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
 
   const plans = [
     {
-      name: "Free trial",
+      name: "Free",
       monthly: 0,
-      features: ["Upload 1 report", "AI Doctor preview", "Basic risk scoring"],
-      highlight: false,
-    },
-    {
-      name: "Essential",
-      monthly: 20,
-      features: ["Unlimited reports", "Device integrations", "Longevity score & trends"],
+      features: [
+        "Upload up to 2 reports / month",
+        "Basic AI Doctor preview",
+        "Basic risk scoring",
+        "Limited longevity insights",
+      ],
       highlight: false,
     },
     {
       name: "Pro",
-      monthly: 50,
-      features: ["Full AI Doctor chat", "Clinical-grade insights", "Priority support"],
+      monthly: 10,
+      features: [
+        "Unlimited reports & uploads",
+        "Advanced AI features (full AI Doctor chat)",
+        "Clinical-grade insights & trends",
+        "Device integrations",
+        "Priority support",
+      ],
       highlight: true,
     },
   ];
