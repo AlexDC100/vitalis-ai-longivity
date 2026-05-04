@@ -313,7 +313,6 @@ export type Database = {
           medicine_stack: Json | null
           provider: string | null
           recommendations: Json | null
-          reviewed_at: string | null
           status: string
           updated_at: string
           user_id: string
@@ -328,7 +327,6 @@ export type Database = {
           medicine_stack?: Json | null
           provider?: string | null
           recommendations?: Json | null
-          reviewed_at?: string | null
           status?: string
           updated_at?: string
           user_id: string
@@ -343,37 +341,9 @@ export type Database = {
           medicine_stack?: Json | null
           provider?: string | null
           recommendations?: Json | null
-          reviewed_at?: string | null
           status?: string
           updated_at?: string
           user_id?: string
-        }
-        Relationships: []
-      }
-      share_token_lookups: {
-        Row: {
-          created_at: string
-          id: string
-          ip: string | null
-          outcome: string
-          token_prefix: string
-          user_agent: string | null
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          ip?: string | null
-          outcome: string
-          token_prefix: string
-          user_agent?: string | null
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          ip?: string | null
-          outcome?: string
-          token_prefix?: string
-          user_agent?: string | null
         }
         Relationships: []
       }
@@ -499,14 +469,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      get_shared_report: {
-        Args: { _token: string }
-        Returns: {
-          expires_at: string
-          html: string
-          title: string
-        }[]
-      }
+      [_ in never]: never
     }
     Enums: {
       [_ in never]: never

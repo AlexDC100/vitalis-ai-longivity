@@ -41,11 +41,6 @@ export default function ReportViewerSheet({ open, onOpenChange, input, userId, u
   const [copied, setCopied] = useState(false);
   const [confirm, setConfirm] = useState<null | "copy" | "email">(null);
   const [actionError, setActionError] = useState<null | { action: "pdf" | "print"; message: string }>(null);
-  // Inline notice + retry when the OS mailto handler likely failed to open
-  // (no registered email client, or the browser blocked the navigation).
-  const [mailtoIssue, setMailtoIssue] = useState<null | { url: string }>(null);
-  // Single-flight guard for the email flow specifically (clipboard + mailto).
-  const [emailBusy, setEmailBusy] = useState(false);
 
   // Report HTML — extend with print-friendly CSS so iframe printing
   // matches the HTML download exactly (margins + scaling).
@@ -74,10 +69,7 @@ export default function ReportViewerSheet({ open, onOpenChange, input, userId, u
   }, [open]);
 
   useEffect(() => {
-    if (!open) {
-      setShareUrl(null); setCopied(false); setConfirm(null);
-      setActionError(null); setMailtoIssue(null); setEmailBusy(false);
-    }
+    if (!open) { setShareUrl(null); setCopied(false); setConfirm(null); setActionError(null); }
   }, [open]);
 
   // ---- Direct PDF download (no print dialog) ----
@@ -180,10 +172,8 @@ export default function ReportViewerSheet({ open, onOpenChange, input, userId, u
     const mode = confirm;
     setConfirm(null);
     if (!mode) return;
-    if (shareBusy || emailBusy) return; // double-tap guard
-    if (mode === "email") setEmailBusy(true);
     const url = await ensureShareUrl();
-    if (!url) { setEmailBusy(false); return; }
+    if (!url) return;
 
     // Single combined flow: ALWAYS copy first, then for "email" also open the
     // composer with the link pre-filled. This way the user has a fallback if
@@ -217,39 +207,6 @@ export default function ReportViewerSheet({ open, onOpenChange, input, userId, u
       title: copiedOk ? "Link copied — opening email" : "Opening email",
       description: copiedOk ? "Paste it anywhere if your email app doesn't fill it in." : undefined,
     });
-    const mailtoUrl = `mailto:${to}?subject=${subject}&body=${body}`;
-    // Detect mailto failure: if the document keeps focus (no app/tab took
-    // over) ~700ms after navigation, assume no handler is registered and
-    // surface an inline fallback that copies + offers a retry.
-    setMailtoIssue(null);
-    let opened = false;
-    const onBlur = () => { opened = true; };
-    window.addEventListener("blur", onBlur, { once: true });
-    try {
-      window.location.href = mailtoUrl;
-    } catch {
-      opened = false;
-    }
-    window.setTimeout(() => {
-      window.removeEventListener("blur", onBlur);
-      setEmailBusy(false);
-      if (!opened && document.visibilityState === "visible" && document.hasFocus()) {
-        setMailtoIssue({ url });
-      }
-    }, 700);
-  };
-
-  // Retry path for the mailto-failed banner: re-copy the link and offer to
-  // open the composer again. Keeps the user unblocked even with no email app.
-  const handleMailtoRetry = async () => {
-    if (!mailtoIssue) return;
-    try { await navigator.clipboard.writeText(mailtoIssue.url); } catch { /* noop */ }
-    toast({ title: "Link copied", description: "Paste it into your email app to send." });
-    const subject = encodeURIComponent(`My Vitalis ${REPORT_TITLE}`);
-    const body = encodeURIComponent(
-      `Hi,\n\nHere is my latest ${REPORT_TITLE}:\n${mailtoIssue.url}\n`
-    );
-    const to = userEmail ? encodeURIComponent(userEmail) : "";
     window.location.href = `mailto:${to}?subject=${subject}&body=${body}`;
   };
 
@@ -272,11 +229,11 @@ export default function ReportViewerSheet({ open, onOpenChange, input, userId, u
 
           {/* Action bar */}
           <div className="px-4 pb-3 grid grid-cols-2 gap-2">
-            <Button onClick={handlePdfDownload} disabled={pdfBusy} aria-busy={pdfBusy} className="h-10 text-xs font-semibold gap-1.5">
+            <Button onClick={handlePdfDownload} disabled={pdfBusy} className="h-10 text-xs font-semibold gap-1.5">
               {pdfBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5" />}
               {pdfBusy ? "Generating…" : "Save as PDF"}
             </Button>
-            <Button onClick={handlePrint} disabled={pdfBusy} variant="secondary" className="h-10 text-xs font-semibold gap-1.5">
+            <Button onClick={handlePrint} variant="secondary" className="h-10 text-xs font-semibold gap-1.5">
               <Printer className="w-3.5 h-3.5" />
               Print
             </Button>
@@ -284,15 +241,15 @@ export default function ReportViewerSheet({ open, onOpenChange, input, userId, u
               <Download className="w-3.5 h-3.5" />
               Download HTML
             </Button>
-            <Button onClick={() => requestShare("copy")} variant="outline" disabled={shareBusy || emailBusy} aria-busy={shareBusy} className="h-10 text-xs font-semibold gap-1.5">
+            <Button onClick={() => requestShare("copy")} variant="outline" disabled={shareBusy} className="h-10 text-xs font-semibold gap-1.5">
               {shareBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> :
                 copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> :
                 <Link2 className="w-3.5 h-3.5" />}
               {copied ? "Link copied" : "Copy share link"}
             </Button>
-            <Button onClick={() => requestShare("email")} variant="outline" disabled={shareBusy || emailBusy} aria-busy={emailBusy} className="h-10 text-xs font-semibold gap-1.5 col-span-2">
-              {emailBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Mail className="w-3.5 h-3.5" />}
-              {emailBusy ? "Opening email…" : "Email report"}
+            <Button onClick={() => requestShare("email")} variant="outline" disabled={shareBusy} className="h-10 text-xs font-semibold gap-1.5 col-span-2">
+              <Mail className="w-3.5 h-3.5" />
+              Email report
             </Button>
           </div>
 
@@ -320,52 +277,17 @@ export default function ReportViewerSheet({ open, onOpenChange, input, userId, u
               <Button
                 size="sm"
                 variant="ghost"
-                disabled={pdfBusy}
-                aria-busy={pdfBusy}
                 className="h-7 px-2 text-[11px] gap-1"
                 onClick={() => actionError.action === "pdf" ? handlePdfDownload() : handlePrint()}
               >
-                {pdfBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-                {pdfBusy ? "Retrying…" : "Retry"}
+                <RefreshCw className="w-3 h-3" />
+                Retry
               </Button>
               <Button
                 size="sm"
                 variant="ghost"
                 className="h-7 w-7 p-0"
                 onClick={() => setActionError(null)}
-                aria-label="Dismiss"
-              >
-                <X className="w-3 h-3" />
-              </Button>
-            </div>
-          )}
-
-          {mailtoIssue && (
-            <div
-              role="alert"
-              className="mx-4 mb-2 px-3 py-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-start gap-2"
-            >
-              <Mail className="w-3.5 h-3.5 text-amber-400 mt-0.5 shrink-0" />
-              <div className="flex-1 min-w-0">
-                <div className="text-[11px] font-medium text-amber-300">Email composer didn't open</div>
-                <div className="text-[11px] text-muted-foreground break-words">
-                  Your device may not have a default mail app. We can copy the link and try again.
-                </div>
-              </div>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-7 px-2 text-[11px] gap-1"
-                onClick={handleMailtoRetry}
-              >
-                <Link2 className="w-3 h-3" />
-                Copy link and email me
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-7 w-7 p-0"
-                onClick={() => setMailtoIssue(null)}
                 aria-label="Dismiss"
               >
                 <X className="w-3 h-3" />

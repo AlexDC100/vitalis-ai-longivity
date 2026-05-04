@@ -71,11 +71,6 @@ export default {
           danger: "hsl(var(--vitalis-danger))",
           info: "hsl(var(--vitalis-info))",
         },
-        brand: {
-          start: "hsl(var(--brand-grad-start))",
-          mid:   "hsl(var(--brand-grad-mid))",
-          end:   "hsl(var(--brand-grad-end))",
-        },
       },
       borderRadius: {
         lg: "var(--radius)",

@@ -35,7 +35,6 @@ import { downloadHealthReport } from "@/lib/health-report";
 import { useSubstances } from "@/lib/use-substances";
 import MyConsultationsSheet from "@/components/MyConsultationsSheet";
 import { FileText, Calendar } from "lucide-react";
-import VitalisLogo from "@/components/brand/VitalisLogo";
 
 interface SettingsSheetProps {
   open: boolean;
@@ -409,18 +408,11 @@ export default function SettingsSheet({
         side="right"
         className="w-full sm:max-w-md overflow-y-auto bg-background border-border/50 p-0"
       >
-        <SheetHeader className="px-6 pt-6 pb-4 border-b border-border/30 text-left space-y-3">
-          {/* Brand lockup — full logo so the settings panel feels like
-              a first-class part of the Vitalis system, not a generic
-              shadcn drawer. Decorative wordmark; the actual sheet
-              title is announced via SheetTitle below. */}
-          <VitalisLogo variant="full" size={22} aria-hidden="true" className="text-foreground" />
-          <div className="space-y-1">
-            <SheetTitle className="text-lg font-semibold">Settings</SheetTitle>
-            <SheetDescription className="text-xs text-muted-foreground">
-              Manage your account, preferences and data.
-            </SheetDescription>
-          </div>
+        <SheetHeader className="px-6 pt-6 pb-4 border-b border-border/30 text-left">
+          <SheetTitle className="text-lg font-semibold">Settings</SheetTitle>
+          <SheetDescription className="text-xs text-muted-foreground">
+            Manage your account, preferences and data.
+          </SheetDescription>
         </SheetHeader>
 
         <div className="px-6 py-5 space-y-7">

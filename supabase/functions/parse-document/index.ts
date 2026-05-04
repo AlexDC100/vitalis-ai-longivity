@@ -113,7 +113,7 @@ serve(async (req) => {
         messages: [{
           role: "user",
           content: [
-            { type: "text", text: "Examine this medical document or image. It may be a blood/lab report, an MRI/CT/X-ray scan, an ECG tracing, or a radiology PDF. Extract ALL visible text, numbers, lab values, reference ranges, annotations, and any clearly visible imaging/ECG observations (e.g. 'opacity in right lower lobe', 'ST elevation lead II'). Be thorough but do NOT diagnose. Return only the extracted text/observations, no commentary." },
+            { type: "text", text: "Extract ALL text from this medical/lab document. Include every number, lab value, reference range, and annotation. Return only the extracted text, no commentary." },
             { type: "image_url", image_url: { url: `data:${mimeType};base64,${fileBase64}` } }
           ]
         }],
@@ -197,28 +197,10 @@ Return a JSON object with:
      "priority": <1-10 importance ranking>
    }
 
-6. "provider": lab/clinic/hospital name
-7. "document_type": "Blood Work" | "Hormones" | "MRI" | "CT" | "X-Ray" | "ECG" | "Radiology" | "Imaging" | "Fitness" | "Genetics" | "General"
-
-8. "main_finding" - ONE short plain-language sentence (max 18 words) describing the single most important finding from this document. Avoid medical jargon. Do NOT diagnose — describe.
-
-9. "clinical_insight" - 2-3 sentences of non-diagnostic clinical context (what a clinician would notice, why it might matter, what category of follow-up is appropriate). Never state a definitive diagnosis.
-
-10. "urgency" - Exactly ONE of: "HIGH" | "MEDIUM" | "LOW".
-    HIGH = clinically concerning findings that warrant review within 24-48 hours (e.g. critical lab values, suspicious imaging findings, ECG abnormalities like ST elevation/arrhythmia).
-    MEDIUM = abnormal findings warranting routine specialist or follow-up review (within weeks).
-    LOW = stable / largely normal results, routine surveillance only.
-
-11. "case_priority" - Object for hospital triage:
-    {
-      "level": "HIGH" | "MEDIUM" | "LOW",  // mirror urgency
-      "review_window": "<short string e.g. 'Review within 24-48h' | 'Routine review' | 'Stable'>",
-      "reason": "<one sentence explaining why this priority was assigned>"
-    }
+6. "provider": lab/clinic name
+7. "document_type": "Blood Work" | "Hormones" | "Imaging" | "Fitness" | "Genetics" | "General"
 
 Be AGGRESSIVE with your analysis. Flag everything suboptimal. This person wants to live to 120+ in peak condition.
-IMPORTANT: This output is AI-assisted and does NOT replace a licensed physician.
-For imaging (MRI/CT/X-ray) and ECG inputs, the "biomarkers" object may be empty — that is fine. Always still produce main_finding, clinical_insight, urgency and case_priority based on the visible observations.
 
 Document:
 ${textContent}`;
@@ -270,32 +252,12 @@ ${textContent}`;
       recommendations = [],
       medicine_stack = [],
       provider = "",
-      document_type = "General",
-      main_finding = "",
-      clinical_insight = "",
-      urgency = "LOW",
-      case_priority = { level: "LOW", review_window: "Stable", reason: "" },
+      document_type = "General"
     } = parsed;
-
-    // Normalize urgency / case priority — never trust raw model output blindly.
-    const URG = ["HIGH", "MEDIUM", "LOW"] as const;
-    const safeUrgency = URG.includes(String(urgency).toUpperCase() as any)
-      ? String(urgency).toUpperCase()
-      : "LOW";
-    const safePriority = {
-      level: URG.includes(String(case_priority?.level).toUpperCase() as any)
-        ? String(case_priority.level).toUpperCase()
-        : safeUrgency,
-      review_window: case_priority?.review_window ||
-        (safeUrgency === "HIGH" ? "Review within 24-48h"
-          : safeUrgency === "MEDIUM" ? "Routine review" : "Stable"),
-      reason: case_priority?.reason || "",
-    };
 
     console.log("Extracted biomarkers:", Object.keys(biomarkers).length);
     console.log("Recommendations:", recommendations.length);
     console.log("Medicine stack:", medicine_stack.length);
-    console.log("Urgency:", safeUrgency, "Priority:", safePriority.level);
 
     // Update medical_documents record with full analysis
     await supabase.from("medical_documents").update({
@@ -303,10 +265,6 @@ ${textContent}`;
         biomarkers,
         biomarker_analysis,
         health_scores,
-        main_finding,
-        clinical_insight,
-        urgency: safeUrgency,
-        case_priority: safePriority,
       },
       recommendations,
       medicine_stack,
@@ -339,11 +297,6 @@ ${textContent}`;
       medicine_stack,
       provider: provider || "",
       document_type: document_type || "General",
-      main_finding,
-      clinical_insight,
-      urgency: safeUrgency,
-      case_priority: safePriority,
-      disclaimer: "This is AI-assisted analysis and does not replace a licensed physician.",
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

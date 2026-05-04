@@ -3,18 +3,17 @@ import { Link, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Clock, RefreshCw, Home, AlertTriangle, LogIn } from "lucide-react";
-import { toast } from "sonner";
 
 /**
- * A valid share token is the URL-encoded form of base64(18 random bytes) — i.e.
- * exactly 24 chars from the base64 alphabet (URL-safe `-`/`_` accepted, plus
- * optional trailing `=` pad). Validated SYNCHRONOUSLY before any network call.
+ * A valid share token is the URL-encoded form of base64(18 random bytes) =>
+ * 24 base64 chars. After decoding we accept any 22-32 char base64-ish string
+ * (allowing `+ / = -` and `_`) to stay forgiving of providers' encoding.
  */
 function isValidShareToken(raw: string | undefined): boolean {
   if (!raw) return false;
   let decoded = raw;
   try { decoded = decodeURIComponent(raw); } catch { return false; }
-  return /^[A-Za-z0-9+/_-]{24}={0,2}$/.test(decoded);
+  return /^[A-Za-z0-9+/=_-]{20,40}$/.test(decoded);
 }
 
 function formatCountdown(ms: number): string {
@@ -27,23 +26,6 @@ function formatCountdown(ms: number): string {
   if (days > 0) return `${days}d ${hours}h ${minutes}m`;
   if (hours > 0) return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
-}
-
-/**
- * Cache the absolute `expires_at` in sessionStorage so a page reload can render
- * the "Expires in …" bar instantly. The countdown itself is always derived
- * from the absolute DB timestamp, so it's reload-safe by construction — this
- * cache only avoids the loading flash.
- */
-const cacheKey = (token: string) => `vitalis:shared-expiry:${token}`;
-function readCachedExpiry(token: string): string | null {
-  try { return sessionStorage.getItem(cacheKey(token)); } catch { return null; }
-}
-function writeCachedExpiry(token: string, isoExpiresAt: string) {
-  try { sessionStorage.setItem(cacheKey(token), isoExpiresAt); } catch { /* noop */ }
-}
-function clearCachedExpiry(token: string) {
-  try { sessionStorage.removeItem(cacheKey(token)); } catch { /* noop */ }
 }
 
 /**
@@ -61,76 +43,31 @@ export default function SharedReport() {
     | { kind: "missing" }
     | { kind: "invalid" }
     | { kind: "error"; message: string }
-  >(() => {
-    if (!token) return { kind: "missing" };
-    if (!isValidShareToken(token)) return { kind: "invalid" };
-    return { kind: "loading" };
-  });
+  >({ kind: "loading" });
   const [signedIn, setSignedIn] = useState<boolean | null>(null);
   const [showSignInPrompt, setShowSignInPrompt] = useState(false);
   const [now, setNow] = useState(() => Date.now());
-  const [cachedExpiry, setCachedExpiry] = useState<string | null>(() =>
-    token ? readCachedExpiry(token) : null
-  );
-  const [refreshNonce, setRefreshNonce] = useState(0);
 
   useEffect(() => {
     if (!token) { setState({ kind: "missing" }); return; }
     if (!isValidShareToken(token)) { setState({ kind: "invalid" }); return; }
-    let cancelled = false;
     (async () => {
-      // Use a SECURITY DEFINER RPC so the table itself is not publicly readable.
-      // The function only returns a row when the caller supplies the exact token
-      // AND the report has not expired — preventing enumeration of all shares.
-      // We wrap the call in a 10s timeout so a hung network never leaves the
-      // viewer on a perpetual loading state, and we ALWAYS surface the same
-      // generic message regardless of failure mode.
-      let rows: Array<{ title: string | null; html: string; expires_at: string }> | null = null;
-      let lookupError: unknown = null;
-      try {
-        const timeoutMs = 10_000;
-        const result = await Promise.race([
-          supabase.rpc("get_shared_report", { _token: token }),
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error("rpc_timeout")), timeoutMs)
-          ),
-        ]);
-        // Narrow Supabase response shape
-        const r = result as { data: typeof rows; error: { message: string } | null };
-        if (r.error) {
-          lookupError = r.error;
-        } else {
-          rows = r.data;
-        }
-      } catch (e) {
-        lookupError = e;
-      }
+      const { data, error } = await supabase
+        .from("shared_health_reports")
+        .select("title, html, expires_at")
+        .eq("share_token", token)
+        .maybeSingle();
 
-      if (cancelled) return;
-      if (lookupError) {
-        // Never leak raw DB errors (table names, RLS messages, UUID parse errors,
-        // timeouts, network details) to anonymous viewers. Log server/console-side only.
-        console.error("[SharedReport] lookup error:", lookupError);
-        setState({
-          kind: "error",
-          message: "Something went wrong loading this report. Please try again.",
-        });
-        return;
-      }
-      const data = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
-      if (!data) { clearCachedExpiry(token); setState({ kind: "missing" }); return; }
+      if (error) { setState({ kind: "error", message: error.message }); return; }
+      if (!data) { setState({ kind: "missing" }); return; }
       const expired = new Date(data.expires_at).getTime() < Date.now();
       if (expired) {
-        clearCachedExpiry(token);
         setState({ kind: "expired", expiresAt: data.expires_at, title: data.title });
         return;
       }
-      writeCachedExpiry(token, data.expires_at);
-      setCachedExpiry(data.expires_at);
       setState({ kind: "ok", html: data.html, title: data.title, expiresAt: data.expires_at });
     })();
-    return () => { cancelled = true; };
-  }, [token, refreshNonce]);
+  }, [token]);
 
   // Track auth state for the "Regenerate share link" sign-in gate.
   useEffect(() => {
@@ -146,55 +83,25 @@ export default function SharedReport() {
 
   // Live countdown — only ticks while a valid (not yet expired) report is loaded.
   useEffect(() => {
-    // Tick while we have a usable expiry — either the loaded report or the
-    // cached expiry shown during reload.
-    if (state.kind !== "ok" && !(state.kind === "loading" && cachedExpiry)) return;
+    if (state.kind !== "ok") return;
     const id = window.setInterval(() => {
       const t = Date.now();
       setNow(t);
-      const exp = state.kind === "ok" ? state.expiresAt : cachedExpiry!;
-      if (new Date(exp).getTime() <= t && state.kind === "ok") {
+      if (new Date(state.expiresAt).getTime() <= t) {
         setState({ kind: "expired", expiresAt: state.expiresAt, title: state.title });
       }
     }, 1000);
     return () => window.clearInterval(id);
-  }, [state, cachedExpiry]);
+  }, [state]);
 
   const handleRegenerate = (e: React.MouseEvent) => {
     if (signedIn === false) {
       e.preventDefault();
       setShowSignInPrompt(true);
-      return;
     }
-    // Signed in: confirm + auto-refresh the viewer when the user returns,
-    // so a freshly-issued share link's new expiry shows up automatically.
-    toast.success("Opening Vitalis to regenerate your link", {
-      description: "We'll refresh this view automatically when you return.",
-    });
-    if (token) clearCachedExpiry(token);
-    const onFocus = () => {
-      setState({ kind: "loading" });
-      setRefreshNonce((n) => n + 1);
-      window.removeEventListener("focus", onFocus);
-    };
-    window.addEventListener("focus", onFocus);
   };
 
   if (state.kind === "loading") {
-    if (cachedExpiry) {
-      const remaining = new Date(cachedExpiry).getTime() - now;
-      return (
-        <div className="w-screen h-screen flex flex-col bg-background">
-          <div className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] border-b border-border/40 bg-secondary/40 text-muted-foreground">
-            <Clock className="w-3 h-3" />
-            <span>Expires in <span className="font-medium tabular-nums">{formatCountdown(remaining)}</span></span>
-          </div>
-          <div className="flex-1 flex items-center justify-center">
-            <p className="text-sm text-muted-foreground">Loading report…</p>
-          </div>
-        </div>
-      );
-    }
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <p className="text-sm text-muted-foreground">Loading report…</p>
@@ -280,9 +187,7 @@ export default function SharedReport() {
         <div className="max-w-sm space-y-3">
           <h1 className="text-xl font-semibold">Report unavailable</h1>
           <p className="text-sm text-muted-foreground">
-            {state.kind === "error"
-              ? "Something went wrong loading this report. Please try again."
-              : "This report link is invalid or has been removed."}
+            {state.kind === "error" ? state.message : "This report link is invalid or has been removed."}
           </p>
           <Button asChild variant="outline" className="mt-2">
             <Link to="/">Open Vitalis</Link>

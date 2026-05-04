@@ -9,11 +9,9 @@ import DiagnosisScreen from "@/components/screens/DiagnosisScreen";
 import BodyScreen from "@/components/screens/BodyScreen";
 import AIDoctorScreen from "@/components/screens/AIDoctorScreen";
 import { Toaster } from "@/components/ui/toaster";
-import { AlertTriangle, Stethoscope, User } from "lucide-react";
+import { AlertTriangle, Stethoscope, User, Menu, Settings as SettingsIcon } from "lucide-react";
 import CommandPalette, { type PaletteAction } from "@/components/CommandPalette";
 import SettingsSheet from "@/components/SettingsSheet";
-import HeaderMenu from "@/components/HeaderMenu";
-import VitalisLogo from "@/components/brand/VitalisLogo";
 import { toast } from "sonner";
 
 type Screen = "diagnosis" | "body" | "doctor";
@@ -27,9 +25,9 @@ function AppShell() {
   const [loading, setLoading] = useState(true);
   const { setIsGuest, setUserId, dataCompleteness } = useHealth();
   const [screen, setScreen] = useState<Screen>(() => {
-    if (typeof window === "undefined") return "doctor";
+    if (typeof window === "undefined") return "diagnosis";
     const saved = window.localStorage.getItem(SCREEN_STORAGE_KEY);
-    return isScreen(saved) ? saved : "doctor";
+    return isScreen(saved) ? saved : "diagnosis";
   });
   const [slideDir, setSlideDir] = useState<"left" | "right">("left");
   const [onboarded, setOnboarded] = useState<boolean | null>(null);
@@ -37,9 +35,7 @@ function AppShell() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const prevScreenRef = useRef<Screen>(screen);
 
-  // Order matches the bottom nav (left → right): AI Doctor is the
-  // primary entry point, then Diagnosis, then Body.
-  const screenOrder: Screen[] = ["doctor", "diagnosis", "body"];
+  const screenOrder: Screen[] = ["diagnosis", "body", "doctor"];
 
   // Sensitive client-side keys that must be wiped on sign-out so the next
   // user on a shared device cannot see the previous user's medical data.
@@ -182,9 +178,9 @@ function AppShell() {
   }
 
   const navItems: { id: Screen; label: string; icon: React.ElementType }[] = [
-    { id: "doctor", label: "AI Doctor", icon: Stethoscope },
     { id: "diagnosis", label: "Diagnosis", icon: AlertTriangle },
     { id: "body", label: "Body", icon: User },
+    { id: "doctor", label: "AI Doctor", icon: Stethoscope },
   ];
 
   const animClass = slideDir === "left" ? "animate-slide-left" : "animate-slide-right";
@@ -203,31 +199,27 @@ function AppShell() {
         onOpenChange={setSettingsOpen}
         onSignOut={signOut}
       />
-      {/* Top Bar — single overflow control on the right keeps the bar
-          quiet and Apple-clean. Logo respects safe-area on notched
-          devices but never gets closer than 24px to the left edge. */}
-      <div
-        className="flex items-center justify-between py-3 border-b border-border/30"
-        style={{
-          paddingLeft: "max(1.5rem, env(safe-area-inset-left, 0px))",
-          paddingRight: "max(1rem, env(safe-area-inset-right, 0px))",
-        }}
-      >
-        <button
-          type="button"
-          onClick={() => switchScreen("diagnosis")}
-          aria-label="Vitalis — go to home"
-          className="group flex items-center gap-2.5 min-w-0 -ml-1.5 px-1.5 py-1 rounded-md transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-        >
-          <VitalisLogo variant="icon" size={22} title="Vitalis" />
-          <span className="text-[15px] font-bold text-foreground tracking-tight">Vitalis</span>
-        </button>
-        <HeaderMenu
-          onOpenSettings={() => setSettingsOpen(true)}
-          onOpenPreferences={() => setSettingsOpen(true)}
-          onOpenQuickActions={() => setPaletteOpen(true)}
-          onSignOut={signOut}
-        />
+      {/* Top Bar */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border/30">
+        <span className="text-base font-bold text-foreground tracking-tight">Vitalis</span>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setPaletteOpen(true)}
+            className="inline-flex items-center justify-center w-8 h-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            aria-label="Open quick actions"
+            title="Quick actions (⌘K)"
+          >
+            <Menu className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => setSettingsOpen(true)}
+            className="inline-flex items-center justify-center w-8 h-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            aria-label="Open settings"
+            title="Settings"
+          >
+            <SettingsIcon className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       {/* Screen */}

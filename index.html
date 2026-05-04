@@ -4,53 +4,6 @@
 <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="theme-color" content="#10b981" />
-    <!-- No-flicker theme bootstrap: must run before React mounts. -->
-    <script>
-      (function () {
-        try {
-          window.__vitalisBootStart = performance.now();
-          var stored = localStorage.getItem("vitalis.theme");
-          var sysDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-          var dark = stored ? stored === "dark" : true; // dark is the default
-          if (stored === "system") dark = sysDark;
-          document.documentElement.classList.toggle("dark", dark);
-          document.documentElement.classList.toggle("light", !dark);
-          document.documentElement.style.colorScheme = dark ? "dark" : "light";
-          document.documentElement.style.backgroundColor = dark ? "#0a0f1a" : "#F7F8FA";
-        } catch (e) {
-          document.documentElement.classList.add("dark");
-          document.documentElement.style.backgroundColor = "#0a0f1a";
-        }
-      })();
-    </script>
-    <style>
-      /* Splash painted before React boots. Removed by ThemeProvider on
-         mount. Matches the resolved background to guarantee zero flash
-         on slow devices. */
-      #vitalis-splash {
-        position: fixed; inset: 0; z-index: 2147483647;
-        display: flex; align-items: center; justify-content: center;
-        background-color: #0a0f1a;
-        opacity: 1; transition: opacity 180ms ease;
-      }
-      html.light #vitalis-splash { background-color: #F7F8FA; }
-      #vitalis-splash[data-fading="true"] { opacity: 0; pointer-events: none; }
-      #vitalis-splash .vs-dot {
-        width: 44px; height: 44px;
-        background-image: url("/favicon.svg");
-        background-repeat: no-repeat;
-        background-position: center;
-        background-size: contain;
-        animation: vs-pulse 1.6s ease-in-out infinite;
-      }
-      @keyframes vs-pulse {
-        0%, 100% { opacity: 0.55; transform: scale(0.96); }
-        50%      { opacity: 1;    transform: scale(1.04); }
-      }
-      @media (prefers-reduced-motion: reduce) {
-        #vitalis-splash .vs-dot { animation: none; opacity: 1; transform: none; }
-      }
-    </style>
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Vitalis" />
@@ -65,25 +18,17 @@
     <link rel="manifest" href="/manifest.json" />
     
     <!-- PWA Icons -->
-    <!-- Modern browsers (Chrome, Firefox, Edge, Safari 16+): theme-reactive SVG. -->
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <!-- PNG fallback for browsers that don't render SVG favicons reliably
-         (older Safari, IE-mode, some Android home screens). The 32px file
-         doubles as the default favicon when /favicon.ico is absent. -->
-    <link rel="alternate icon" type="image/png" sizes="32x32" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/pwa-icon-192.png" />
     <link rel="icon" type="image/png" sizes="192x192" href="/pwa-icon-192.png" />
     <link rel="icon" type="image/png" sizes="512x512" href="/pwa-icon-512.png" />
 
     <!-- Open Graph -->
     <meta property="og:type" content="website" />
-    <meta property="og:image" content="/og-image.png" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
+    <meta property="og:image" content="https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/8553a380-7a94-44bc-9683-22b906e0f9bd/id-preview-b4d67936--8f826c54-afe9-41e5-9e1b-c32b33f90927.lovable.app-1775995910476.png">
 
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:site" content="@Lovable" />
-    <meta name="twitter:image" content="/og-image.png" />
+    <meta name="twitter:image" content="https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/8553a380-7a94-44bc-9683-22b906e0f9bd/id-preview-b4d67936--8f826c54-afe9-41e5-9e1b-c32b33f90927.lovable.app-1775995910476.png">
     <meta property="og:title" content="Vitalis — Your Personal Longevity OS">
   <meta name="twitter:title" content="Vitalis — Your Personal Longevity OS">
   <meta property="og:description" content="AI-powered longevity health tracking with 40+ biomarkers, personalized AI advisor, and disease risk engine.">
@@ -91,7 +36,6 @@
 </head>
 
   <body>
-    <div id="vitalis-splash" aria-hidden="true"><div class="vs-dot"></div></div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

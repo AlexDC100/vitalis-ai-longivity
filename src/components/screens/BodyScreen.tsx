@@ -5,15 +5,14 @@ import { useSubstances } from "@/lib/use-substances";
 import { useFamilyHistory } from "@/lib/use-family-history";
 import {
   Upload, FileText, Heart, Brain, Activity, Sparkles,
-  ChevronRight, User, Dna,
+  ChevronRight, User, Dna, MessageCircle, Send, Bot,
   TrendingUp, TrendingDown, Minus, AlertCircle, Zap, Moon, Wind, Droplets,
   Check, Circle, RefreshCw, Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
+import ReactMarkdown from "react-markdown";
 import ScoreRing from "@/components/ScoreRing";
 import { runDiagnosis, getAllSystemScores } from "@/lib/diagnosis-engine";
-import { BodyDebugOverlay } from "@/components/BodyDebugOverlay";
-import { Crosshair } from "lucide-react";
 
 const FAMILY_CONDITIONS = [
   "Heart Disease", "Diabetes", "Cancer", "Alzheimer's", "Stroke",
@@ -65,72 +64,6 @@ interface CompletionRow {
   status: "started" | "done";
 }
 
-/**
- * Respect prefers-reduced-motion. Used to gate decorative entrance
- * animations & micro-interactions on the Body page so the experience
- * stays comfortable for vestibular-sensitive users.
- */
-function useReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(() =>
-    typeof window !== "undefined" &&
-    window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
-  );
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const onChange = () => setReduced(mq.matches);
-    mq.addEventListener?.("change", onChange);
-    return () => mq.removeEventListener?.("change", onChange);
-  }, []);
-  return reduced;
-}
-
-/** Inline skeleton block — matches surrounding card padding/radius. */
-function Skeleton({ className = "" }: { className?: string }) {
-  return <div className={`rounded-md bg-muted animate-pulse ${className}`} />;
-}
-
-/**
- * Single source of truth for the shared skeleton reveal duration.
- * Metrics, Profile, Labs, and the Longevity Score all wait for this
- * minimum window before flipping to real content so sections never
- * "pop" independently. Set to 0 when prefers-reduced-motion is on.
- */
-const SKELETON_MIN_REVEAL_MS = 280;
-
-/** Cooldown before "Retry scoring" can be tapped again, in ms. */
-const RETRY_COOLDOWN_MS = 3000;
-
-/**
- * Lightweight debug-mode hook. Enabled when:
- *   - URL has `?debug=1` (or `?bodyDebug=1`), OR
- *   - localStorage has `body_debug=1`
- * Toggling persists to localStorage so it survives reload.
- */
-function useBodyDebug(): { enabled: boolean; toggle: () => void } {
-  const [enabled, setEnabled] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
-    try {
-      const sp = new URLSearchParams(window.location.search);
-      if (sp.get("debug") === "1" || sp.get("bodyDebug") === "1") return true;
-      return window.localStorage.getItem("body_debug") === "1";
-    } catch { return false; }
-  });
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-    document.documentElement.classList.toggle("body-debug", enabled);
-    return () => { document.documentElement.classList.remove("body-debug"); };
-  }, [enabled]);
-  const toggle = useCallback(() => {
-    setEnabled(prev => {
-      const next = !prev;
-      try { window.localStorage.setItem("body_debug", next ? "1" : "0"); } catch {}
-      return next;
-    });
-  }, []);
-  return { enabled, toggle };
-}
-
 export default function BodyScreen() {
   const {
     profile, updateField, userId, dataCompleteness,
@@ -142,123 +75,10 @@ export default function BodyScreen() {
   const [showProfile, setShowProfile] = useState(false);
   const [showVault, setShowVault] = useState(false);
 
-  // Respect prefers-reduced-motion across all decorative effects.
-  const reduceMotion = useReducedMotion();
-  const fadeIn = reduceMotion ? "" : "animate-fade-in";
-  const fadeInDelayed = (cls: string) => (reduceMotion ? "" : cls);
-  const press = reduceMotion ? "" : "active:scale-[0.985]";
-  const pressTight = reduceMotion ? "" : "active:scale-95";
-
-  // ─── Debug overlay (hit-area outlines + perf panel + audit) ───
-  const debug = useBodyDebug();
-  const rootRef = useRef<HTMLDivElement>(null);
-
   // Vault state
   const [documents, setDocuments] = useState<any[]>([]);
-  const [documentsLoading, setDocumentsLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
-
-  /**
-   * Shared reveal gate for Metrics, Profile, and Lab reports skeletons.
-   * We wait until ALL underlying queries (auth/userId + documents) have
-   * resolved AND a minimum reveal window has elapsed before flipping
-   * `sectionsReady` to true. This keeps section reveals synchronized so
-   * they don't pop in independently as each query resolves.
-   */
-  const [sectionsReady, setSectionsReady] = useState(false);
-  // Bump to force the shared skeleton gate to re-arm (used by "Retry scoring").
-  const [revealNonce, setRevealNonce] = useState(0);
-  // Timestamp of last retry tap, used for cooldown disable state.
-  const [lastRetryAt, setLastRetryAt] = useState(0);
-  const [, forceCooldownTick] = useState(0);
-  // While cooldown is active, drive a 250ms ticker so the disabled UI updates.
-  useEffect(() => {
-    if (!lastRetryAt) return;
-    const id = setInterval(() => forceCooldownTick(t => t + 1), 250);
-    return () => clearInterval(id);
-  }, [lastRetryAt]);
-  const cooldownRemainingMs = Math.max(0, RETRY_COOLDOWN_MS - (Date.now() - lastRetryAt));
-  const retryDisabled = cooldownRemainingMs > 0 || !sectionsReady;
-
-  // ─── In-flight request lifecycle ──────────────────────────────
-  // Single AbortController shared with the active fetchInsights call.
-  // We abort it on unmount and on each new retry so navigation away/back
-  // never produces stale state writes.
-  const insightsAbortRef = useRef<AbortController | null>(null);
-  const isMountedRef = useRef(true);
-  useEffect(() => {
-    isMountedRef.current = true;
-    return () => {
-      isMountedRef.current = false;
-      insightsAbortRef.current?.abort();
-      insightsAbortRef.current = null;
-    };
-  }, []);
-
-  // Mark when the skeleton phase started, so we can measure time-to-first-content.
-  const skeletonStartedAtRef = useRef<number>(performance.now());
-  useEffect(() => {
-    setSectionsReady(false);
-    skeletonStartedAtRef.current = performance.now();
-    try { performance.mark?.("body:sections-skeleton-start"); } catch {}
-    const minRevealMs = reduceMotion ? 0 : SKELETON_MIN_REVEAL_MS;
-    const t = setTimeout(() => {
-      if (!isMountedRef.current) return;
-      if (userId !== undefined && !documentsLoading) {
-        setSectionsReady(true);
-        const elapsed = Math.round(performance.now() - skeletonStartedAtRef.current);
-        // Instrument: time-to-first-content for the synchronized section reveal.
-        // eslint-disable-next-line no-console
-        console.info("[BodyScreen.metrics] sections.tfc", {
-          minRevealMs,
-          elapsedMs: elapsed,
-          sections: ["longevity", "metrics", "profile", "labs"],
-        });
-        try {
-          performance.mark?.("body:sections-ready");
-          // Per-section measures so the in-app perf panel can chart them.
-          for (const name of ["longevity", "metrics", "profile", "labs"]) {
-            performance.measure?.(
-              `body:tfc:${name}`,
-              "body:sections-skeleton-start",
-              "body:sections-ready",
-            );
-          }
-          performance.measure?.(
-            "body:sections-skeleton",
-            "body:sections-skeleton-start",
-            "body:sections-ready",
-          );
-        } catch { /* noop */ }
-      }
-    }, minRevealMs);
-    return () => clearTimeout(t);
-  }, [userId, documentsLoading, reduceMotion, revealNonce]);
-
-  /**
-   * "Retry scoring" — re-arms the shared skeleton gate (so the Longevity
-   * Score and the synchronized sections all show their loading state)
-   * and re-fetches AI insights. The skeleton stays visible until the new
-   * result is ready (gate flips back to true after `SKELETON_MIN_REVEAL_MS`
-   * once data settles).
-   */
-  const retryScoring = useCallback(() => {
-    // Cooldown guard — prevent rapid repeated recomputes while skeleton is active.
-    if (Date.now() - lastRetryAt < RETRY_COOLDOWN_MS) return;
-    setLastRetryAt(Date.now());
-    // Cancel any in-flight insights request so a fresh one wins.
-    insightsAbortRef.current?.abort();
-    insightsAbortRef.current = null;
-    setSectionsReady(false);
-    setRevealNonce(n => n + 1);
-    // Re-fetch AI insights in parallel — the score itself is derived from
-    // `profile` synchronously, so the recompute happens on next render.
-    if (userId) fetchInsightsRef.current?.();
-  }, [userId, lastRetryAt]);
-  // Forward-ref hack: fetchInsights is declared below. Wired via ref so we
-  // can reference it without re-ordering the entire file.
-  const fetchInsightsRef = useRef<(() => void) | null>(null);
 
   // Family history (RLS-protected `user_family_history` table)
   const { conditions: familyHistory, toggleCondition } = useFamilyHistory();
@@ -280,6 +100,12 @@ export default function BodyScreen() {
   }>({ direction: "flat", deltaYears: 0, deltaScore: 0, hasHistory: false });
 
   // AI Chat
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // ─── Fallback diagnosis (used until AI returns) ────────────
   // Substances now come from RLS-protected `user_substances` table.
@@ -296,8 +122,7 @@ export default function BodyScreen() {
 
   // ─── Load documents ────────────────────────────────────────
   useEffect(() => {
-    if (!userId) { setDocumentsLoading(false); return; }
-    setDocumentsLoading(true);
+    if (!userId) return;
     (async () => {
       const { data } = await supabase
         .from("medical_documents")
@@ -306,7 +131,6 @@ export default function BodyScreen() {
         .order("created_at", { ascending: false })
         .limit(5);
       if (data) setDocuments(data);
-      setDocumentsLoading(false);
     })();
   }, [userId]);
 
@@ -382,10 +206,6 @@ export default function BodyScreen() {
   // ─── Fetch AI insights ─────────────────────────────────────
   const fetchInsights = useCallback(async () => {
     if (!userId) return;
-    // Abort any prior call & arm a fresh controller.
-    insightsAbortRef.current?.abort();
-    const ac = new AbortController();
-    insightsAbortRef.current = ac;
     setInsightsLoading(true);
     setInsightsError(null);
     try {
@@ -404,9 +224,6 @@ export default function BodyScreen() {
         },
       });
 
-      // If we were aborted (unmount or new retry), discard this result.
-      if (ac.signal.aborted || !isMountedRef.current) return;
-
       if (error) {
         const msg = error.message || "Failed to generate insights";
         setInsightsError(msg);
@@ -420,16 +237,11 @@ export default function BodyScreen() {
         setInsightsError("Unexpected AI response");
       }
     } catch (e: any) {
-      if (ac.signal.aborted || !isMountedRef.current) return;
       setInsightsError(e?.message || "Network error");
     } finally {
-      if (isMountedRef.current && insightsAbortRef.current === ac) {
-        setInsightsLoading(false);
-        insightsAbortRef.current = null;
-      }
+      setInsightsLoading(false);
     }
   }, [userId, profile, longevityScore, biologicalAge, chronologicalAge, systemHealth, completions]);
-  useEffect(() => { fetchInsightsRef.current = fetchInsights; }, [fetchInsights]);
 
   // Auto-fetch insights once on mount when we have a user + meaningful data
   const insightsFetchedRef = useRef(false);
@@ -517,6 +329,72 @@ export default function BodyScreen() {
     void toggleCondition(condition);
   };
 
+  // ─── Chat ──────────────────────────────────────────────────
+  const sendChat = useCallback(async (text: string) => {
+    if (!text.trim() || chatLoading) return;
+    const userMsg = { role: "user" as const, content: text.trim() };
+    const allMessages = [...chatMessages, userMsg];
+    setChatMessages(allMessages);
+    setChatInput("");
+    setChatLoading(true);
+    setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+
+    const mainIssue = insights?.main_issue?.title ?? fallbackDiagnosis.title;
+    const systemPrompt = `You are an elite longevity medicine AI advisor. Patient: ${profile.full_name || "Unknown"}, ${profile.sex || "Unknown"}, age ~${chronologicalAge}.
+Longevity score: ${longevityScore}/100. Bio age: ${biologicalAge}.
+Top issue: ${mainIssue}.
+BP ${profile.bp_systolic}/${profile.bp_diastolic}, HRV ${profile.hrv_ms}, VO2 ${profile.vo2_max}.
+LDL ${profile.ldl}, ApoB ${profile.apob}, hsCRP ${profile.hscrp}.
+Glucose ${profile.fasting_glucose}, HbA1c ${profile.hba1c}.
+Be direct, specific, reference actual values. Markdown formatting.`;
+
+    try {
+      const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
+      const { data: { session } } = await supabase.auth.getSession();
+      const accessToken = session?.access_token;
+      if (!accessToken) throw new Error("Not signed in");
+
+      const resp = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+        },
+        body: JSON.stringify({ messages: allMessages, systemPrompt }),
+      });
+      if (!resp.ok) { toast.error("AI request failed"); setChatLoading(false); return; }
+      const reader = resp.body?.getReader(); if (!reader) throw new Error("No stream");
+      const decoder = new TextDecoder();
+      let assistantContent = ""; let buffer = "";
+      while (true) {
+        const { done, value } = await reader.read(); if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let nl: number;
+        while ((nl = buffer.indexOf("\n")) !== -1) {
+          let line = buffer.slice(0, nl); buffer = buffer.slice(nl + 1);
+          if (line.endsWith("\r")) line = line.slice(0, -1);
+          if (!line.startsWith("data: ")) continue;
+          const jsonStr = line.slice(6).trim(); if (jsonStr === "[DONE]") break;
+          try {
+            const parsed = JSON.parse(jsonStr);
+            const content = parsed.choices?.[0]?.delta?.content;
+            if (content) {
+              assistantContent += content;
+              setChatMessages(prev => {
+                const last = prev[prev.length - 1];
+                if (last?.role === "assistant") return prev.map((m, i) => i === prev.length - 1 ? { ...m, content: assistantContent } : m);
+                return [...prev, { role: "assistant", content: assistantContent }];
+              });
+              chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+            }
+          } catch {}
+        }
+      }
+    } catch { toast.error("Failed to reach AI advisor"); }
+    setChatLoading(false);
+  }, [chatMessages, chatLoading, profile, chronologicalAge, longevityScore, biologicalAge, insights, fallbackDiagnosis]);
+
   // ─── Derived ───────────────────────────────────────────────
   const overall = scoreLabel(longevityScore);
 
@@ -556,10 +434,10 @@ export default function BodyScreen() {
                              `Score ${trend.deltaScore >= 0 ? "+" : ""}${trend.deltaScore} pts over 30 days`;
 
   return (
-    <div ref={rootRef} className={`space-y-7 sm:space-y-8 safe-area-px safe-area-pt safe-area-pb ${fadeIn}`}>
+    <div className="space-y-7 sm:space-y-8 pb-28 animate-fade-in">
 
       {/* ══════════ 1. HERO ══════════ */}
-      <header className={`text-center space-y-2.5 sm:space-y-3 ${fadeInDelayed("animate-[fade-in_0.5s_ease-out]")}`}>
+      <header className="text-center pt-1 sm:pt-2 space-y-2.5 sm:space-y-3 animate-[fade-in_0.5s_ease-out]">
         <h1 className="text-[28px] leading-tight sm:text-4xl font-bold text-foreground tracking-tight">Your Body</h1>
         <div className="flex flex-col sm:flex-row items-center justify-center gap-1.5 sm:gap-2 px-4">
           <span className={`inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-full border ${trendMeta.tone}`}>
@@ -571,56 +449,19 @@ export default function BodyScreen() {
       </header>
 
       {/* ══════════ 2. LONGEVITY SCORE ══════════ */}
-      {!userId || !sectionsReady ? (
-        <section
-          className="flex flex-col items-center gap-3"
-          aria-busy="true"
-          aria-label="Computing your longevity score"
-        >
-          {/* Ring placeholder — matches ScoreRing footprint to prevent layout shift */}
-          <div className="sm:hidden">
-            <Skeleton className="rounded-full w-[184px] h-[184px]" />
-          </div>
-          <div className="hidden sm:block">
-            <Skeleton className="rounded-full w-[220px] h-[220px]" />
-          </div>
-          <div className="flex flex-col items-center gap-1.5">
-            <Skeleton className="h-4 w-24" />
-            <Skeleton className="h-2.5 w-40" />
-          </div>
-          <span className="sr-only">Loading longevity score</span>
-          {userId && (
-            <button
-              type="button"
-              onClick={retryScoring}
-              disabled={retryDisabled}
-              className={`mt-1 inline-flex items-center justify-center gap-1.5 min-h-[44px] min-w-[44px] px-4 py-2.5 rounded-full text-xs font-medium text-muted-foreground hover:text-foreground border border-border bg-card ${pressTight} transition-colors disabled:opacity-50 disabled:cursor-not-allowed`}
-              aria-label={cooldownRemainingMs > 0
-                ? `Retry available in ${Math.ceil(cooldownRemainingMs / 1000)} seconds`
-                : "Retry computing longevity score"}
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${cooldownRemainingMs > 0 || !sectionsReady ? "" : ""}`} />
-              {cooldownRemainingMs > 0
-                ? `Retry in ${Math.ceil(cooldownRemainingMs / 1000)}s`
-                : "Retry scoring"}
-            </button>
-          )}
-        </section>
-      ) : (
-        <section className={`flex flex-col items-center gap-3 ${fadeInDelayed("animate-[scale-in_0.4s_ease-out_0.1s_both] [will-change:transform]")}`}>
-          <div className="sm:hidden"><ScoreRing score={longevityScore} size={184} strokeWidth={12} /></div>
-          <div className="hidden sm:block"><ScoreRing score={longevityScore} size={220} strokeWidth={14} /></div>
-          <div className="text-center">
-            <p className={`text-base font-semibold ${overall.tone}`}>{overall.label}</p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">
-              Bio age <span className="text-foreground font-medium">{biologicalAge}</span> · Actual {chronologicalAge}
-            </p>
-          </div>
-        </section>
-      )}
+      <section className="flex flex-col items-center gap-3 animate-[scale-in_0.4s_ease-out_0.1s_both]">
+        <div className="sm:hidden"><ScoreRing score={longevityScore} size={184} strokeWidth={12} /></div>
+        <div className="hidden sm:block"><ScoreRing score={longevityScore} size={220} strokeWidth={14} /></div>
+        <div className="text-center">
+          <p className={`text-base font-semibold ${overall.tone}`}>{overall.label}</p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">
+            Bio age <span className="text-foreground font-medium">{biologicalAge}</span> · Actual {chronologicalAge}
+          </p>
+        </div>
+      </section>
 
       {/* ══════════ 3. BODY SYSTEMS ══════════ */}
-      <section className={`space-y-2.5 sm:space-y-3 ${fadeInDelayed("animate-[fade-in_0.5s_ease-out_0.2s_both]")}`}>
+      <section className="space-y-2.5 sm:space-y-3 animate-[fade-in_0.5s_ease-out_0.2s_both]">
         <div className="flex items-baseline justify-between px-1">
           <h2 className="text-sm font-semibold text-foreground">Body systems</h2>
           <span className="text-[10px] text-muted-foreground uppercase tracking-wider">0–100</span>
@@ -633,8 +474,8 @@ export default function BodyScreen() {
             return (
               <div
                 key={sys.id}
-                className={`bg-card border border-border rounded-xl p-3 sm:p-3.5 ${fadeInDelayed("animate-[fade-in_0.4s_ease-out_both]")}`}
-                style={reduceMotion ? undefined : { animationDelay: `${0.25 + i * 0.07}s` }}
+                className="bg-card border border-border rounded-xl p-3 sm:p-3.5 animate-[fade-in_0.4s_ease-out_both]"
+                style={{ animationDelay: `${0.25 + i * 0.07}s` }}
               >
                 <div className="flex items-center gap-3 mb-2">
                   <Icon className="w-4 h-4 text-muted-foreground shrink-0" />
@@ -655,7 +496,7 @@ export default function BodyScreen() {
 
       {/* ══════════ 4. MAIN ISSUE (AI) ══════════ */}
       {displayedIssue ? (
-        <section className={`bg-gradient-to-br from-rose-500/10 to-amber-500/5 border border-rose-500/20 rounded-2xl p-4 sm:p-5 space-y-2 ${fadeInDelayed("animate-[fade-in_0.5s_ease-out]")}`}>
+        <section className="bg-gradient-to-br from-rose-500/10 to-amber-500/5 border border-rose-500/20 rounded-2xl p-4 sm:p-5 space-y-2 animate-[fade-in_0.5s_ease-out]">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <AlertCircle className="w-4 h-4 text-rose-400" />
@@ -665,7 +506,7 @@ export default function BodyScreen() {
             <button
               onClick={fetchInsights}
               disabled={insightsLoading}
-              className="min-h-[44px] min-w-[44px] -m-2 p-2 flex items-center justify-center text-muted-foreground hover:text-foreground active:scale-95 disabled:opacity-50 transition-all"
+              className="text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors"
               aria-label="Refresh insights"
             >
               {insightsLoading
@@ -680,24 +521,15 @@ export default function BodyScreen() {
           )}
         </section>
       ) : insightsLoading ? (
-        // Skeleton — hints at the layout of the upcoming "Main issue" card
-        // so the transition feels instant when it arrives.
-        <section className="bg-card border border-border rounded-2xl p-4 sm:p-5 space-y-3 animate-[fade-in_0.3s_ease-out]">
-          <div className="flex items-center gap-2">
-            <div className="h-3 w-20 rounded-full bg-muted animate-pulse" />
-            <Loader2 className="w-3 h-3 text-primary animate-spin" />
-          </div>
-          <div className="h-5 w-3/4 rounded-md bg-muted animate-pulse" />
-          <div className="space-y-1.5">
-            <div className="h-2.5 w-full rounded-full bg-muted animate-pulse" />
-            <div className="h-2.5 w-5/6 rounded-full bg-muted animate-pulse" />
-          </div>
+        <section className="bg-card border border-border rounded-2xl p-5 flex items-center gap-3 animate-pulse">
+          <Loader2 className="w-4 h-4 text-primary animate-spin" />
+          <p className="text-xs text-muted-foreground">Analyzing your data with AI…</p>
         </section>
       ) : null}
 
       {/* ══════════ 5. ACTIONS ══════════ */}
       {displayedActions && displayedActions.length > 0 && (
-        <section className={`space-y-2.5 sm:space-y-3 ${fadeInDelayed("animate-[fade-in_0.5s_ease-out]")}`}>
+        <section className="space-y-2.5 sm:space-y-3 animate-[fade-in_0.5s_ease-out]">
           <div className="flex items-center justify-between px-1">
             <div className="flex items-center gap-2">
               <Zap className="w-3.5 h-3.5 text-primary" />
@@ -715,7 +547,7 @@ export default function BodyScreen() {
                 <button
                   key={fixKey}
                   onClick={() => toggleFixStatus(fix.action)}
-                  className={`w-full min-h-[64px] text-left bg-card border rounded-xl p-3 sm:p-3.5 flex items-start gap-3 transition-all duration-200 ease-out ${press} ${reduceMotion ? "" : "hover:-translate-y-px"} ${
+                  className={`w-full text-left bg-card border rounded-xl p-3 sm:p-3.5 flex items-start gap-3 transition-all active:scale-[0.99] ${
                     isDone     ? "border-emerald-500/30 bg-emerald-500/5"
                     : isStarted ? "border-primary/40 bg-primary/5"
                     :             "border-border hover:border-primary/30"
@@ -752,40 +584,17 @@ export default function BodyScreen() {
       <section>
         <button
           onClick={() => setShowMetrics(!showMetrics)}
-          className={`w-full min-h-[44px] flex items-center justify-between py-2.5 px-2 rounded-lg ${pressTight} active:bg-muted/40 transition-colors`}
-          aria-expanded={showMetrics}
+          className="w-full flex items-center justify-between py-2 px-1"
         >
           <div className="flex items-center gap-2">
             <Activity className="w-3.5 h-3.5 text-muted-foreground" />
             <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Your metrics</span>
           </div>
-          <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform duration-300 ease-out ${showMetrics ? "rotate-90" : ""}`} aria-hidden />
+          <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform ${showMetrics ? "rotate-90" : ""}`} />
         </button>
 
-        <div
-          className={`grid ${reduceMotion ? "" : "transition-[grid-template-rows,opacity] duration-300 ease-out"} ${
-            showMetrics ? "grid-rows-[1fr] opacity-100 mt-2" : "grid-rows-[0fr] opacity-0"
-          }`}
-        >
-          <div className="overflow-hidden">
-            {!sectionsReady ? (
-              <div
-                className="grid grid-cols-2 gap-2"
-                role="status"
-                aria-busy="true"
-                aria-live="polite"
-                aria-label="Loading your metrics"
-              >
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <div key={i} className="bg-card border border-border rounded-lg p-2.5 min-h-[72px] space-y-1.5">
-                    <Skeleton className="h-2.5 w-12" />
-                    <Skeleton className="h-4 w-16" />
-                  </div>
-                ))}
-                <span className="sr-only">Loading metrics</span>
-              </div>
-            ) : (
-            <div className="grid grid-cols-2 gap-2">
+        {showMetrics && (
+          <div className="grid grid-cols-2 gap-2 mt-2 animate-[fade-in_0.3s_ease-out]">
             {[
               { key: "weight_kg",        label: "Weight",   unit: "kg",  icon: User },
               { key: "resting_hr",       label: "Resting HR", unit: "bpm", icon: Heart },
@@ -797,83 +606,52 @@ export default function BodyScreen() {
               const Icon = m.icon;
               const val = (profile as any)[m.key];
               return (
-                <label key={m.key} className="bg-card border border-border rounded-lg p-2.5 min-h-[72px] flex flex-col justify-center transition-colors hover:border-primary/30 focus-within:border-primary/50 cursor-text">
+                <div key={m.key} className="bg-card border border-border rounded-lg p-2.5">
                   <div className="flex items-center gap-1.5 mb-1">
                     <Icon className="w-3 h-3 text-muted-foreground" />
                     <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{m.label}</span>
                   </div>
                   <input
                     type="number"
-                    inputMode="decimal"
                     value={val || ""}
                     onChange={(e) => updateField(m.key as any, parseFloat(e.target.value) || 0)}
-                    className="w-full text-base font-semibold tabular-nums bg-transparent text-foreground focus:outline-none min-h-[28px]"
+                    className="w-full text-base font-semibold tabular-nums bg-transparent text-foreground focus:outline-none"
                     placeholder="—"
                   />
                   {m.unit && <span className="text-[10px] text-muted-foreground">{m.unit}</span>}
-                </label>
+                </div>
               );
             })}
-            </div>
-            )}
           </div>
-        </div>
+        )}
       </section>
 
       {/* ══════════ Profile ══════════ */}
       <section>
         <button
           onClick={() => setShowProfile(!showProfile)}
-          className={`w-full min-h-[44px] flex items-center justify-between py-2.5 px-2 rounded-lg ${pressTight} active:bg-muted/40 transition-colors`}
-          aria-expanded={showProfile}
+          className="w-full flex items-center justify-between py-2 px-1"
         >
           <div className="flex items-center gap-2">
             <User className="w-3.5 h-3.5 text-muted-foreground" />
             <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Profile & history</span>
           </div>
-          <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform duration-300 ease-out ${showProfile ? "rotate-90" : ""}`} aria-hidden />
+          <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform ${showProfile ? "rotate-90" : ""}`} />
         </button>
 
-        <div
-          className={`grid ${reduceMotion ? "" : "transition-[grid-template-rows,opacity] duration-300 ease-out"} ${
-            showProfile ? "grid-rows-[1fr] opacity-100 mt-2" : "grid-rows-[0fr] opacity-0"
-          }`}
-        >
-          <div className="overflow-hidden">
-            {!sectionsReady ? (
-              <div
-                className="bg-card border border-border rounded-xl p-3.5 space-y-3"
-                role="status"
-                aria-busy="true"
-                aria-live="polite"
-                aria-label="Loading your profile and family history"
-              >
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="space-y-1.5"><Skeleton className="h-2.5 w-10" /><Skeleton className="h-8 w-full" /></div>
-                  <div className="space-y-1.5"><Skeleton className="h-2.5 w-10" /><Skeleton className="h-8 w-full" /></div>
-                </div>
-                <div className="space-y-1.5"><Skeleton className="h-2.5 w-24" />
-                  <div className="flex flex-wrap gap-1.5">
-                    {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-6 w-16 rounded-full" />)}
-                  </div>
-                </div>
-                <Skeleton className="h-2 w-full rounded-full" />
-                <span className="sr-only">Loading profile</span>
-              </div>
-            ) : (
-            <div className="bg-card border border-border rounded-xl p-3.5 space-y-3">
+        {showProfile && (
+          <div className="mt-2 bg-card border border-border rounded-xl p-3.5 space-y-3 animate-[fade-in_0.3s_ease-out]">
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="text-[10px] text-muted-foreground uppercase tracking-wider">Age</label>
                 <input
                   type="number"
-                  inputMode="numeric"
                   value={chronologicalAge || ""}
                   onChange={(e) => {
                     const age = parseInt(e.target.value) || 30;
                     updateField("date_of_birth", `${new Date().getFullYear() - age}-01-01`);
                   }}
-                  className="w-full text-sm font-mono bg-muted border border-border rounded-lg px-2 py-2.5 min-h-[44px] text-foreground focus:outline-none focus:border-primary mt-1"
+                  className="w-full text-sm font-mono bg-muted border border-border rounded-lg px-2 py-1.5 text-foreground focus:outline-none focus:border-primary mt-1"
                 />
               </div>
               <div>
@@ -881,7 +659,7 @@ export default function BodyScreen() {
                 <select
                   value={profile.sex || ""}
                   onChange={(e) => updateField("sex", e.target.value)}
-                  className="w-full text-sm bg-muted border border-border rounded-lg px-2 py-2.5 min-h-[44px] text-foreground focus:outline-none focus:border-primary mt-1"
+                  className="w-full text-sm bg-muted border border-border rounded-lg px-2 py-1.5 text-foreground focus:outline-none focus:border-primary mt-1"
                 >
                   <option value="">—</option>
                   <option value="Male">Male</option>
@@ -895,12 +673,12 @@ export default function BodyScreen() {
                 <Dna className="w-3 h-3 text-muted-foreground" />
                 <label className="text-[10px] text-muted-foreground uppercase tracking-wider">Family history</label>
               </div>
-              <div className="flex flex-wrap gap-1.5">
+              <div className="flex flex-wrap gap-1">
                 {FAMILY_CONDITIONS.map(c => (
                   <button
                     key={c}
                     onClick={() => toggleFamilyCondition(c)}
-                    className={`text-xs min-h-[44px] px-3.5 py-2 rounded-full border transition-all duration-200 ${pressTight} ${
+                    className={`text-[10px] px-2 py-0.5 rounded-full border transition-all ${
                       familyHistory.includes(c)
                         ? "bg-primary/10 border-primary/30 text-primary font-medium"
                         : "bg-muted border-border text-muted-foreground"
@@ -916,21 +694,18 @@ export default function BodyScreen() {
                 <span className="text-xs font-bold text-primary tabular-nums">{dataCompleteness}%</span>
               </div>
               <div className="w-full h-1 rounded-full bg-muted">
-                <div className="h-full rounded-full bg-primary transition-[width] duration-700 ease-out" style={{ width: `${dataCompleteness}%` }} />
+                <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${dataCompleteness}%` }} />
               </div>
             </div>
-            </div>
-            )}
           </div>
-        </div>
+        )}
       </section>
 
       {/* ══════════ Vault ══════════ */}
       <section>
         <button
           onClick={() => setShowVault(!showVault)}
-          className={`w-full min-h-[44px] flex items-center justify-between py-2.5 px-2 rounded-lg ${pressTight} active:bg-muted/40 transition-colors`}
-          aria-expanded={showVault}
+          className="w-full flex items-center justify-between py-2 px-1"
         >
           <div className="flex items-center gap-2">
             <FileText className="w-3.5 h-3.5 text-muted-foreground" />
@@ -938,19 +713,13 @@ export default function BodyScreen() {
               Lab reports {documents.length > 0 && `· ${documents.length}`}
             </span>
           </div>
-          <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform duration-300 ease-out ${showVault ? "rotate-90" : ""}`} aria-hidden />
+          <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform ${showVault ? "rotate-90" : ""}`} />
         </button>
 
-        <div
-          className={`grid ${reduceMotion ? "" : "transition-[grid-template-rows,opacity] duration-300 ease-out"} ${
-            showVault ? "grid-rows-[1fr] opacity-100 mt-2" : "grid-rows-[0fr] opacity-0"
-          }`}
-        >
-          <div className="overflow-hidden space-y-2">
+        {showVault && (
+          <div className="mt-2 space-y-2 animate-[fade-in_0.3s_ease-out]">
             <div
-              role="button"
-              tabIndex={0}
-              className={`border-2 border-dashed rounded-xl p-5 min-h-[88px] text-center transition-all duration-200 cursor-pointer ${press} ${dragOver && !reduceMotion ? "border-primary bg-primary/5 scale-[1.01]" : dragOver ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
+              className={`border-2 border-dashed rounded-xl p-5 text-center transition-colors cursor-pointer ${dragOver ? "border-primary bg-primary/5" : "border-border"}`}
               onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
               onDragLeave={() => setDragOver(false)}
               onDrop={(e) => { e.preventDefault(); setDragOver(false); handleFileUpload(e.dataTransfer.files); }}
@@ -972,59 +741,105 @@ export default function BodyScreen() {
               )}
             </div>
 
-            {!sectionsReady && (
-              <div
-                className="space-y-2"
-                role="status"
-                aria-busy="true"
-                aria-live="polite"
-                aria-label="Loading your lab reports"
-              >
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <div key={i} className="bg-card border border-border rounded-lg p-2.5 min-h-[52px] flex items-center gap-2">
-                    <Skeleton className="w-4 h-4 rounded" />
-                    <div className="flex-1 space-y-1.5">
-                      <Skeleton className="h-3 w-2/3" />
-                      <Skeleton className="h-2 w-1/3" />
-                    </div>
-                    <Skeleton className="h-4 w-12 rounded-full" />
-                  </div>
-                ))}
-                <span className="sr-only">Loading lab reports</span>
-              </div>
-            )}
-            {sectionsReady && documents.map(doc => (
-              <div key={doc.id} className="bg-card border border-border rounded-lg p-2.5 min-h-[52px] flex items-center gap-2 transition-colors hover:border-primary/30">
+            {documents.map(doc => (
+              <div key={doc.id} className="bg-card border border-border rounded-lg p-2.5 flex items-center gap-2">
                 <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-medium text-foreground truncate">{doc.file_name}</p>
                   <p className="text-[10px] text-muted-foreground">{new Date(doc.created_at).toLocaleDateString()}</p>
                 </div>
-                <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${doc.status === "reviewed" ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
+                <span className={`text-[9px] font-medium px-1.5 py-0.5 rounded-full ${doc.status === "reviewed" ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
                   {doc.status === "reviewed" ? "Analyzed" : "New"}
                 </span>
               </div>
             ))}
           </div>
-        </div>
+        )}
       </section>
 
-      {/* ══════════ Debug overlay ══════════ */}
-      {/* Floating toggle: appears bottom-right above the bottom nav. Hidden in production
-          unless the user has explicitly enabled debug mode (`?debug=1` or localStorage). */}
-      {debug.enabled && (
-        <BodyDebugOverlay containerRef={rootRef} onClose={debug.toggle} />
-      )}
-      <button
-        type="button"
-        onClick={debug.toggle}
-        className={`fixed right-3 bottom-24 z-[55] min-h-[44px] min-w-[44px] w-11 h-11 rounded-full border border-border bg-card/90 backdrop-blur shadow-md flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors ${debug.enabled ? "ring-2 ring-primary text-primary" : ""}`}
-        aria-label={debug.enabled ? "Disable Body screen debug overlay" : "Enable Body screen debug overlay"}
-        aria-pressed={debug.enabled}
-      >
-        <Crosshair className="w-4 h-4" />
-      </button>
+      {/* ══════════ AI Advisor Chat ══════════ */}
+      <section>
+        <button
+          onClick={() => { setChatOpen(!chatOpen); setTimeout(() => inputRef.current?.focus(), 100); }}
+          className="w-full bg-gradient-to-r from-primary/10 to-primary/5 border border-primary/20 rounded-xl p-3 flex items-center gap-3 hover:border-primary/40 active:scale-[0.99] transition-all"
+        >
+          <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
+            <Bot className="w-4 h-4 text-primary" />
+          </div>
+          <div className="flex-1 text-left">
+            <p className="text-sm font-semibold text-foreground">Ask your AI advisor</p>
+            <p className="text-[10px] text-muted-foreground">About your labs, risks, or plan</p>
+          </div>
+          <MessageCircle className={`w-4 h-4 transition-transform ${chatOpen ? "text-primary" : "text-muted-foreground"}`} />
+        </button>
 
+        {chatOpen && (
+          <div className="mt-2 bg-card border border-border rounded-xl overflow-hidden animate-[fade-in_0.3s_ease-out]">
+            <div className="h-72 overflow-y-auto p-3 space-y-3">
+              {chatMessages.length === 0 && (
+                <div className="text-center py-8">
+                  <Bot className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
+                  <p className="text-xs text-muted-foreground">Ask about your health data</p>
+                  <div className="flex flex-wrap gap-1.5 justify-center mt-3">
+                    {["What are my biggest risks?", "Explain my LDL", "Best supplements for me?"].map(q => (
+                      <button
+                        key={q}
+                        onClick={() => { setChatInput(q); setTimeout(() => sendChat(q), 50); }}
+                        className="text-[10px] px-2 py-1 rounded-full bg-muted border border-border text-muted-foreground hover:border-primary/30 hover:text-primary transition-colors"
+                      >{q}</button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {chatMessages.map((msg, i) => (
+                <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                  <div className={`max-w-[85%] rounded-xl px-3 py-2 text-xs ${
+                    msg.role === "user" ? "bg-primary text-primary-foreground rounded-br-sm" : "bg-muted text-foreground rounded-bl-sm"
+                  }`}>
+                    {msg.role === "assistant" ? (
+                      <div className="prose prose-xs prose-invert max-w-none [&_p]:m-0 [&_ul]:my-1 [&_li]:my-0.5 [&_strong]:text-primary">
+                        <ReactMarkdown>{msg.content || "..."}</ReactMarkdown>
+                      </div>
+                    ) : msg.content}
+                  </div>
+                </div>
+              ))}
+              {chatLoading && chatMessages[chatMessages.length - 1]?.role !== "assistant" && (
+                <div className="flex justify-start">
+                  <div className="bg-muted rounded-xl px-3 py-2 rounded-bl-sm">
+                    <div className="flex gap-1">
+                      <div className="w-1.5 h-1.5 bg-muted-foreground/40 rounded-full animate-bounce" />
+                      <div className="w-1.5 h-1.5 bg-muted-foreground/40 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                      <div className="w-1.5 h-1.5 bg-muted-foreground/40 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div ref={chatEndRef} />
+            </div>
+
+            <div className="border-t border-border p-2 flex gap-2">
+              <input
+                ref={inputRef}
+                type="text"
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && chatInput.trim()) { e.preventDefault(); sendChat(chatInput); } }}
+                placeholder="Ask about your health..."
+                className="flex-1 text-xs bg-muted border border-border rounded-lg px-3 py-2 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary"
+                disabled={chatLoading}
+              />
+              <button
+                onClick={() => chatInput.trim() && sendChat(chatInput)}
+                disabled={chatLoading || !chatInput.trim()}
+                className="w-8 h-8 rounded-lg bg-primary text-primary-foreground flex items-center justify-center disabled:opacity-40 transition-opacity"
+              >
+                <Send className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
+      </section>
     </div>
   );
 }
