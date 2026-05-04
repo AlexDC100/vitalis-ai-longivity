@@ -50,6 +50,183 @@ export type Database = {
         }
         Relationships: []
       }
+      clinic_case_events: {
+        Row: {
+          actor_email: string | null
+          actor_name: string | null
+          case_id: string
+          created_at: string
+          event_type: string
+          from_status: string | null
+          id: string
+          metadata: Json
+          note: string | null
+          to_status: string | null
+          user_id: string
+        }
+        Insert: {
+          actor_email?: string | null
+          actor_name?: string | null
+          case_id: string
+          created_at?: string
+          event_type: string
+          from_status?: string | null
+          id?: string
+          metadata?: Json
+          note?: string | null
+          to_status?: string | null
+          user_id: string
+        }
+        Update: {
+          actor_email?: string | null
+          actor_name?: string | null
+          case_id?: string
+          created_at?: string
+          event_type?: string
+          from_status?: string | null
+          id?: string
+          metadata?: Json
+          note?: string | null
+          to_status?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      clinic_cases: {
+        Row: {
+          assigned_doctor: string | null
+          case_ref: string | null
+          case_type: string
+          confidence: number | null
+          created_at: string
+          detected_category: string | null
+          explanation: string | null
+          file_name: string
+          file_path: string | null
+          id: string
+          insight: string | null
+          key_findings: Json | null
+          last_regenerated_at: string | null
+          mime_type: string | null
+          missing_info: string | null
+          priority: string
+          raw_ai: Json | null
+          recommendation: string | null
+          reviewed_at: string | null
+          reviewed_by_email: string | null
+          reviewed_by_name: string | null
+          reviewed_by_user_id: string | null
+          status: string
+          suggested_specialist: string | null
+          suspected_area: string | null
+          updated_at: string
+          urgency_label: string | null
+          user_id: string
+        }
+        Insert: {
+          assigned_doctor?: string | null
+          case_ref?: string | null
+          case_type?: string
+          confidence?: number | null
+          created_at?: string
+          detected_category?: string | null
+          explanation?: string | null
+          file_name: string
+          file_path?: string | null
+          id?: string
+          insight?: string | null
+          key_findings?: Json | null
+          last_regenerated_at?: string | null
+          mime_type?: string | null
+          missing_info?: string | null
+          priority?: string
+          raw_ai?: Json | null
+          recommendation?: string | null
+          reviewed_at?: string | null
+          reviewed_by_email?: string | null
+          reviewed_by_name?: string | null
+          reviewed_by_user_id?: string | null
+          status?: string
+          suggested_specialist?: string | null
+          suspected_area?: string | null
+          updated_at?: string
+          urgency_label?: string | null
+          user_id: string
+        }
+        Update: {
+          assigned_doctor?: string | null
+          case_ref?: string | null
+          case_type?: string
+          confidence?: number | null
+          created_at?: string
+          detected_category?: string | null
+          explanation?: string | null
+          file_name?: string
+          file_path?: string | null
+          id?: string
+          insight?: string | null
+          key_findings?: Json | null
+          last_regenerated_at?: string | null
+          mime_type?: string | null
+          missing_info?: string | null
+          priority?: string
+          raw_ai?: Json | null
+          recommendation?: string | null
+          reviewed_at?: string | null
+          reviewed_by_email?: string | null
+          reviewed_by_name?: string | null
+          reviewed_by_user_id?: string | null
+          status?: string
+          suggested_specialist?: string | null
+          suspected_area?: string | null
+          updated_at?: string
+          urgency_label?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      clinic_notifications: {
+        Row: {
+          body: string | null
+          case_id: string | null
+          case_ref: string | null
+          created_at: string
+          delivered_email: boolean
+          delivered_in_app: boolean
+          id: string
+          priority: string
+          read_at: string | null
+          title: string
+          user_id: string
+        }
+        Insert: {
+          body?: string | null
+          case_id?: string | null
+          case_ref?: string | null
+          created_at?: string
+          delivered_email?: boolean
+          delivered_in_app?: boolean
+          id?: string
+          priority: string
+          read_at?: string | null
+          title: string
+          user_id: string
+        }
+        Update: {
+          body?: string | null
+          case_id?: string | null
+          case_ref?: string | null
+          created_at?: string
+          delivered_email?: boolean
+          delivered_in_app?: boolean
+          id?: string
+          priority?: string
+          read_at?: string | null
+          title?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       consultation_requests: {
         Row: {
           created_at: string
@@ -313,6 +490,7 @@ export type Database = {
           medicine_stack: Json | null
           provider: string | null
           recommendations: Json | null
+          reviewed_at: string | null
           status: string
           updated_at: string
           user_id: string
@@ -327,6 +505,7 @@ export type Database = {
           medicine_stack?: Json | null
           provider?: string | null
           recommendations?: Json | null
+          reviewed_at?: string | null
           status?: string
           updated_at?: string
           user_id: string
@@ -341,9 +520,37 @@ export type Database = {
           medicine_stack?: Json | null
           provider?: string | null
           recommendations?: Json | null
+          reviewed_at?: string | null
           status?: string
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      share_token_lookups: {
+        Row: {
+          created_at: string
+          id: string
+          ip: string | null
+          outcome: string
+          token_prefix: string
+          user_agent: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          ip?: string | null
+          outcome: string
+          token_prefix: string
+          user_agent?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          ip?: string | null
+          outcome?: string
+          token_prefix?: string
+          user_agent?: string | null
         }
         Relationships: []
       }
@@ -469,7 +676,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_shared_report: {
+        Args: { _token: string }
+        Returns: {
+          expires_at: string
+          html: string
+          title: string
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never

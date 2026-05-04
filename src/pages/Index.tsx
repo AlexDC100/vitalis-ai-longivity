@@ -35,7 +35,7 @@ function AppShell() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const prevScreenRef = useRef<Screen>(screen);
 
-  const screenOrder: Screen[] = ["diagnosis", "body", "doctor"];
+  const screenOrder: Screen[] = ["doctor", "body", "diagnosis"];
 
   // Sensitive client-side keys that must be wiped on sign-out so the next
   // user on a shared device cannot see the previous user's medical data.
@@ -178,9 +178,9 @@ function AppShell() {
   }
 
   const navItems: { id: Screen; label: string; icon: React.ElementType }[] = [
-    { id: "diagnosis", label: "Diagnosis", icon: AlertTriangle },
-    { id: "body", label: "Body", icon: User },
     { id: "doctor", label: "AI Doctor", icon: Stethoscope },
+    { id: "body", label: "Body", icon: User },
+    { id: "diagnosis", label: "Diagnosis", icon: AlertTriangle },
   ];
 
   const animClass = slideDir === "left" ? "animate-slide-left" : "animate-slide-right";
