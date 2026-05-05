@@ -267,6 +267,8 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
   const navItems = [
     { label: "Product", href: "#product" },
     { label: "How it works", href: "#how" },
+    { label: "Mobile", href: "#mobile" },
+    { label: "Devices", href: "#devices" },
     { label: "Pricing", href: "#pricing" },
   ];
 
