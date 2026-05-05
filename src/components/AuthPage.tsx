@@ -45,7 +45,6 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
   const [howStep, setHowStep] = useState(0);
   const [securityOpen, setSecurityOpen] = useState(false);
   const [billing, setBilling] = useState<"monthly" | "annual">("monthly");
-  const [expandedAudience, setExpandedAudience] = useState<string | null>("Individuals");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [activeSection, setActiveSection] = useState<string>(() => {
