@@ -760,34 +760,6 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
           </div>
         </section>
 
-        {/* SECURITY */}
-        <section id="security" className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 py-20 lg:py-24">
-          <div className="auth-glass rounded-3xl p-8 sm:p-12 ring-1 ring-border/50">
-            <div className="grid lg:grid-cols-3 gap-8 lg:gap-12">
-              <div>
-                <span className="text-[11px] font-semibold tracking-[0.18em] text-primary uppercase">Security & privacy</span>
-                <h2 className="mt-3 text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
-                  Built to clinical-grade standards
-                </h2>
-                <p className="mt-4 text-sm text-muted-foreground leading-relaxed">
-                  Your medical data deserves more than consumer-app security.  Longevity AI is engineered for institutional trust.
-                </p>
-              </div>
-              <div className="lg:col-span-2 grid sm:grid-cols-3 gap-4">
-                {securityPoints.map((s) => (
-                  <div key={s.title} className="p-4 rounded-2xl bg-secondary/40 ring-1 ring-border/50">
-                    <div className="w-9 h-9 rounded-xl bg-primary/10 ring-1 ring-primary/25 flex items-center justify-center">
-                      <s.icon className="w-4.5 h-4.5 text-primary" />
-                    </div>
-                    <h3 className="mt-3 text-sm font-semibold text-foreground">{s.title}</h3>
-                    <p className="mt-1 text-xs text-muted-foreground leading-relaxed">{s.desc}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </section>
-
         {/* CTA */}
         <section className="relative max-w-5xl mx-auto px-5 sm:px-6 lg:px-10 py-24 sm:py-32 text-center border-t border-border/40">
           <h2 className="text-4xl sm:text-5xl font-semibold tracking-tight leading-tight text-foreground">
