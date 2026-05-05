@@ -341,7 +341,7 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
 
   const annualDiscount = 0.2; // 20% off annual
   const formatPrice = (monthly: number) => {
-    if (monthly === 0) return { price: "$0", cadence: billing === "annual" ? "7 days" : "7 days", note: "" };
+    if (monthly === 0) return { price: "Free", cadence: "", note: "7-day trial · no card required" };
     if (billing === "monthly") {
       return { price: `$${monthly}`, cadence: "/ month", note: "Billed monthly" };
     }
