@@ -3,12 +3,15 @@ import { Button } from "@/components/ui/button";
 import { track } from "@/lib/analytics";
 import AuthDialog from "@/components/AuthDialog";
 import brandLogo from "@/assets/longevity-ai-logo.png";
+import { toast } from "sonner";
+import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import {
   Activity,
@@ -17,11 +20,13 @@ import {
   Check,
   ChevronRight,
   ChevronDown,
+  Download,
   FileText,
   Hospital,
   Lock,
   Menu,
   PlayCircle,
+  Shield,
   ShieldCheck,
   Sparkles,
   Stethoscope,
@@ -30,8 +35,10 @@ import {
   User,
   Users,
   Watch,
+  Heart,
   X,
   Zap,
+  Loader2,
 } from "lucide-react";
 
 interface Props {
