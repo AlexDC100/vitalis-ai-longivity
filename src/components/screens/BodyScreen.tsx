@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 import ScoreRing from "@/components/ScoreRing";
 import { runDiagnosis, getAllSystemScores } from "@/lib/diagnosis-engine";
+import ConnectDevices from "@/components/ConnectDevices";
 
 const FAMILY_CONDITIONS = [
   "Heart Disease", "Diabetes", "Cancer", "Alzheimer's", "Stroke",
