@@ -3,12 +3,15 @@ import { Button } from "@/components/ui/button";
 import { track } from "@/lib/analytics";
 import AuthDialog from "@/components/AuthDialog";
 import brandLogo from "@/assets/longevity-ai-logo.png";
+import { toast } from "sonner";
+import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import {
   Activity,
@@ -17,11 +20,13 @@ import {
   Check,
   ChevronRight,
   ChevronDown,
+  Download,
   FileText,
   Hospital,
   Lock,
   Menu,
   PlayCircle,
+  Shield,
   ShieldCheck,
   Sparkles,
   Stethoscope,
@@ -30,8 +35,10 @@ import {
   User,
   Users,
   Watch,
+  Heart,
   X,
   Zap,
+  Loader2,
 } from "lucide-react";
 
 interface Props {
@@ -262,6 +269,157 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
   const openAuth = (mode: "sign_in" | "sign_up") => {
     setAuthMode(mode);
     setAuthOpen(true);
+  };
+
+  // ---- Devices onboarding (landing) ----
+  type LandingDevice = { id: string; name: string; tagline: string; accent: string; Icon: typeof Watch };
+  const landingDevices: LandingDevice[] = [
+    { id: "apple_watch", name: "Apple Watch", tagline: "Heart · ECG · Activity",     accent: "from-zinc-200 to-zinc-400",   Icon: Watch },
+    { id: "whoop",       name: "WHOOP",       tagline: "Recovery · Strain · Sleep", accent: "from-amber-300 to-rose-400",  Icon: Activity },
+    { id: "oura",        name: "Oura Ring",   tagline: "Sleep · Readiness",          accent: "from-violet-300 to-violet-500", Icon: Heart },
+    { id: "garmin",      name: "Garmin",      tagline: "VO₂ · Training load",        accent: "from-sky-300 to-sky-500",      Icon: Activity },
+  ];
+
+  const CONSENT_KEY = "vitalis_devices_consent_v1";
+  const SHARE_KEY = "vitalis_devices_share_ai_v1";
+  const CONNECTED_KEY = "vitalis_devices_connected_v1";
+
+  const [landingConnected, setLandingConnected] = useState<Record<string, boolean>>({});
+  const [landingPending, setLandingPending] = useState<string | null>(null);
+  const [landingConsentGiven, setLandingConsentGiven] = useState(false);
+  const [landingShareAI, setLandingShareAI] = useState(true);
+  const [landingConsentOpen, setLandingConsentOpen] = useState(false);
+  const [landingPendingDevice, setLandingPendingDevice] = useState<LandingDevice | null>(null);
+
+  useEffect(() => {
+    try {
+      setLandingConsentGiven(localStorage.getItem(CONSENT_KEY) === "true");
+      setLandingShareAI(localStorage.getItem(SHARE_KEY) !== "false");
+      const raw = localStorage.getItem(CONNECTED_KEY);
+      if (raw) setLandingConnected(JSON.parse(raw));
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => {
+    try { localStorage.setItem(CONNECTED_KEY, JSON.stringify(landingConnected)); } catch {}
+  }, [landingConnected]);
+
+  const persistLandingShare = (v: boolean) => {
+    setLandingShareAI(v);
+    try { localStorage.setItem(SHARE_KEY, String(v)); } catch {}
+    toast.success(v ? "AI can use your device data" : "AI access paused", {
+      description: v
+        ? "Recovery, sleep and HRV will inform your AI answers."
+        : "Your AI Doctor will not read device data until you re-enable.",
+    });
+  };
+
+  const startLandingPair = (d: LandingDevice) => {
+    setLandingPending(d.id);
+    setTimeout(() => {
+      setLandingConnected((p) => ({ ...p, [d.id]: true }));
+      setLandingPending(null);
+      toast.success(`${d.name} connected`, { description: "Syncing health data securely." });
+    }, 900);
+  };
+
+  const acceptLandingConsent = () => {
+    try { localStorage.setItem(CONSENT_KEY, "true"); } catch {}
+    setLandingConsentGiven(true);
+    setLandingConsentOpen(false);
+    if (landingPendingDevice) startLandingPair(landingPendingDevice);
+    setLandingPendingDevice(null);
+  };
+
+  const toggleLandingDevice = (d: LandingDevice) => {
+    if (landingConnected[d.id]) {
+      setLandingConnected((p) => ({ ...p, [d.id]: false }));
+      toast.success(`${d.name} disconnected`);
+      return;
+    }
+    if (!landingConsentGiven) {
+      setLandingPendingDevice(d);
+      setLandingConsentOpen(true);
+      return;
+    }
+    startLandingPair(d);
+  };
+
+  // ---- iPhone mock interactive chat ----
+  type ChatMsg = { id: number; role: "user" | "ai"; text: string; quickReplies?: string[]; report?: boolean };
+  const initialChat: ChatMsg[] = [
+    { id: 1, role: "user", text: "My HRV dropped to 38ms last night. Should I rest today?" },
+    { id: 2, role: "ai",   text: "Yes — your HRV is 24% below your 30-day baseline and recovery is 52%. A light mobility day will serve you better than training hard." },
+    { id: 3, role: "ai",   text: "Want me to draft a recovery plan you can download?", quickReplies: ["Yes, draft it", "Show data"] },
+  ];
+  const [chatMessages, setChatMessages] = useState<ChatMsg[]>(initialChat);
+  const [chatTyping, setChatTyping] = useState(false);
+  const [reportReady, setReportReady] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const chatScrollRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+    }
+  }, [chatMessages, chatTyping]);
+
+  const handleQuickReply = (msgId: number, reply: string) => {
+    // remove quickReplies from clicked message + push user reply
+    setChatMessages((prev) => {
+      const cleaned = prev.map((m) => (m.id === msgId ? { ...m, quickReplies: undefined } : m));
+      return [...cleaned, { id: Date.now(), role: "user", text: reply }];
+    });
+    setChatTyping(true);
+
+    setTimeout(() => {
+      setChatTyping(false);
+      if (reply === "Yes, draft it") {
+        setChatMessages((prev) => [
+          ...prev,
+          {
+            id: Date.now() + 1,
+            role: "ai",
+            text: "Done — a 24h recovery plan with sleep, nutrition and gentle movement is ready.",
+            report: true,
+          },
+        ]);
+        setReportReady(true);
+      } else {
+        setChatMessages((prev) => [
+          ...prev,
+          {
+            id: Date.now() + 1,
+            role: "ai",
+            text: "HRV 38ms (baseline 50). Recovery 52%. Sleep 6h12m (-1h vs avg). RHR +6 bpm.",
+            quickReplies: ["Draft recovery plan"],
+          },
+        ]);
+      }
+    }, 900);
+  };
+
+  const handleDownloadDemo = () => {
+    setDownloading(true);
+    const md = `# Vitalis — Recovery Plan (Demo)\n\nGenerated: ${new Date().toLocaleString()}\n\n## Snapshot\n- HRV: 38 ms (24% below 30-day baseline)\n- Recovery: 52%\n- Sleep: 6h12m\n- Resting HR: +6 bpm vs avg\n\n## Recommendation\nLight mobility day. Avoid high-intensity training.\n\n## 24h Plan\n- Morning: 10 min mobility + sunlight exposure\n- Hydration: 2.5–3 L water + electrolytes\n- Nutrition: protein-forward meals, reduce alcohol & late caffeine\n- Evening: device-free 60 min before bed, target 8h sleep\n\n---\n*AI-assisted summary only. Not a medical diagnosis.*\n`;
+    setTimeout(() => {
+      const blob = new Blob([md], { type: "text/markdown" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "vitalis-recovery-plan.md";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setDownloading(false);
+      toast.success("Report downloaded", { description: "Sign up to generate full clinical reports." });
+    }, 600);
+  };
+
+  const resetChatDemo = () => {
+    setChatMessages(initialChat);
+    setReportReady(false);
   };
 
   const navItems = [
@@ -721,20 +879,61 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
                     </div>
                   </div>
                   {/* Chat */}
-                  <div className="flex-1 overflow-hidden px-4 py-3 space-y-2.5">
-                    <div className="max-w-[80%] ml-auto bg-primary text-primary-foreground text-[11px] rounded-2xl rounded-tr-sm px-3 py-2 leading-snug">
-                      My HRV dropped to 38ms last night. Should I rest today?
-                    </div>
-                    <div className="max-w-[85%] bg-secondary/70 text-foreground text-[11px] rounded-2xl rounded-tl-sm px-3 py-2 leading-snug">
-                      Yes — your HRV is 24% below your 30‑day baseline and recovery is 52%. A light mobility day will serve you better than training hard.
-                    </div>
-                    <div className="max-w-[85%] bg-secondary/70 text-foreground text-[11px] rounded-2xl rounded-tl-sm px-3 py-2 leading-snug">
-                      Want me to draft a recovery plan you can download?
-                    </div>
-                    <div className="flex gap-1.5 pt-1">
-                      <span className="text-[9.5px] px-2 py-1 rounded-full bg-primary/15 text-primary border border-primary/30">Yes, draft it</span>
-                      <span className="text-[9.5px] px-2 py-1 rounded-full bg-secondary/70 text-foreground/80 border border-border/50">Show data</span>
-                    </div>
+                  <div ref={chatScrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-2.5 scrollbar-none">
+                    {chatMessages.map((m) => (
+                      <div key={m.id} className="space-y-1.5">
+                        <div
+                          className={
+                            m.role === "user"
+                              ? "max-w-[80%] ml-auto bg-primary text-primary-foreground text-[11px] rounded-2xl rounded-tr-sm px-3 py-2 leading-snug animate-[fade-in_0.25s_ease-out]"
+                              : "max-w-[85%] bg-secondary/70 text-foreground text-[11px] rounded-2xl rounded-tl-sm px-3 py-2 leading-snug animate-[fade-in_0.25s_ease-out]"
+                          }
+                        >
+                          {m.text}
+                        </div>
+                        {m.report && (
+                          <button
+                            type="button"
+                            onClick={handleDownloadDemo}
+                            disabled={downloading}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary/15 text-primary border border-primary/30 text-[9.5px] font-semibold hover:bg-primary/25 transition active:scale-[0.97] disabled:opacity-60"
+                          >
+                            {downloading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+                            {downloading ? "Preparing…" : "Download report"}
+                          </button>
+                        )}
+                        {m.quickReplies && (
+                          <div className="flex flex-wrap gap-1.5 pt-0.5">
+                            {m.quickReplies.map((qr) => (
+                              <button
+                                key={qr}
+                                type="button"
+                                onClick={() => handleQuickReply(m.id, qr)}
+                                className="text-[9.5px] px-2 py-1 rounded-full bg-secondary/70 text-foreground/90 border border-border/60 hover:border-primary/40 hover:text-primary hover:bg-primary/5 transition active:scale-[0.97]"
+                              >
+                                {qr}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    {chatTyping && (
+                      <div className="max-w-[40%] bg-secondary/70 rounded-2xl rounded-tl-sm px-3 py-2 inline-flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-foreground/50 animate-pulse" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-foreground/50 animate-pulse [animation-delay:120ms]" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-foreground/50 animate-pulse [animation-delay:240ms]" />
+                      </div>
+                    )}
+                    {reportReady && (
+                      <button
+                        type="button"
+                        onClick={resetChatDemo}
+                        className="block mx-auto text-[9px] text-muted-foreground/80 hover:text-foreground underline underline-offset-2 pt-1"
+                      >
+                        Reset demo
+                      </button>
+                    )}
                   </div>
                   {/* Input */}
                   <div className="px-4 pb-5">
@@ -766,39 +965,69 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
             </p>
           </div>
 
+          {/* Privacy / AI access toggle */}
+          <div className="max-w-2xl mx-auto mb-8 flex items-center gap-3 auth-glass border border-border/60 rounded-2xl p-3.5">
+            <div className="w-10 h-10 rounded-xl bg-primary/10 ring-1 ring-primary/25 flex items-center justify-center shrink-0">
+              <Shield className="w-4.5 h-4.5 text-primary" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[13px] font-semibold text-foreground">Use my device data with AI</p>
+              <p className="text-[11.5px] text-muted-foreground leading-snug">
+                {landingShareAI
+                  ? "AI can reference your recovery, sleep & HRV when answering."
+                  : "AI cannot read device data until you re-enable."}
+              </p>
+            </div>
+            <Switch checked={landingShareAI} onCheckedChange={persistLandingShare} aria-label="Share device data with AI" />
+          </div>
+
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 max-w-5xl mx-auto">
-            {[
-              { name: "Apple Watch", tagline: "Heart · ECG · Activity", accent: "from-zinc-200 to-zinc-400" },
-              { name: "WHOOP",       tagline: "Recovery · Strain · Sleep", accent: "from-amber-300 to-rose-400" },
-              { name: "Oura Ring",   tagline: "Sleep · Readiness", accent: "from-violet-300 to-violet-500" },
-              { name: "Garmin",      tagline: "VO₂ · Training load", accent: "from-sky-300 to-sky-500" },
-            ].map((d) => (
-              <div
-                key={d.name}
-                className="group relative overflow-hidden auth-glass rounded-2xl p-5 ring-1 ring-border/50 hover:ring-primary/40 transition-all"
-              >
-                <div
-                  aria-hidden
-                  className={`pointer-events-none absolute -top-10 -right-10 w-32 h-32 rounded-full bg-gradient-to-br ${d.accent} opacity-[0.10] blur-2xl group-hover:opacity-25 transition-opacity`}
-                />
-                <div className="relative flex items-center justify-between mb-4">
-                  <div className="w-10 h-10 rounded-xl bg-secondary/60 ring-1 ring-border/60 flex items-center justify-center text-foreground">
-                    <Watch className="w-4.5 h-4.5" />
+            {landingDevices.map((d) => {
+              const isOn = !!landingConnected[d.id];
+              const isPending = landingPending === d.id;
+              const Icon = d.Icon;
+              return (
+                <button
+                  key={d.id}
+                  type="button"
+                  onClick={() => toggleLandingDevice(d)}
+                  disabled={isPending}
+                  aria-pressed={isOn}
+                  className={`group relative overflow-hidden text-left auth-glass rounded-2xl p-5 ring-1 transition-all active:scale-[0.985] ${
+                    isOn ? "ring-primary/50 shadow-[0_8px_30px_-12px_hsl(var(--primary)/0.45)]" : "ring-border/50 hover:ring-primary/40"
+                  }`}
+                >
+                  <div
+                    aria-hidden
+                    className={`pointer-events-none absolute -top-10 -right-10 w-32 h-32 rounded-full bg-gradient-to-br ${d.accent} blur-2xl transition-opacity ${
+                      isOn ? "opacity-30" : "opacity-[0.10] group-hover:opacity-25"
+                    }`}
+                  />
+                  <div className="relative flex items-center justify-between mb-4">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ring-1 ${
+                      isOn ? "bg-primary/15 ring-primary/30 text-primary" : "bg-secondary/60 ring-border/60 text-foreground"
+                    }`}>
+                      <Icon className="w-[18px] h-[18px]" />
+                    </div>
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors ${
+                      isOn ? "bg-primary text-primary-foreground" : "bg-primary/10 ring-1 ring-primary/25 text-primary"
+                    }`}>
+                      {isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : isOn ? <Check className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                    </div>
                   </div>
-                  <div className="w-7 h-7 rounded-full bg-primary/15 ring-1 ring-primary/30 flex items-center justify-center text-primary">
-                    <Check className="w-3.5 h-3.5" />
+                  <div className="relative">
+                    <div className="text-[14px] font-semibold text-foreground">{d.name}</div>
+                    <div className="text-[11.5px] text-muted-foreground mt-1">{d.tagline}</div>
                   </div>
-                </div>
-                <div className="relative">
-                  <div className="text-[14px] font-semibold text-foreground">{d.name}</div>
-                  <div className="text-[11.5px] text-muted-foreground mt-1">{d.tagline}</div>
-                </div>
-                <div className="relative mt-4 inline-flex items-center gap-1 text-[10px] uppercase tracking-wider font-semibold text-primary">
-                  Connect
-                  <ChevronRight className="w-3 h-3" />
-                </div>
-              </div>
-            ))}
+                  <div className={`relative mt-4 inline-flex items-center gap-1 text-[10px] uppercase tracking-wider font-semibold ${
+                    isOn ? "text-primary" : "text-foreground/70 group-hover:text-primary"
+                  }`}>
+                    {isPending ? "Pairing…" : isOn ? "Connected" : "Connect"}
+                    {!isPending && <ChevronRight className="w-3 h-3" />}
+                  </div>
+                </button>
+              );
+            })}
           </div>
 
           <div className="mt-10 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-[11px] text-muted-foreground">
@@ -1058,6 +1287,34 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* DEVICE CONSENT DIALOG */}
+      <Dialog open={landingConsentOpen} onOpenChange={setLandingConsentOpen}>
+        <DialogContent className="max-w-md auth-glass border-border/60">
+          <DialogHeader>
+            <div className="w-10 h-10 rounded-xl bg-primary/10 ring-1 ring-primary/25 flex items-center justify-center mb-2">
+              <Shield className="w-5 h-5 text-primary" />
+            </div>
+            <DialogTitle>Connect {landingPendingDevice?.name ?? "your device"}</DialogTitle>
+            <DialogDescription className="leading-relaxed">
+              We'll read health metrics (heart rate, sleep, recovery, activity) over an encrypted
+              connection. Data stays in your private account. Disconnect or revoke AI access anytime.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 text-[12px] text-muted-foreground">
+            <p className="flex items-start gap-2"><Check className="w-3.5 h-3.5 mt-0.5 text-primary shrink-0" /> End-to-end encrypted in transit and at rest.</p>
+            <p className="flex items-start gap-2"><Check className="w-3.5 h-3.5 mt-0.5 text-primary shrink-0" /> Never sold, never shared with third parties.</p>
+            <p className="flex items-start gap-2"><Check className="w-3.5 h-3.5 mt-0.5 text-primary shrink-0" /> AI access is opt-in and can be paused with one tap.</p>
+            <p className="flex items-start gap-2"><Lock className="w-3.5 h-3.5 mt-0.5 text-primary shrink-0" /> Educational only — not a medical diagnosis.</p>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-2 mt-2">
+            <Button variant="ghost" onClick={() => { setLandingConsentOpen(false); setLandingPendingDevice(null); }}>
+              Cancel
+            </Button>
+            <Button onClick={acceptLandingConsent}>I agree — continue</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
