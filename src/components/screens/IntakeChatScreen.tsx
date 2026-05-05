@@ -209,10 +209,7 @@ export default function IntakeChatScreen({ onComplete }: { onComplete: () => voi
       {/* Header */}
       <div className="px-6 pt-8 pb-4 border-b border-border/30">
         <div className="flex items-center gap-2 mb-5">
-          <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center">
-            <Activity className="w-3 h-3 text-primary" />
-          </div>
-          <span className="text-sm font-bold text-foreground tracking-tight">Longevity AI</span>
+          <Logo size={20} />
           <span className="ml-auto text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
             Step {sectionIdx + 1} / {SECTIONS.length}
           </span>
