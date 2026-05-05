@@ -43,7 +43,6 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
   const [authMode, setAuthMode] = useState<"sign_in" | "sign_up">("sign_in");
   const [howOpen, setHowOpen] = useState(false);
   const [howStep, setHowStep] = useState(0);
-  const [securityOpen, setSecurityOpen] = useState(false);
   const [billing, setBilling] = useState<"monthly" | "annual">("monthly");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
@@ -156,7 +155,7 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
 
   // Scroll-spy: highlight the nav link of the section currently in view
   useEffect(() => {
-    const ids = ["product", "how", "pricing", "audiences", "security"];
+    const ids = ["product", "how", "pricing", "audiences"];
     const sections = ids
       .map((id) => document.getElementById(id))
       .filter((el): el is HTMLElement => !!el);
@@ -269,7 +268,6 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
     { label: "Product", href: "#product" },
     { label: "How it works", href: "#how" },
     { label: "Pricing", href: "#pricing" },
-    { label: "Security", href: "#security" },
   ];
 
   const steps = [
@@ -377,12 +375,6 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
       ],
       highlight: true,
     },
-  ];
-
-  const securityPoints = [
-    { icon: Lock, title: "Encrypted end-to-end", desc: "AES-256 at rest, TLS 1.3 in transit." },
-    { icon: ShieldCheck, title: "Private by design", desc: "Your data is never sold or used to train public models." },
-    { icon: FileText, title: "Medical disclaimer", desc: "Decision support — not a substitute for professional diagnosis." },
   ];
 
   return (
@@ -768,34 +760,6 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
           </div>
         </section>
 
-        {/* SECURITY */}
-        <section id="security" className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 py-20 lg:py-24">
-          <div className="auth-glass rounded-3xl p-8 sm:p-12 ring-1 ring-border/50">
-            <div className="grid lg:grid-cols-3 gap-8 lg:gap-12">
-              <div>
-                <span className="text-[11px] font-semibold tracking-[0.18em] text-primary uppercase">Security & privacy</span>
-                <h2 className="mt-3 text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
-                  Built to clinical-grade standards
-                </h2>
-                <p className="mt-4 text-sm text-muted-foreground leading-relaxed">
-                  Your medical data deserves more than consumer-app security.  Longevity AI is engineered for institutional trust.
-                </p>
-              </div>
-              <div className="lg:col-span-2 grid sm:grid-cols-3 gap-4">
-                {securityPoints.map((s) => (
-                  <div key={s.title} className="p-4 rounded-2xl bg-secondary/40 ring-1 ring-border/50">
-                    <div className="w-9 h-9 rounded-xl bg-primary/10 ring-1 ring-primary/25 flex items-center justify-center">
-                      <s.icon className="w-4.5 h-4.5 text-primary" />
-                    </div>
-                    <h3 className="mt-3 text-sm font-semibold text-foreground">{s.title}</h3>
-                    <p className="mt-1 text-xs text-muted-foreground leading-relaxed">{s.desc}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </section>
-
         {/* CTA */}
         <section className="relative max-w-5xl mx-auto px-5 sm:px-6 lg:px-10 py-24 sm:py-32 text-center border-t border-border/40">
           <h2 className="text-4xl sm:text-5xl font-semibold tracking-tight leading-tight text-foreground">
@@ -844,26 +808,6 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
               </div>
             </div>
             <div className="flex flex-col sm:items-end gap-2">
-              <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1.5 text-[12px] font-medium">
-                <button
-                  onClick={() => setSecurityOpen(true)}
-                  className="text-foreground/80 hover:text-primary transition-colors"
-                >
-                  Security & privacy
-                </button>
-                <button
-                  onClick={() => setSecurityOpen(true)}
-                  className="text-foreground/80 hover:text-primary transition-colors"
-                >
-                  Data retention
-                </button>
-                <button
-                  onClick={() => setSecurityOpen(true)}
-                  className="text-foreground/80 hover:text-primary transition-colors"
-                >
-                  Medical disclaimer
-                </button>
-              </div>
               <p className="text-[11px] text-muted-foreground max-w-md text-center sm:text-right">
                 Decision support tool — not a substitute for professional medical advice.
               </p>
@@ -961,63 +905,6 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
         </DialogContent>
       </Dialog>
 
-      {/* SECURITY & PRIVACY MODAL */}
-      <Dialog open={securityOpen} onOpenChange={setSecurityOpen}>
-        <DialogContent className="max-w-2xl auth-glass border-border/60 max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <div className="w-10 h-10 rounded-xl bg-primary/15 ring-1 ring-primary/30 flex items-center justify-center mb-2">
-              <ShieldCheck className="w-5 h-5 text-primary" />
-            </div>
-            <DialogTitle className="text-xl font-semibold tracking-tight">Security, privacy & disclaimers</DialogTitle>
-            <DialogDescription className="text-xs text-muted-foreground">
-              How Longevity AI protects your medical data and the limits of its clinical role.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="mt-2 space-y-5">
-            <div className="p-4 rounded-2xl bg-secondary/40 ring-1 ring-border/50">
-              <div className="flex items-center gap-2">
-                <Lock className="w-4 h-4 text-primary" />
-                <h4 className="text-sm font-semibold text-foreground">Encryption</h4>
-              </div>
-              <ul className="mt-2 space-y-1.5 text-xs text-muted-foreground leading-relaxed">
-                <li>• <span className="text-foreground/90">AES-256</span> encryption at rest for all medical documents and biomarker records.</li>
-                <li>• <span className="text-foreground/90">TLS 1.3</span> in transit between your device, Longevity AI, and our AI inference layer.</li>
-                <li>• Per-user encryption keys; row-level security enforced at the database level.</li>
-              </ul>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-secondary/40 ring-1 ring-border/50">
-              <div className="flex items-center gap-2">
-                <FileText className="w-4 h-4 text-primary" />
-                <h4 className="text-sm font-semibold text-foreground">Data retention</h4>
-              </div>
-              <ul className="mt-2 space-y-1.5 text-xs text-muted-foreground leading-relaxed">
-                <li>• Documents and biomarkers are retained while your account is active.</li>
-                <li>• Account deletion permanently removes all personal data within <span className="text-foreground/90">30 days</span>.</li>
-                <li>• Backups are encrypted and rotated on a <span className="text-foreground/90">90-day</span> cycle.</li>
-                <li>• Your data is <span className="text-foreground/90">never</span> sold or used to train public AI models.</li>
-              </ul>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-[hsl(var(--vitalis-warning)/0.08)] ring-1 ring-[hsl(var(--vitalis-warning)/0.3)]">
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-[hsl(var(--vitalis-warning))]" />
-                <h4 className="text-sm font-semibold text-foreground">Medical disclaimer</h4>
-              </div>
-              <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
-                 Longevity AI is a <span className="text-foreground/90">decision-support tool</span>. It does not provide a medical
-                diagnosis, prescription, or treatment. Always consult a licensed clinician before making changes to your
-                medication, supplements, or care plan. In an emergency, contact your local emergency services immediately.
-              </p>
-            </div>
-
-            <p className="text-[11px] text-muted-foreground text-center pt-1">
-              Questions about compliance? Contact <span className="text-foreground/90">privacy@vitalis.health</span>
-            </p>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
