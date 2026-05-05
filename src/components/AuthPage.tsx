@@ -909,32 +909,43 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
         </section>
 
         {/* FOOTER */}
-        <footer className="relative border-t border-border/40 bg-background/40 backdrop-blur-xl">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 py-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-lg bg-primary/15 ring-1 ring-primary/30 flex items-center justify-center">
-                <TrendingUp className="w-3.5 h-3.5 text-primary" />
+        <footer className="relative border-t border-border/60 bg-card/95 backdrop-blur-xl">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 py-10 flex flex-col sm:flex-row items-center justify-between gap-5">
+            <div className="flex items-center gap-3">
+              <img
+                src={brandLogo}
+                alt=""
+                width={32}
+                height={32}
+                loading="lazy"
+                className="w-8 h-8 object-contain drop-shadow-[0_0_10px_hsl(var(--primary)/0.35)]"
+              />
+              <div className="flex flex-col">
+                <span className="text-sm font-semibold text-foreground leading-tight">
+                  Longevity <span className="text-primary">AI</span>
+                </span>
+                <span className="text-[11px] text-muted-foreground leading-tight">
+                  © {new Date().getFullYear()} · AI health intelligence
+                </span>
               </div>
-              <span className="text-sm font-semibold text-foreground">Longevity AI</span>
-              <span className="text-xs text-muted-foreground ml-2">© {new Date().getFullYear()} · AI health intelligence</span>
             </div>
             <div className="flex flex-col sm:items-end gap-2">
-              <div className="flex items-center gap-4 text-[11px] font-medium">
+              <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1.5 text-[12px] font-medium">
                 <button
                   onClick={() => setSecurityOpen(true)}
-                  className="text-muted-foreground hover:text-foreground transition-colors"
+                  className="text-foreground/80 hover:text-primary transition-colors"
                 >
                   Security & privacy
                 </button>
                 <button
                   onClick={() => setSecurityOpen(true)}
-                  className="text-muted-foreground hover:text-foreground transition-colors"
+                  className="text-foreground/80 hover:text-primary transition-colors"
                 >
                   Data retention
                 </button>
                 <button
                   onClick={() => setSecurityOpen(true)}
-                  className="text-muted-foreground hover:text-foreground transition-colors"
+                  className="text-foreground/80 hover:text-primary transition-colors"
                 >
                   Medical disclaimer
                 </button>
