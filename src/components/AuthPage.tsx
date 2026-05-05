@@ -808,26 +808,6 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
               </div>
             </div>
             <div className="flex flex-col sm:items-end gap-2">
-              <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1.5 text-[12px] font-medium">
-                <button
-                  onClick={() => setSecurityOpen(true)}
-                  className="text-foreground/80 hover:text-primary transition-colors"
-                >
-                  Security & privacy
-                </button>
-                <button
-                  onClick={() => setSecurityOpen(true)}
-                  className="text-foreground/80 hover:text-primary transition-colors"
-                >
-                  Data retention
-                </button>
-                <button
-                  onClick={() => setSecurityOpen(true)}
-                  className="text-foreground/80 hover:text-primary transition-colors"
-                >
-                  Medical disclaimer
-                </button>
-              </div>
               <p className="text-[11px] text-muted-foreground max-w-md text-center sm:text-right">
                 Decision support tool — not a substitute for professional medical advice.
               </p>
@@ -925,63 +905,6 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
         </DialogContent>
       </Dialog>
 
-      {/* SECURITY & PRIVACY MODAL */}
-      <Dialog open={securityOpen} onOpenChange={setSecurityOpen}>
-        <DialogContent className="max-w-2xl auth-glass border-border/60 max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <div className="w-10 h-10 rounded-xl bg-primary/15 ring-1 ring-primary/30 flex items-center justify-center mb-2">
-              <ShieldCheck className="w-5 h-5 text-primary" />
-            </div>
-            <DialogTitle className="text-xl font-semibold tracking-tight">Security, privacy & disclaimers</DialogTitle>
-            <DialogDescription className="text-xs text-muted-foreground">
-              How Longevity AI protects your medical data and the limits of its clinical role.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="mt-2 space-y-5">
-            <div className="p-4 rounded-2xl bg-secondary/40 ring-1 ring-border/50">
-              <div className="flex items-center gap-2">
-                <Lock className="w-4 h-4 text-primary" />
-                <h4 className="text-sm font-semibold text-foreground">Encryption</h4>
-              </div>
-              <ul className="mt-2 space-y-1.5 text-xs text-muted-foreground leading-relaxed">
-                <li>• <span className="text-foreground/90">AES-256</span> encryption at rest for all medical documents and biomarker records.</li>
-                <li>• <span className="text-foreground/90">TLS 1.3</span> in transit between your device, Longevity AI, and our AI inference layer.</li>
-                <li>• Per-user encryption keys; row-level security enforced at the database level.</li>
-              </ul>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-secondary/40 ring-1 ring-border/50">
-              <div className="flex items-center gap-2">
-                <FileText className="w-4 h-4 text-primary" />
-                <h4 className="text-sm font-semibold text-foreground">Data retention</h4>
-              </div>
-              <ul className="mt-2 space-y-1.5 text-xs text-muted-foreground leading-relaxed">
-                <li>• Documents and biomarkers are retained while your account is active.</li>
-                <li>• Account deletion permanently removes all personal data within <span className="text-foreground/90">30 days</span>.</li>
-                <li>• Backups are encrypted and rotated on a <span className="text-foreground/90">90-day</span> cycle.</li>
-                <li>• Your data is <span className="text-foreground/90">never</span> sold or used to train public AI models.</li>
-              </ul>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-[hsl(var(--vitalis-warning)/0.08)] ring-1 ring-[hsl(var(--vitalis-warning)/0.3)]">
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-[hsl(var(--vitalis-warning))]" />
-                <h4 className="text-sm font-semibold text-foreground">Medical disclaimer</h4>
-              </div>
-              <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
-                 Longevity AI is a <span className="text-foreground/90">decision-support tool</span>. It does not provide a medical
-                diagnosis, prescription, or treatment. Always consult a licensed clinician before making changes to your
-                medication, supplements, or care plan. In an emergency, contact your local emergency services immediately.
-              </p>
-            </div>
-
-            <p className="text-[11px] text-muted-foreground text-center pt-1">
-              Questions about compliance? Contact <span className="text-foreground/90">privacy@vitalis.health</span>
-            </p>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
