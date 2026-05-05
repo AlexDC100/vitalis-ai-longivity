@@ -3,7 +3,7 @@ import { useHealth } from "@/lib/health-context";
 import { runDiagnosis } from "@/lib/diagnosis-engine";
 import { supabase } from "@/integrations/supabase/client";
 import { useSubstances } from "@/lib/use-substances";
-import { Send, Mic, Bot, User, Upload, Loader2, ExternalLink, MapPin, Paperclip, AlertTriangle, ShieldCheck, Activity, Siren, CalendarCheck, Trash2, FileText } from "lucide-react";
+import { Send, Mic, Bot, User, Upload, Loader2, ExternalLink, MapPin, Paperclip, AlertTriangle, ShieldCheck, Activity, Siren, CalendarCheck, Trash2, FileText, Download } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -484,6 +484,56 @@ ${diagnosisSummary}`;
     sendMessage("Based on my data, what type of specialist should I see, and how soon? Be specific and practical.");
   };
 
+  // Listen for cross-screen "ask AI" events (e.g. from connected device insights).
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { question?: string } | undefined;
+      if (detail?.question) sendMessage(detail.question);
+    };
+    window.addEventListener("vitalis:ask-ai", handler as EventListener);
+    return () => window.removeEventListener("vitalis:ask-ai", handler as EventListener);
+  }, [sendMessage]);
+
+  // Download a single AI answer as a structured Markdown report.
+  const downloadAnswerAsMarkdown = useCallback((msg: ChatMsg) => {
+    const idx = messages.findIndex(m => m.id === msg.id);
+    const prevUser = idx >= 0
+      ? [...messages.slice(0, idx)].reverse().find(m => m.role === "user")
+      : undefined;
+    const ts = new Date();
+    const stamp = ts.toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    const title = (prevUser?.content || "AI Doctor answer").slice(0, 80);
+    const md = [
+      `# Vitalis AI — Report`,
+      ``,
+      `**Generated:** ${ts.toLocaleString()}`,
+      `**Patient:** ${profile.full_name || "—"}`,
+      ``,
+      `## Question`,
+      ``,
+      prevUser?.content || "_(no prior question — direct response)_",
+      ``,
+      `## AI Response`,
+      ``,
+      stripTags(msg.content),
+      ``,
+      `---`,
+      ``,
+      `_Educational summary only — not a substitute for medical advice. Final diagnosis must be confirmed by a licensed clinician._`,
+      ``,
+    ].join("\n");
+    const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `vitalis-report-${stamp}.md`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast({ title: "Report downloaded", description: "Saved as a Markdown file." });
+  }, [messages, profile.full_name, toast]);
+
   // Drag & drop — accept files dropped anywhere on the chat surface.
   const processDroppedFile = useCallback(async (file: File) => {
     if (!file || !userId) return;
@@ -731,6 +781,18 @@ ${diagnosisSummary}`;
                     <p className="text-[13px] leading-relaxed">{cleanContent}</p>
                   )}
                 </div>
+                {msg.role === "assistant" && cleanContent && !isStreaming && (
+                  <div className="flex items-center gap-2 mt-1.5 px-1">
+                    <button
+                      onClick={() => downloadAnswerAsMarkdown(msg)}
+                      className="inline-flex items-center gap-1 text-[10.5px] text-muted-foreground hover:text-primary transition-colors"
+                      title="Download this answer as a Markdown report"
+                    >
+                      <Download className="w-3 h-3" />
+                      Download report
+                    </button>
+                  </div>
+                )}
               </div>
               {msg.role === "user" && (
                 <div className="w-7 h-7 rounded-lg bg-secondary flex items-center justify-center shrink-0 mt-1">
