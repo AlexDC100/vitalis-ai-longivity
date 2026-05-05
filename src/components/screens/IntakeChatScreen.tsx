@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Activity, Send, Sparkles, Check, ChevronRight } from "lucide-react";
+import { Send, Sparkles, Check, ChevronRight } from "lucide-react";
+import Logo from "@/components/Logo";
 import { supabase } from "@/integrations/supabase/client";
 import { useHealth } from "@/lib/health-context";
 import type { HealthProfile } from "@/lib/types";

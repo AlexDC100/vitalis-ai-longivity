@@ -14,6 +14,7 @@ import {
   ArrowLeft,
 } from "lucide-react";
 import { track } from "@/lib/analytics";
+import Logo from "@/components/Logo";
 
 export default function ResetPassword() {
   const navigate = useNavigate();
