@@ -632,13 +632,12 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
         </section>
 
         {/* HOW IT WORKS */}
-        <section id="how" className="relative max-w-7xl mx-auto px-5 sm:px-6 lg:px-10 py-14 sm:py-20 lg:py-24">
-          <div className="text-center max-w-2xl mx-auto mb-10 sm:mb-14">
-            <span className="text-[11px] font-semibold tracking-[0.18em] text-primary uppercase">How Longevity AI works</span>
-            <h2 className="mt-3 text-[1.75rem] leading-tight sm:text-4xl font-bold tracking-tight text-foreground">
-              From raw data to a clear plan
+        <section id="how" className="relative max-w-6xl mx-auto px-5 sm:px-6 lg:px-10 py-20 sm:py-28 lg:py-32 border-t border-border/40">
+          <div className="text-center max-w-2xl mx-auto mb-14">
+            <h2 className="text-4xl sm:text-5xl font-semibold tracking-tight leading-tight text-foreground">
+              From raw data to a <span className="text-muted-foreground">clear plan.</span>
             </h2>
-            <p className="mt-3 sm:mt-4 text-[15px] sm:text-base text-muted-foreground">
+            <p className="mt-5 text-base sm:text-lg text-muted-foreground font-light">
               Four steps. Built on clinical evidence and your actual biology.
             </p>
           </div>
@@ -663,89 +662,42 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
         </section>
 
         {/* AUDIENCES */}
-        <section id="audiences" className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 py-20 lg:py-24">
+        <section id="audiences" className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-10 py-20 sm:py-28 lg:py-32 border-t border-border/40">
           <div className="text-center max-w-2xl mx-auto mb-14">
-            <span className="text-[11px] font-semibold tracking-[0.18em] text-primary uppercase">Built for</span>
-            <h2 className="mt-3 text-3xl sm:text-4xl font-bold tracking-tight text-foreground">
-              Trusted across healthcare
+            <h2 className="text-4xl sm:text-5xl font-semibold tracking-tight leading-tight text-foreground">
+              Built for <span className="text-muted-foreground">healthcare.</span>
             </h2>
-            <p className="mt-4 text-base text-muted-foreground">
-              From individual longevity to enterprise occupational health programs.
+            <p className="mt-5 text-base sm:text-lg text-muted-foreground font-light">
+              From individuals to multi-site hospital networks.
             </p>
           </div>
 
-          <div className="grid gap-3 max-w-4xl mx-auto">
-            {audiences.map((a) => {
-              const isOpen = expandedAudience === a.title;
-              return (
-                <button
-                  key={a.title}
-                  onClick={() => setExpandedAudience(isOpen ? null : a.title)}
-                  className={`text-left auth-glass rounded-2xl ring-1 transition-all overflow-hidden ${
-                    isOpen ? "ring-primary/40 bg-primary/5" : "ring-border/50 hover:ring-primary/30"
-                  }`}
-                >
-                  <div className="flex items-center gap-4 p-5">
-                    <div className="w-10 h-10 rounded-xl bg-primary/10 ring-1 ring-primary/25 flex items-center justify-center shrink-0">
-                      <a.icon className="w-5 h-5 text-primary" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-base font-semibold text-foreground">{a.title}</h3>
-                      <p className="text-xs text-muted-foreground mt-0.5">{a.desc}</p>
-                    </div>
-                    <ChevronDown
-                      className={`w-4 h-4 text-muted-foreground shrink-0 transition-transform duration-300 ${
-                        isOpen ? "rotate-180 text-primary" : ""
-                      }`}
-                    />
+          <div className="grid sm:grid-cols-2 gap-4">
+            {audiences.map((a) => (
+              <div
+                key={a.title}
+                className="auth-glass rounded-2xl ring-1 ring-border/50 hover:ring-primary/30 transition-all p-6"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-primary/10 ring-1 ring-primary/25 flex items-center justify-center shrink-0">
+                    <a.icon className="w-5 h-5 text-primary" />
                   </div>
-                  <div
-                    className={`grid transition-all duration-300 ease-out ${
-                      isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
-                    }`}
-                  >
-                    <div className="overflow-hidden">
-                      <div className="px-5 pb-5 pt-1 border-t border-border/40 grid sm:grid-cols-2 gap-4">
-                        <div>
-                          <span className="text-[10px] font-semibold tracking-[0.16em] text-primary uppercase">
-                            Outcomes
-                          </span>
-                          <ul className="mt-2 space-y-2">
-                            {a.outcomes.map((o) => (
-                              <li key={o} className="flex items-start gap-2 text-xs text-foreground/85 leading-relaxed">
-                                <Check className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
-                                <span>{o}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                        <div>
-                          <span className="text-[10px] font-semibold tracking-[0.16em] text-primary uppercase">
-                            Compliance
-                          </span>
-                          <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
-                            <ShieldCheck className="w-3.5 h-3.5 text-primary inline mr-1.5 -mt-0.5" />
-                            {a.compliance}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
+                  <h3 className="text-base font-semibold text-foreground">{a.title}</h3>
+                </div>
+                <p className="mt-3 text-sm text-muted-foreground leading-relaxed">{a.desc}</p>
+              </div>
+            ))}
           </div>
         </section>
 
         {/* PRICING */}
-        <section id="pricing" className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 py-20 lg:py-24">
+        <section id="pricing" className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-10 py-20 sm:py-28 lg:py-32 border-t border-border/40">
           <div className="text-center max-w-2xl mx-auto mb-14">
-            <span className="text-[11px] font-semibold tracking-[0.18em] text-primary uppercase">Pricing</span>
-            <h2 className="mt-3 text-3xl sm:text-4xl font-bold tracking-tight text-foreground">
-              Simple, transparent plans
+            <h2 className="text-4xl sm:text-5xl font-semibold tracking-tight leading-tight text-foreground">
+              Simple, <span className="text-muted-foreground">transparent.</span>
             </h2>
-            <p className="mt-4 text-base text-muted-foreground">
-              Start free. Upgrade when your team is ready.
+            <p className="mt-5 text-base sm:text-lg text-muted-foreground font-light">
+              Start free. Upgrade when you're ready.
             </p>
 
             {/* Billing toggle */}
