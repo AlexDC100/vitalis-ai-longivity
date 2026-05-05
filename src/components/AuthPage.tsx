@@ -43,7 +43,6 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
   const [authMode, setAuthMode] = useState<"sign_in" | "sign_up">("sign_in");
   const [howOpen, setHowOpen] = useState(false);
   const [howStep, setHowStep] = useState(0);
-  const [securityOpen, setSecurityOpen] = useState(false);
   const [billing, setBilling] = useState<"monthly" | "annual">("monthly");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
@@ -156,7 +155,7 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
 
   // Scroll-spy: highlight the nav link of the section currently in view
   useEffect(() => {
-    const ids = ["product", "how", "pricing", "audiences", "security"];
+    const ids = ["product", "how", "pricing", "audiences"];
     const sections = ids
       .map((id) => document.getElementById(id))
       .filter((el): el is HTMLElement => !!el);
@@ -269,7 +268,6 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
     { label: "Product", href: "#product" },
     { label: "How it works", href: "#how" },
     { label: "Pricing", href: "#pricing" },
-    { label: "Security", href: "#security" },
   ];
 
   const steps = [
@@ -377,12 +375,6 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
       ],
       highlight: true,
     },
-  ];
-
-  const securityPoints = [
-    { icon: Lock, title: "Encrypted end-to-end", desc: "AES-256 at rest, TLS 1.3 in transit." },
-    { icon: ShieldCheck, title: "Private by design", desc: "Your data is never sold or used to train public models." },
-    { icon: FileText, title: "Medical disclaimer", desc: "Decision support — not a substitute for professional diagnosis." },
   ];
 
   return (
