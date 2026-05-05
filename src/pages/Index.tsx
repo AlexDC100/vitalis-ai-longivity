@@ -201,7 +201,7 @@ function AppShell() {
       />
       {/* Top Bar */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border/30">
-        <span className="text-base font-bold text-foreground tracking-tight">Vitalis</span>
+        <span className="text-base font-bold text-foreground tracking-tight">Longevity AI</span>
         <div className="flex items-center gap-1">
           <button
             onClick={() => setPaletteOpen(true)}

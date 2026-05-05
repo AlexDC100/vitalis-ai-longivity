@@ -154,7 +154,7 @@ export default function ResetPassword() {
           <div className="w-10 h-10 rounded-xl bg-primary/15 ring-1 ring-primary/30 flex items-center justify-center">
             <TrendingUp className="w-5 h-5 text-primary" />
           </div>
-          <span className="text-base font-semibold tracking-tight text-foreground">Vitalis</span>
+          <span className="text-base font-semibold tracking-tight text-foreground">Longevity AI</span>
         </div>
 
         <div className="auth-glass rounded-3xl p-7 sm:p-9">

@@ -193,7 +193,7 @@ export function generateHealthReportHtml({
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Vitalis Health Report — ${escapeHtml(profile.full_name || "User")}</title>
+<title>Longevity AI Health Report — ${escapeHtml(profile.full_name || "User")}</title>
 <style>
   *{box-sizing:border-box}
   body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0a0a0b;color:#e5e7eb;line-height:1.5;-webkit-font-smoothing:antialiased}
@@ -222,7 +222,7 @@ export function generateHealthReportHtml({
 <div class="page">
 
   <div class="hero">
-    <h1>Vitalis Health Report</h1>
+    <h1>Longevity AI Health Report</h1>
     <p>Generated ${escapeHtml(generatedAt)}${email ? ` · ${escapeHtml(email)}` : ""}</p>
     <div class="grid">
       <div><label>Name</label><strong>${escapeHtml(profile.full_name || "—")}</strong></div>

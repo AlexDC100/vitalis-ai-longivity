@@ -198,7 +198,7 @@ export default function ReportViewerSheet({ open, onOpenChange, input, userId, u
     }
 
     // Email mode: link is now on the clipboard, open composer with it pre-filled.
-    const subject = encodeURIComponent(`My Vitalis ${REPORT_TITLE}`);
+    const subject = encodeURIComponent(`My Longevity AI ${REPORT_TITLE}`);
     const body = encodeURIComponent(
       `Hi,\n\nHere is my latest ${REPORT_TITLE}:\n${url}\n\n(Link expires ${expiresAt.toLocaleDateString()}.)\n`
     );
