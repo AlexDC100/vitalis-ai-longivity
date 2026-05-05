@@ -494,6 +494,9 @@ Be direct, specific, reference actual values. Markdown formatting.`;
         </div>
       </section>
 
+      {/* ══════════ 3.5 CONNECT DEVICES ══════════ */}
+      <ConnectDevices />
+
       {/* ══════════ 4. MAIN ISSUE (AI) ══════════ */}
       {displayedIssue ? (
         <section className="bg-gradient-to-br from-rose-500/10 to-amber-500/5 border border-rose-500/20 rounded-2xl p-4 sm:p-5 space-y-2 animate-[fade-in_0.5s_ease-out]">
