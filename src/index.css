@@ -6,6 +6,63 @@
 
 @layer base {
   :root {
+    /* Light theme */
+    --background: 0 0% 100%;
+    --foreground: 210 40% 10%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 210 40% 10%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 210 40% 10%;
+
+    --primary: 174 72% 38%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 210 25% 96%;
+    --secondary-foreground: 210 40% 14%;
+
+    --muted: 210 25% 96%;
+    --muted-foreground: 210 12% 42%;
+
+    --accent: 174 72% 38%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 210 20% 90%;
+    --input: 210 20% 90%;
+    --ring: 174 72% 38%;
+
+    --radius: 0.75rem;
+
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 210 40% 14%;
+    --sidebar-primary: 174 72% 38%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 210 25% 96%;
+    --sidebar-accent-foreground: 210 40% 14%;
+    --sidebar-border: 210 20% 90%;
+    --sidebar-ring: 174 72% 38%;
+
+    --vitalis-cyan: 174 72% 38%;
+    --vitalis-cyan-glow: 174 72% 48%;
+    --vitalis-dark: 0 0% 100%;
+    --vitalis-card: 0 0% 100%;
+    --vitalis-card-hover: 210 25% 96%;
+    --vitalis-success: 142 72% 38%;
+    --vitalis-warning: 38 92% 45%;
+    --vitalis-danger: 0 72% 51%;
+    --vitalis-info: 210 72% 50%;
+
+    --gradient-primary: linear-gradient(135deg, hsl(174 72% 38%), hsl(174 72% 30%));
+    --gradient-score: conic-gradient(hsl(174 72% 38%) var(--score-pct, 79%), hsl(210 20% 90%) 0%);
+    --shadow-glow: 0 0 20px hsl(174 72% 38% / 0.15);
+    --shadow-card: 0 4px 20px hsl(210 40% 20% / 0.08);
+  }
+
+  .dark {
     --background: 210 40% 6%;
     --foreground: 180 10% 92%;
 
@@ -34,8 +91,6 @@
     --input: 210 25% 16%;
     --ring: 174 72% 46%;
 
-    --radius: 0.75rem;
-
     --sidebar-background: 210 38% 8%;
     --sidebar-foreground: 180 10% 82%;
     --sidebar-primary: 174 72% 46%;
@@ -45,7 +100,6 @@
     --sidebar-border: 210 25% 16%;
     --sidebar-ring: 174 72% 46%;
 
-    /* Custom tokens */
     --vitalis-cyan: 174 72% 46%;
     --vitalis-cyan-glow: 174 72% 56%;
     --vitalis-dark: 210 40% 6%;
