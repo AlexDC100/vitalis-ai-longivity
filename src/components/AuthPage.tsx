@@ -824,8 +824,8 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
                   )}
                 </div>
                 <div className="mt-4 flex items-baseline gap-1.5">
-                  <span className="text-3xl font-bold text-foreground">{pricing.price}</span>
-                  <span className="text-sm text-muted-foreground">{pricing.cadence}</span>
+                  <span className="text-3xl font-bold text-white">{pricing.price}</span>
+                  <span className="text-sm text-white/70">{pricing.cadence}</span>
                 </div>
                 <p className="mt-1 text-[11px] text-muted-foreground min-h-[16px]">{pricing.note}</p>
                 <ul className="mt-5 space-y-2.5">
