@@ -724,7 +724,7 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-5xl mx-auto">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-3xl mx-auto">
             {plans.map((p) => {
               const pricing = formatPrice(p.monthly);
               return (
@@ -798,34 +798,28 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
         </section>
 
         {/* CTA */}
-        <section className="relative max-w-7xl mx-auto px-5 sm:px-6 lg:px-10 pb-16 sm:pb-24">
-          <div className="relative overflow-hidden rounded-3xl ring-1 ring-primary/30 bg-gradient-to-br from-primary/15 via-primary/5 to-transparent p-6 sm:p-12 text-center">
-            <div className="absolute inset-0 auth-grid-pattern opacity-30 pointer-events-none" />
-            <div className="relative">
-              <Users className="w-8 h-8 text-primary mx-auto" />
-              <h2 className="mt-4 text-[1.5rem] leading-tight sm:text-3xl font-bold tracking-tight text-foreground">
-                Start your first health assessment today
-              </h2>
-              <p className="mt-3 text-[13px] sm:text-sm text-muted-foreground max-w-xl mx-auto">
-                7-day free trial. No credit card required.
-              </p>
-              <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-center">
+        <section className="relative max-w-5xl mx-auto px-5 sm:px-6 lg:px-10 py-24 sm:py-32 text-center border-t border-border/40">
+          <h2 className="text-4xl sm:text-5xl font-semibold tracking-tight leading-tight text-foreground">
+            Start today.
+          </h2>
+          <p className="mt-5 text-base sm:text-lg text-muted-foreground font-light max-w-xl mx-auto">
+            7-day free trial. No credit card required.
+          </p>
+          <div className="mt-9 flex flex-col sm:flex-row gap-3 justify-center">
                 <Button
                   variant="vitalis"
                   onClick={() => openAuth("sign_up")}
-                  className="h-12 w-full sm:w-auto px-6 rounded-xl text-sm font-semibold tracking-wide shadow-[0_10px_30px_-10px_hsl(var(--primary)/0.6)]"
+                  className="h-12 w-full sm:w-auto px-7 rounded-full text-sm font-semibold tracking-wide"
                 >
                   Start free trial
                   <ArrowRight className="w-4 h-4 ml-1.5" />
                 </Button>
                 <button
                   onClick={() => openAuth("sign_in")}
-                  className="inline-flex items-center justify-center h-12 w-full sm:w-auto px-5 rounded-xl text-sm font-semibold text-foreground bg-secondary/60 ring-1 ring-border/60 hover:bg-secondary transition-all"
+                  className="inline-flex items-center justify-center h-12 w-full sm:w-auto px-6 rounded-full text-sm font-semibold text-foreground bg-secondary/60 ring-1 ring-border/60 hover:bg-secondary transition-all"
                 >
                   Sign in
                 </button>
-              </div>
-            </div>
           </div>
         </section>
 
