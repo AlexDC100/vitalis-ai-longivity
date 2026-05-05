@@ -316,7 +316,6 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
 
   const startLandingPair = (d: LandingDevice) => {
     setLandingPending(d.id);
-    track("landing_device_connect", { device: d.id });
     setTimeout(() => {
       setLandingConnected((p) => ({ ...p, [d.id]: true }));
       setLandingPending(null);
@@ -372,7 +371,6 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
       return [...cleaned, { id: Date.now(), role: "user", text: reply }];
     });
     setChatTyping(true);
-    track("landing_chat_quick_reply", { reply });
 
     setTimeout(() => {
       setChatTyping(false);
@@ -403,7 +401,6 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
 
   const handleDownloadDemo = () => {
     setDownloading(true);
-    track("landing_chat_download_report");
     const md = `# Vitalis — Recovery Plan (Demo)\n\nGenerated: ${new Date().toLocaleString()}\n\n## Snapshot\n- HRV: 38 ms (24% below 30-day baseline)\n- Recovery: 52%\n- Sleep: 6h12m\n- Resting HR: +6 bpm vs avg\n\n## Recommendation\nLight mobility day. Avoid high-intensity training.\n\n## 24h Plan\n- Morning: 10 min mobility + sunlight exposure\n- Hydration: 2.5–3 L water + electrolytes\n- Nutrition: protein-forward meals, reduce alcohol & late caffeine\n- Evening: device-free 60 min before bed, target 8h sleep\n\n---\n*AI-assisted summary only. Not a medical diagnosis.*\n`;
     setTimeout(() => {
       const blob = new Blob([md], { type: "text/markdown" });
