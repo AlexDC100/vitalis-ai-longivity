@@ -7,12 +7,13 @@ import {
   Upload, FileText, Heart, Brain, Activity, Sparkles,
   ChevronRight, User, Dna, MessageCircle, Send, Bot,
   TrendingUp, TrendingDown, Minus, AlertCircle, Zap, Moon, Wind, Droplets,
-  Check, Circle, RefreshCw, Loader2,
+  Check, Circle, RefreshCw, Loader2, Watch, Plus,
 } from "lucide-react";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 import ScoreRing from "@/components/ScoreRing";
 import { runDiagnosis, getAllSystemScores } from "@/lib/diagnosis-engine";
+import ConnectDevices from "@/components/ConnectDevices";
 
 const FAMILY_CONDITIONS = [
   "Heart Disease", "Diabetes", "Cancer", "Alzheimer's", "Stroke",
@@ -493,6 +494,9 @@ Be direct, specific, reference actual values. Markdown formatting.`;
           })}
         </div>
       </section>
+
+      {/* ══════════ 3.5 CONNECT DEVICES ══════════ */}
+      <ConnectDevices />
 
       {/* ══════════ 4. MAIN ISSUE (AI) ══════════ */}
       {displayedIssue ? (
