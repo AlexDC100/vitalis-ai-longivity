@@ -7,7 +7,7 @@ import {
   Upload, FileText, Heart, Brain, Activity, Sparkles,
   ChevronRight, User, Dna, MessageCircle, Send, Bot,
   TrendingUp, TrendingDown, Minus, AlertCircle, Zap, Moon, Wind, Droplets,
-  Check, Circle, RefreshCw, Loader2,
+  Check, Circle, RefreshCw, Loader2, Watch, Plus,
 } from "lucide-react";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
