@@ -654,6 +654,160 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
           </div>
         </section>
 
+        {/* MOBILE APP PREVIEW */}
+        <section id="mobile" className="relative max-w-6xl mx-auto px-5 sm:px-6 lg:px-10 py-20 sm:py-28 lg:py-32 border-t border-border/40">
+          <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+            <div>
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 ring-1 ring-primary/20 mb-6">
+                <span className="w-1.5 h-1.5 rounded-full bg-primary" />
+                <span className="text-[11px] font-semibold tracking-[0.18em] text-primary uppercase">iPhone</span>
+              </div>
+              <h2 className="text-4xl sm:text-5xl font-semibold tracking-tight leading-tight text-foreground">
+                Your AI doctor, <span className="text-muted-foreground">in your pocket.</span>
+              </h2>
+              <p className="mt-5 text-base sm:text-lg text-muted-foreground font-light leading-relaxed">
+                A calm, native-feeling iOS experience. Ask anything, get clinical-grade reasoning, download a structured report — anytime.
+              </p>
+              <ul className="mt-7 space-y-3">
+                {[
+                  "Conversational AI Doctor with full medical context",
+                  "Live readiness, recovery & sleep from your wearables",
+                  "One-tap downloadable reports for every answer",
+                ].map((f) => (
+                  <li key={f} className="flex items-start gap-2.5 text-[14px] text-foreground/90">
+                    <Check className="w-4 h-4 text-primary mt-0.5 shrink-0" />
+                    <span>{f}</span>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-8">
+                <Button
+                  variant="vitalis"
+                  onClick={() => openAuth("sign_up")}
+                  className="h-11 px-6 rounded-full text-sm font-semibold"
+                >
+                  Try it free
+                  <ArrowRight className="w-4 h-4 ml-1.5" />
+                </Button>
+              </div>
+            </div>
+
+            {/* iPhone mockup */}
+            <div className="relative flex justify-center">
+              <div className="absolute -inset-10 bg-gradient-to-br from-primary/20 via-transparent to-[hsl(var(--vitalis-info))]/15 blur-3xl rounded-[3rem] pointer-events-none" />
+              <div className="relative w-[300px] sm:w-[330px] aspect-[9/19.5] rounded-[3rem] bg-gradient-to-b from-zinc-900 to-black p-3 ring-1 ring-white/10 shadow-[0_50px_120px_-30px_rgba(0,0,0,0.8)]">
+                {/* Notch */}
+                <div className="absolute top-3 left-1/2 -translate-x-1/2 w-28 h-7 rounded-full bg-black z-10" />
+                {/* Screen */}
+                <div className="relative w-full h-full rounded-[2.4rem] bg-background overflow-hidden flex flex-col">
+                  {/* Status */}
+                  <div className="flex items-center justify-between px-6 pt-3 pb-2 text-[10px] text-foreground/80 font-semibold">
+                    <span>9:41</span>
+                    <span className="flex items-center gap-1">
+                      <span className="w-3 h-2 rounded-sm bg-foreground/70" />
+                      <span className="w-3 h-2 rounded-sm bg-foreground/70" />
+                    </span>
+                  </div>
+                  {/* Header */}
+                  <div className="px-5 pt-4 pb-3 border-b border-border/40">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-primary/15 ring-1 ring-primary/30 flex items-center justify-center">
+                        <Stethoscope className="w-3.5 h-3.5 text-primary" />
+                      </div>
+                      <div>
+                        <div className="text-[12px] font-semibold text-foreground">AI Doctor</div>
+                        <div className="text-[9px] text-primary uppercase tracking-wider">Online</div>
+                      </div>
+                    </div>
+                  </div>
+                  {/* Chat */}
+                  <div className="flex-1 overflow-hidden px-4 py-3 space-y-2.5">
+                    <div className="max-w-[80%] ml-auto bg-primary text-primary-foreground text-[11px] rounded-2xl rounded-tr-sm px-3 py-2 leading-snug">
+                      My HRV dropped to 38ms last night. Should I rest today?
+                    </div>
+                    <div className="max-w-[85%] bg-secondary/70 text-foreground text-[11px] rounded-2xl rounded-tl-sm px-3 py-2 leading-snug">
+                      Yes — your HRV is 24% below your 30‑day baseline and recovery is 52%. A light mobility day will serve you better than training hard.
+                    </div>
+                    <div className="max-w-[85%] bg-secondary/70 text-foreground text-[11px] rounded-2xl rounded-tl-sm px-3 py-2 leading-snug">
+                      Want me to draft a recovery plan you can download?
+                    </div>
+                    <div className="flex gap-1.5 pt-1">
+                      <span className="text-[9.5px] px-2 py-1 rounded-full bg-primary/15 text-primary border border-primary/30">Yes, draft it</span>
+                      <span className="text-[9.5px] px-2 py-1 rounded-full bg-secondary/70 text-foreground/80 border border-border/50">Show data</span>
+                    </div>
+                  </div>
+                  {/* Input */}
+                  <div className="px-4 pb-5">
+                    <div className="flex items-center gap-2 px-3 h-9 rounded-full bg-secondary/60 ring-1 ring-border/60">
+                      <span className="text-[11px] text-muted-foreground flex-1">Ask anything…</span>
+                      <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center">
+                        <ArrowRight className="w-3 h-3 text-primary-foreground" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* DEVICES */}
+        <section id="devices" className="relative max-w-6xl mx-auto px-5 sm:px-6 lg:px-10 py-20 sm:py-28 lg:py-32 border-t border-border/40">
+          <div className="text-center max-w-2xl mx-auto mb-14">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 ring-1 ring-primary/20 mb-5">
+              <Watch className="w-3 h-3 text-primary" />
+              <span className="text-[11px] font-semibold tracking-[0.18em] text-primary uppercase">Wearables</span>
+            </div>
+            <h2 className="text-4xl sm:text-5xl font-semibold tracking-tight leading-tight text-foreground">
+              One tap to <span className="text-muted-foreground">connect everything.</span>
+            </h2>
+            <p className="mt-5 text-base sm:text-lg text-muted-foreground font-light">
+              Apple Watch, WHOOP, Oura, Garmin and more — synced privately, ready for AI.
+            </p>
+          </div>
+
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 max-w-5xl mx-auto">
+            {[
+              { name: "Apple Watch", tagline: "Heart · ECG · Activity", accent: "from-zinc-200 to-zinc-400" },
+              { name: "WHOOP",       tagline: "Recovery · Strain · Sleep", accent: "from-amber-300 to-rose-400" },
+              { name: "Oura Ring",   tagline: "Sleep · Readiness", accent: "from-violet-300 to-violet-500" },
+              { name: "Garmin",      tagline: "VO₂ · Training load", accent: "from-sky-300 to-sky-500" },
+            ].map((d) => (
+              <div
+                key={d.name}
+                className="group relative overflow-hidden auth-glass rounded-2xl p-5 ring-1 ring-border/50 hover:ring-primary/40 transition-all"
+              >
+                <div
+                  aria-hidden
+                  className={`pointer-events-none absolute -top-10 -right-10 w-32 h-32 rounded-full bg-gradient-to-br ${d.accent} opacity-[0.10] blur-2xl group-hover:opacity-25 transition-opacity`}
+                />
+                <div className="relative flex items-center justify-between mb-4">
+                  <div className="w-10 h-10 rounded-xl bg-secondary/60 ring-1 ring-border/60 flex items-center justify-center text-foreground">
+                    <Watch className="w-4.5 h-4.5" />
+                  </div>
+                  <div className="w-7 h-7 rounded-full bg-primary/15 ring-1 ring-primary/30 flex items-center justify-center text-primary">
+                    <Check className="w-3.5 h-3.5" />
+                  </div>
+                </div>
+                <div className="relative">
+                  <div className="text-[14px] font-semibold text-foreground">{d.name}</div>
+                  <div className="text-[11.5px] text-muted-foreground mt-1">{d.tagline}</div>
+                </div>
+                <div className="relative mt-4 inline-flex items-center gap-1 text-[10px] uppercase tracking-wider font-semibold text-primary">
+                  Connect
+                  <ChevronRight className="w-3 h-3" />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-10 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-[11px] text-muted-foreground">
+            <span className="flex items-center gap-1.5"><Lock className="w-3 h-3 text-primary" /> End-to-end encrypted</span>
+            <span className="flex items-center gap-1.5"><Check className="w-3 h-3 text-primary" /> Opt-in AI access</span>
+            <span className="flex items-center gap-1.5"><Check className="w-3 h-3 text-primary" /> Disconnect anytime</span>
+          </div>
+        </section>
+
         {/* AUDIENCES */}
         <section id="audiences" className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-10 py-20 sm:py-28 lg:py-32 border-t border-border/40">
           <div className="text-center max-w-2xl mx-auto mb-14">
