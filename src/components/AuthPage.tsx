@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { track } from "@/lib/analytics";
 import AuthDialog from "@/components/AuthDialog";
+import brandLogo from "@/assets/longevity-ai-logo.png";
 import {
   Dialog,
   DialogContent,
@@ -407,24 +408,18 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
           }`}
         >
           {/* Logo */}
-          <a href="#" className="flex items-center gap-2 sm:gap-2.5 min-w-0">
-            <div
-              className={`rounded-xl bg-primary/15 ring-1 ring-primary/30 flex items-center justify-center shrink-0 ${
+          <a href="#" className="flex items-center gap-2 sm:gap-2.5 min-w-0" aria-label="Longevity AI home">
+            <img
+              src={brandLogo}
+              alt=""
+              width={36}
+              height={36}
+              className={`shrink-0 object-contain drop-shadow-[0_0_12px_hsl(var(--primary)/0.4)] ${
                 reducedMotion ? "" : "transition-[width,height] duration-300 ease-out"
-              } ${
-                scrolled ? "w-7 h-7 sm:w-8 sm:h-8" : "w-8 h-8 sm:w-9 sm:h-9"
-              }`}
-            >
-              <TrendingUp
-                className={`text-primary ${
-                  reducedMotion ? "" : "transition-[width,height] duration-300 ease-out"
-                } ${
-                  scrolled ? "w-3.5 h-3.5 sm:w-4 sm:h-4" : "w-4 h-4 sm:w-[18px] sm:h-[18px]"
-                }`}
-              />
-            </div>
+              } ${scrolled ? "w-7 h-7" : "w-8 h-8 sm:w-9 sm:h-9"}`}
+            />
             <span className="text-[15px] sm:text-base font-semibold tracking-tight text-foreground truncate">
-              Longevity AI
+              Longevity <span className="text-primary">AI</span>
             </span>
           </a>
 
