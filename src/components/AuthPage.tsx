@@ -879,20 +879,61 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
                     </div>
                   </div>
                   {/* Chat */}
-                  <div className="flex-1 overflow-hidden px-4 py-3 space-y-2.5">
-                    <div className="max-w-[80%] ml-auto bg-primary text-primary-foreground text-[11px] rounded-2xl rounded-tr-sm px-3 py-2 leading-snug">
-                      My HRV dropped to 38ms last night. Should I rest today?
-                    </div>
-                    <div className="max-w-[85%] bg-secondary/70 text-foreground text-[11px] rounded-2xl rounded-tl-sm px-3 py-2 leading-snug">
-                      Yes — your HRV is 24% below your 30‑day baseline and recovery is 52%. A light mobility day will serve you better than training hard.
-                    </div>
-                    <div className="max-w-[85%] bg-secondary/70 text-foreground text-[11px] rounded-2xl rounded-tl-sm px-3 py-2 leading-snug">
-                      Want me to draft a recovery plan you can download?
-                    </div>
-                    <div className="flex gap-1.5 pt-1">
-                      <span className="text-[9.5px] px-2 py-1 rounded-full bg-primary/15 text-primary border border-primary/30">Yes, draft it</span>
-                      <span className="text-[9.5px] px-2 py-1 rounded-full bg-secondary/70 text-foreground/80 border border-border/50">Show data</span>
-                    </div>
+                  <div ref={chatScrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-2.5 scrollbar-none">
+                    {chatMessages.map((m) => (
+                      <div key={m.id} className="space-y-1.5">
+                        <div
+                          className={
+                            m.role === "user"
+                              ? "max-w-[80%] ml-auto bg-primary text-primary-foreground text-[11px] rounded-2xl rounded-tr-sm px-3 py-2 leading-snug animate-[fade-in_0.25s_ease-out]"
+                              : "max-w-[85%] bg-secondary/70 text-foreground text-[11px] rounded-2xl rounded-tl-sm px-3 py-2 leading-snug animate-[fade-in_0.25s_ease-out]"
+                          }
+                        >
+                          {m.text}
+                        </div>
+                        {m.report && (
+                          <button
+                            type="button"
+                            onClick={handleDownloadDemo}
+                            disabled={downloading}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary/15 text-primary border border-primary/30 text-[9.5px] font-semibold hover:bg-primary/25 transition active:scale-[0.97] disabled:opacity-60"
+                          >
+                            {downloading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+                            {downloading ? "Preparing…" : "Download report"}
+                          </button>
+                        )}
+                        {m.quickReplies && (
+                          <div className="flex flex-wrap gap-1.5 pt-0.5">
+                            {m.quickReplies.map((qr) => (
+                              <button
+                                key={qr}
+                                type="button"
+                                onClick={() => handleQuickReply(m.id, qr)}
+                                className="text-[9.5px] px-2 py-1 rounded-full bg-secondary/70 text-foreground/90 border border-border/60 hover:border-primary/40 hover:text-primary hover:bg-primary/5 transition active:scale-[0.97]"
+                              >
+                                {qr}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    {chatTyping && (
+                      <div className="max-w-[40%] bg-secondary/70 rounded-2xl rounded-tl-sm px-3 py-2 inline-flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-foreground/50 animate-pulse" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-foreground/50 animate-pulse [animation-delay:120ms]" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-foreground/50 animate-pulse [animation-delay:240ms]" />
+                      </div>
+                    )}
+                    {reportReady && (
+                      <button
+                        type="button"
+                        onClick={resetChatDemo}
+                        className="block mx-auto text-[9px] text-muted-foreground/80 hover:text-foreground underline underline-offset-2 pt-1"
+                      >
+                        Reset demo
+                      </button>
+                    )}
                   </div>
                   {/* Input */}
                   <div className="px-4 pb-5">
