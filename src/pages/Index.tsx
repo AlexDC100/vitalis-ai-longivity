@@ -223,24 +223,31 @@ function AppShell() {
       </div>
 
       {/* Bottom Nav */}
-      <div className="fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur-md border-t border-border/30 z-40">
-        <div className="max-w-lg mx-auto flex items-center justify-around px-4 py-2">
-          {navItems.map(item => {
-            const active = screen === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => switchScreen(item.id)}
-                className={`flex flex-col items-center gap-1 px-6 py-1.5 rounded-xl transition-all ${
-                  active ? "text-primary" : "text-muted-foreground"
-                }`}
-              >
-                <item.icon className="w-5 h-5" />
-                <span className="text-[10px] font-semibold">{item.label}</span>
-                {active && <div className="w-1 h-1 rounded-full bg-primary" />}
-              </button>
-            );
-          })}
+      <div className="fixed bottom-0 left-0 right-0 z-40 pb-[env(safe-area-inset-bottom)]">
+        <div className="max-w-lg mx-auto px-4 pb-3 pt-2">
+          <div className="flex items-center justify-between bg-card/80 backdrop-blur-xl border border-border/40 rounded-full shadow-[0_8px_30px_-12px_rgba(0,0,0,0.6)] px-2 py-1.5">
+            {navItems.map(item => {
+              const active = screen === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => switchScreen(item.id)}
+                  className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-full transition-all duration-300 ease-out ${
+                    active
+                      ? "bg-primary/15 text-primary"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  aria-label={item.label}
+                  aria-current={active ? "page" : undefined}
+                >
+                  <item.icon className="w-[18px] h-[18px]" strokeWidth={active ? 2.4 : 2} />
+                  {active && (
+                    <span className="text-[12px] font-semibold tracking-tight">{item.label}</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 
