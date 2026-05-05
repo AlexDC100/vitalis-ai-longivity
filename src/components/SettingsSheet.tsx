@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTheme } from "next-themes";
 import {
   Sheet,
   SheetContent,
@@ -21,6 +22,7 @@ import {
   Bell,
   Ruler,
   Moon,
+  Sun,
   ExternalLink,
   KeyRound,
   Mail,
@@ -111,6 +113,8 @@ export default function SettingsSheet({
   const [notifications, setNotifications] = useState<boolean>(true);
   const [busy, setBusy] = useState(false);
   const [showConsultations, setShowConsultations] = useState(false);
+  const { theme, setTheme, resolvedTheme } = useTheme();
+  const isDark = (theme === "system" ? resolvedTheme : theme) === "dark";
 
   // Change password
   const [showPwForm, setShowPwForm] = useState(false);
@@ -589,12 +593,23 @@ export default function SettingsSheet({
 
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Moon className="w-4 h-4 text-muted-foreground" />
+                {isDark ? (
+                  <Moon className="w-4 h-4 text-muted-foreground" />
+                ) : (
+                  <Sun className="w-4 h-4 text-muted-foreground" />
+                )}
                 <Label className="text-sm">Theme</Label>
               </div>
-              <span className="text-xs text-muted-foreground">
-                Dark (default)
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">
+                  {isDark ? "Dark" : "Light"}
+                </span>
+                <Switch
+                  checked={isDark}
+                  onCheckedChange={(v) => setTheme(v ? "dark" : "light")}
+                  aria-label="Toggle dark mode"
+                />
+              </div>
             </div>
           </Section>
 
