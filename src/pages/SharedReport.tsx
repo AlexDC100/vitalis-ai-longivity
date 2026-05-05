@@ -123,7 +123,7 @@ export default function SharedReport() {
             </p>
           </div>
           <Button asChild variant="outline" className="w-full gap-1.5">
-            <Link to="/"><Home className="w-3.5 h-3.5" />Open Vitalis</Link>
+            <Link to="/"><Home className="w-3.5 h-3.5" />Open Longevity AI</Link>
           </Button>
         </div>
       </div>
@@ -163,7 +163,7 @@ export default function SharedReport() {
                 Sign in to regenerate
               </div>
               <p className="text-[11px] text-muted-foreground">
-                Only the original report owner can create a new share link. Sign in to your Vitalis account to continue.
+                Only the original report owner can create a new share link. Sign in to your Longevity AI account to continue.
               </p>
               <Button asChild size="sm" className="w-full">
                 <Link to="/">Sign in</Link>
@@ -173,7 +173,7 @@ export default function SharedReport() {
           <Button asChild variant="outline" className="w-full gap-1.5">
             <Link to="/">
               <Home className="w-3.5 h-3.5" />
-              Open Vitalis
+              Open Longevity AI
             </Link>
           </Button>
         </div>
@@ -190,7 +190,7 @@ export default function SharedReport() {
             {state.kind === "error" ? state.message : "This report link is invalid or has been removed."}
           </p>
           <Button asChild variant="outline" className="mt-2">
-            <Link to="/">Open Vitalis</Link>
+            <Link to="/">Open Longevity AI</Link>
           </Button>
         </div>
       </div>

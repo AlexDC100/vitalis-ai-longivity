@@ -181,7 +181,7 @@ export default function AuthDialog({ open, onOpenChange, defaultMode = "sign_in"
       <DialogContent className="max-w-md p-0 border-border/60 bg-card/95 backdrop-blur-2xl rounded-3xl overflow-hidden">
         <div className="p-6 sm:p-8">
           <DialogTitle className="text-2xl font-bold tracking-tight text-foreground">
-            {forgotMode ? "Reset password" : isSignUp ? "Create your account" : "Sign in to Vitalis"}
+            {forgotMode ? "Reset password" : isSignUp ? "Create your account" : "Sign in to Longevity AI"}
           </DialogTitle>
           <DialogDescription className="text-sm text-muted-foreground mt-1.5">
             {forgotMode
@@ -389,7 +389,7 @@ export default function AuthDialog({ open, onOpenChange, defaultMode = "sign_in"
             </button>
           ) : (
             <p className="mt-6 text-center text-xs text-muted-foreground">
-              {isSignUp ? "Already have an account? " : "New to Vitalis? "}
+              {isSignUp ? "Already have an account? " : "New to Longevity AI? "}
               <button onClick={() => setIsSignUp(!isSignUp)} className="text-primary font-semibold hover:underline">
                 {isSignUp ? "Sign in" : "Create an account"}
               </button>

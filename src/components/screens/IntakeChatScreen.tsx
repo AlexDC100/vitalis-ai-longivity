@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Activity, Send, Sparkles, Check, ChevronRight } from "lucide-react";
+import { Send, Sparkles, Check, ChevronRight } from "lucide-react";
+import Logo from "@/components/Logo";
 import { supabase } from "@/integrations/supabase/client";
 import { useHealth } from "@/lib/health-context";
 import type { HealthProfile } from "@/lib/types";
@@ -15,7 +16,7 @@ const SECTIONS: { id: Section; title: string; subtitle: string; opener: string }
     title: "About you",
     subtitle: "Identity & body composition",
     opener:
-      "Hi — I'm Vitalis. I'll guide you through a quick longevity intake. To start, what's your name?",
+      "Hi — I'm Longevity AI. I'll guide you through a quick longevity intake. To start, what's your name?",
   },
   {
     id: "cardio",
@@ -209,10 +210,7 @@ export default function IntakeChatScreen({ onComplete }: { onComplete: () => voi
       {/* Header */}
       <div className="px-6 pt-8 pb-4 border-b border-border/30">
         <div className="flex items-center gap-2 mb-5">
-          <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center">
-            <Activity className="w-3 h-3 text-primary" />
-          </div>
-          <span className="text-sm font-bold text-foreground tracking-tight">Vitalis</span>
+          <Logo size={20} />
           <span className="ml-auto text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
             Step {sectionIdx + 1} / {SECTIONS.length}
           </span>

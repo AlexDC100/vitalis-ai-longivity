@@ -99,7 +99,7 @@ serve(async (req) => {
 
     const cfg = SECTION_PROMPTS[section];
 
-    const systemPrompt = `You are Vitalis, a calm, warm longevity-medicine intake assistant.
+    const systemPrompt = `You are Longevity AI, a calm, warm longevity-medicine intake assistant.
 You are conducting the "${section}" section of a 5-part intake.
 ${cfg.intro}
 Goal: ${cfg.goal}

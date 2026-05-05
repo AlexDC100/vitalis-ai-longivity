@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { track } from "@/lib/analytics";
 import AuthDialog from "@/components/AuthDialog";
+import brandLogo from "@/assets/longevity-ai-logo.png";
 import {
   Dialog,
   DialogContent,
@@ -407,24 +408,18 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
           }`}
         >
           {/* Logo */}
-          <a href="#" className="flex items-center gap-2 sm:gap-2.5 min-w-0">
-            <div
-              className={`rounded-xl bg-primary/15 ring-1 ring-primary/30 flex items-center justify-center shrink-0 ${
+          <a href="#" className="flex items-center gap-2 sm:gap-2.5 min-w-0" aria-label="Longevity AI home">
+            <img
+              src={brandLogo}
+              alt=""
+              width={36}
+              height={36}
+              className={`shrink-0 object-contain drop-shadow-[0_0_12px_hsl(var(--primary)/0.4)] ${
                 reducedMotion ? "" : "transition-[width,height] duration-300 ease-out"
-              } ${
-                scrolled ? "w-7 h-7 sm:w-8 sm:h-8" : "w-8 h-8 sm:w-9 sm:h-9"
-              }`}
-            >
-              <TrendingUp
-                className={`text-primary ${
-                  reducedMotion ? "" : "transition-[width,height] duration-300 ease-out"
-                } ${
-                  scrolled ? "w-3.5 h-3.5 sm:w-4 sm:h-4" : "w-4 h-4 sm:w-[18px] sm:h-[18px]"
-                }`}
-              />
-            </div>
+              } ${scrolled ? "w-7 h-7" : "w-8 h-8 sm:w-9 sm:h-9"}`}
+            />
             <span className="text-[15px] sm:text-base font-semibold tracking-tight text-foreground truncate">
-              Vitalis
+              Longevity <span className="text-primary">AI</span>
             </span>
           </a>
 
@@ -670,7 +665,7 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
         {/* HOW IT WORKS */}
         <section id="how" className="relative max-w-7xl mx-auto px-5 sm:px-6 lg:px-10 py-14 sm:py-20 lg:py-24">
           <div className="text-center max-w-2xl mx-auto mb-10 sm:mb-14">
-            <span className="text-[11px] font-semibold tracking-[0.18em] text-primary uppercase">How Vitalis works</span>
+            <span className="text-[11px] font-semibold tracking-[0.18em] text-primary uppercase">How Longevity AI works</span>
             <h2 className="mt-3 text-[1.75rem] leading-tight sm:text-4xl font-bold tracking-tight text-foreground">
               From raw data to a clear plan
             </h2>
@@ -863,7 +858,7 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
                   Built to clinical-grade standards
                 </h2>
                 <p className="mt-4 text-sm text-muted-foreground leading-relaxed">
-                  Your medical data deserves more than consumer-app security. Vitalis is engineered for institutional trust.
+                  Your medical data deserves more than consumer-app security.  Longevity AI is engineered for institutional trust.
                 </p>
               </div>
               <div className="lg:col-span-2 grid sm:grid-cols-3 gap-4">
@@ -920,7 +915,7 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
               <div className="w-7 h-7 rounded-lg bg-primary/15 ring-1 ring-primary/30 flex items-center justify-center">
                 <TrendingUp className="w-3.5 h-3.5 text-primary" />
               </div>
-              <span className="text-sm font-semibold text-foreground">Vitalis</span>
+              <span className="text-sm font-semibold text-foreground">Longevity AI</span>
               <span className="text-xs text-muted-foreground ml-2">© {new Date().getFullYear()} · AI health intelligence</span>
             </div>
             <div className="flex flex-col sm:items-end gap-2">
@@ -958,7 +953,7 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
       <Dialog open={howOpen} onOpenChange={setHowOpen}>
         <DialogContent className="max-w-2xl auth-glass border-border/60 p-0 overflow-hidden">
           <DialogHeader className="px-6 pt-6 pb-2">
-            <DialogTitle className="text-xl font-semibold tracking-tight">See how Vitalis works</DialogTitle>
+            <DialogTitle className="text-xl font-semibold tracking-tight">See how Longevity AI works</DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
               A 4-step walkthrough — from raw data to a clear action plan.
             </DialogDescription>
@@ -1050,7 +1045,7 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
             </div>
             <DialogTitle className="text-xl font-semibold tracking-tight">Security, privacy & disclaimers</DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
-              How Vitalis protects your medical data and the limits of its clinical role.
+              How Longevity AI protects your medical data and the limits of its clinical role.
             </DialogDescription>
           </DialogHeader>
 
@@ -1062,7 +1057,7 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
               </div>
               <ul className="mt-2 space-y-1.5 text-xs text-muted-foreground leading-relaxed">
                 <li>• <span className="text-foreground/90">AES-256</span> encryption at rest for all medical documents and biomarker records.</li>
-                <li>• <span className="text-foreground/90">TLS 1.3</span> in transit between your device, Vitalis, and our AI inference layer.</li>
+                <li>• <span className="text-foreground/90">TLS 1.3</span> in transit between your device, Longevity AI, and our AI inference layer.</li>
                 <li>• Per-user encryption keys; row-level security enforced at the database level.</li>
               </ul>
             </div>
@@ -1086,7 +1081,7 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
                 <h4 className="text-sm font-semibold text-foreground">Medical disclaimer</h4>
               </div>
               <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
-                Vitalis is a <span className="text-foreground/90">decision-support tool</span>. It does not provide a medical
+                 Longevity AI is a <span className="text-foreground/90">decision-support tool</span>. It does not provide a medical
                 diagnosis, prescription, or treatment. Always consult a licensed clinician before making changes to your
                 medication, supplements, or care plan. In an emergency, contact your local emergency services immediately.
               </p>

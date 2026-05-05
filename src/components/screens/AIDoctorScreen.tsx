@@ -160,7 +160,7 @@ Explanation: ${diagnosis.explanation}
 Top fixes: ${diagnosis.fixes.map(f => f.action).join("; ")}
 Expected impact: ${diagnosis.lifeImpact}`;
 
-  const systemPrompt = `You are Vitalis AI Doctor — a longevity medicine assistant. You are NOT a substitute for a licensed physician and must never give a definitive diagnosis. Be clear, decisive, and actionable — never vague.
+  const systemPrompt = `You are Longevity AI · Doctor — a longevity medicine assistant. You are NOT a substitute for a licensed physician and must never give a definitive diagnosis. Be clear, decisive, and actionable — never vague.
 
 ========================
 MANDATORY RESPONSE FORMAT

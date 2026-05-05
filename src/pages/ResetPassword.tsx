@@ -9,11 +9,11 @@ import {
   EyeOff,
   Loader2,
   Check,
-  TrendingUp,
   AlertCircle,
   ArrowLeft,
 } from "lucide-react";
 import { track } from "@/lib/analytics";
+import Logo from "@/components/Logo";
 
 export default function ResetPassword() {
   const navigate = useNavigate();
@@ -150,11 +150,8 @@ export default function ResetPassword() {
     <div className="min-h-screen auth-bg relative overflow-hidden flex items-center justify-center px-6">
       <div className="absolute inset-0 auth-grid-pattern pointer-events-none" />
       <div className="relative w-full max-w-md animate-auth-fade">
-        <div className="flex items-center gap-3 mb-8 justify-center">
-          <div className="w-10 h-10 rounded-xl bg-primary/15 ring-1 ring-primary/30 flex items-center justify-center">
-            <TrendingUp className="w-5 h-5 text-primary" />
-          </div>
-          <span className="text-base font-semibold tracking-tight text-foreground">Vitalis</span>
+        <div className="flex items-center justify-center mb-8">
+          <Logo size={32} />
         </div>
 
         <div className="auth-glass rounded-3xl p-7 sm:p-9">
