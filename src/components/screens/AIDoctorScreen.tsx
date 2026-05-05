@@ -781,6 +781,18 @@ ${diagnosisSummary}`;
                     <p className="text-[13px] leading-relaxed">{cleanContent}</p>
                   )}
                 </div>
+                {msg.role === "assistant" && cleanContent && !isStreaming && (
+                  <div className="flex items-center gap-2 mt-1.5 px-1">
+                    <button
+                      onClick={() => downloadAnswerAsMarkdown(msg)}
+                      className="inline-flex items-center gap-1 text-[10.5px] text-muted-foreground hover:text-primary transition-colors"
+                      title="Download this answer as a Markdown report"
+                    >
+                      <Download className="w-3 h-3" />
+                      Download report
+                    </button>
+                  </div>
+                )}
               </div>
               {msg.role === "user" && (
                 <div className="w-7 h-7 rounded-lg bg-secondary flex items-center justify-center shrink-0 mt-1">
