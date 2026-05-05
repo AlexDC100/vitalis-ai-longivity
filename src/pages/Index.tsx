@@ -5,30 +5,32 @@ import { HealthProvider, useHealth } from "@/lib/health-context";
 import AuthPage from "@/components/AuthPage";
 import { track } from "@/lib/analytics";
 import IntakeChatScreen from "@/components/screens/IntakeChatScreen";
-import DiagnosisScreen from "@/components/screens/DiagnosisScreen";
+import HomeScreen from "@/components/screens/HomeScreen";
 import BodyScreen from "@/components/screens/BodyScreen";
 import AIDoctorScreen from "@/components/screens/AIDoctorScreen";
+import InsightsScreen from "@/components/screens/InsightsScreen";
+import ProfileScreen from "@/components/screens/ProfileScreen";
 import { Toaster } from "@/components/ui/toaster";
-import { AlertTriangle, Stethoscope, User, Settings as SettingsIcon } from "lucide-react";
+import { Home, Stethoscope, HeartPulse, Sparkles, User as UserIcon, Settings as SettingsIcon } from "lucide-react";
 import CommandPalette, { type PaletteAction } from "@/components/CommandPalette";
 import SettingsSheet from "@/components/SettingsSheet";
 import Logo from "@/components/Logo";
 import { toast } from "sonner";
 
-type Screen = "diagnosis" | "body" | "doctor";
+type Screen = "home" | "doctor" | "body" | "insights" | "profile";
 
 const SCREEN_STORAGE_KEY = "vitalis_last_screen";
 const isScreen = (v: unknown): v is Screen =>
-  v === "diagnosis" || v === "body" || v === "doctor";
+  v === "home" || v === "doctor" || v === "body" || v === "insights" || v === "profile";
 
 function AppShell() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const { setIsGuest, setUserId, dataCompleteness } = useHealth();
   const [screen, setScreen] = useState<Screen>(() => {
-    if (typeof window === "undefined") return "diagnosis";
+    if (typeof window === "undefined") return "home";
     const saved = window.localStorage.getItem(SCREEN_STORAGE_KEY);
-    return isScreen(saved) ? saved : "diagnosis";
+    return isScreen(saved) ? saved : "home";
   });
   const [slideDir, setSlideDir] = useState<"left" | "right">("left");
   const [onboarded, setOnboarded] = useState<boolean | null>(null);
@@ -36,7 +38,7 @@ function AppShell() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const prevScreenRef = useRef<Screen>(screen);
 
-  const screenOrder: Screen[] = ["doctor", "body", "diagnosis"];
+  const screenOrder: Screen[] = ["home", "doctor", "body", "insights", "profile"];
 
   // Sensitive client-side keys that must be wiped on sign-out so the next
   // user on a shared device cannot see the previous user's medical data.
@@ -143,8 +145,8 @@ function AppShell() {
         });
         break;
       case "refresh-diagnosis":
-        switchScreen("diagnosis");
-        toast.success("Diagnosis re-check started", {
+        switchScreen("insights");
+        toast.success("Insights refreshed", {
           description: "Re-running analysis on your latest data.",
         });
         break;
@@ -179,9 +181,11 @@ function AppShell() {
   }
 
   const navItems: { id: Screen; label: string; icon: React.ElementType }[] = [
-    { id: "doctor", label: "AI Doctor", icon: Stethoscope },
-    { id: "body", label: "Body", icon: User },
-    { id: "diagnosis", label: "Diagnosis", icon: AlertTriangle },
+    { id: "home",     label: "Home",     icon: Home },
+    { id: "doctor",   label: "AI Doctor", icon: Stethoscope },
+    { id: "body",     label: "Body",     icon: HeartPulse },
+    { id: "insights", label: "Insights", icon: Sparkles },
+    { id: "profile",  label: "Profile",  icon: UserIcon },
   ];
 
   const animClass = slideDir === "left" ? "animate-slide-left" : "animate-slide-right";
@@ -216,23 +220,36 @@ function AppShell() {
       {/* Screen */}
       <div className="flex-1 overflow-y-auto px-4 pt-4 pb-24">
         <div key={screen} className={animClass}>
-          {screen === "diagnosis" && <DiagnosisScreen />}
-          {screen === "body" && <BodyScreen />}
+          {screen === "home" && (
+            <HomeScreen
+              onGoBody={() => switchScreen("body")}
+              onGoDoctor={() => switchScreen("doctor")}
+              onGoInsights={() => switchScreen("insights")}
+            />
+          )}
           {screen === "doctor" && <AIDoctorScreen />}
+          {screen === "body" && <BodyScreen />}
+          {screen === "insights" && <InsightsScreen />}
+          {screen === "profile" && (
+            <ProfileScreen
+              onOpenSettings={() => setSettingsOpen(true)}
+              onSignOut={signOut}
+            />
+          )}
         </div>
       </div>
 
       {/* Bottom Nav */}
       <div className="fixed bottom-0 left-0 right-0 z-40 pb-[env(safe-area-inset-bottom)]">
         <div className="max-w-lg mx-auto px-4 pb-3 pt-2">
-          <div className="flex items-center justify-between bg-card/80 backdrop-blur-xl border border-border/40 rounded-full shadow-[0_8px_30px_-12px_rgba(0,0,0,0.6)] px-2 py-1.5">
+          <div className="flex items-center justify-between gap-1 bg-card/80 backdrop-blur-xl border border-border/40 rounded-full shadow-[0_8px_30px_-12px_rgba(0,0,0,0.6)] px-2 py-1.5">
             {navItems.map(item => {
               const active = screen === item.id;
               return (
                 <button
                   key={item.id}
                   onClick={() => switchScreen(item.id)}
-                  className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-full transition-all duration-300 ease-out ${
+                  className={`flex-1 flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-full transition-all duration-300 ease-out ${
                     active
                       ? "bg-primary/15 text-primary"
                       : "text-muted-foreground hover:text-foreground"
@@ -240,9 +257,9 @@ function AppShell() {
                   aria-label={item.label}
                   aria-current={active ? "page" : undefined}
                 >
-                  <item.icon className="w-[18px] h-[18px]" strokeWidth={active ? 2.4 : 2} />
+                  <item.icon className="w-[17px] h-[17px]" strokeWidth={active ? 2.4 : 2} />
                   {active && (
-                    <span className="text-[12px] font-semibold tracking-tight">{item.label}</span>
+                    <span className="text-[11.5px] font-semibold tracking-tight">{item.label}</span>
                   )}
                 </button>
               );
