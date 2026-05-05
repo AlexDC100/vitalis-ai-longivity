@@ -267,7 +267,7 @@ export function generateHealthReportHtml({
   </div>
 
   <div class="footer">
-    Vitalis · Educational summary only · Not a substitute for medical advice.<br>
+    Longevity AI · Educational summary only · Not a substitute for medical advice.<br>
     <a href="https://vital-is.life">vital-is.life</a>
   </div>
 

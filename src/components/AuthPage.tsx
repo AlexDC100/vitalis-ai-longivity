@@ -424,7 +424,7 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
               />
             </div>
             <span className="text-[15px] sm:text-base font-semibold tracking-tight text-foreground truncate">
-              Vitalis
+              Longevity AI
             </span>
           </a>
 
