@@ -155,7 +155,7 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
 
   // Scroll-spy: highlight the nav link of the section currently in view
   useEffect(() => {
-    const ids = ["product", "how", "pricing", "audiences"];
+    const ids = ["product", "how", "mobile", "devices", "pricing", "audiences"];
     const sections = ids
       .map((id) => document.getElementById(id))
       .filter((el): el is HTMLElement => !!el);
