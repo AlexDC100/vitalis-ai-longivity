@@ -271,6 +271,160 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
     setAuthOpen(true);
   };
 
+  // ---- Devices onboarding (landing) ----
+  type LandingDevice = { id: string; name: string; tagline: string; accent: string; Icon: typeof Watch };
+  const landingDevices: LandingDevice[] = [
+    { id: "apple_watch", name: "Apple Watch", tagline: "Heart · ECG · Activity",     accent: "from-zinc-200 to-zinc-400",   Icon: Watch },
+    { id: "whoop",       name: "WHOOP",       tagline: "Recovery · Strain · Sleep", accent: "from-amber-300 to-rose-400",  Icon: Activity },
+    { id: "oura",        name: "Oura Ring",   tagline: "Sleep · Readiness",          accent: "from-violet-300 to-violet-500", Icon: Heart },
+    { id: "garmin",      name: "Garmin",      tagline: "VO₂ · Training load",        accent: "from-sky-300 to-sky-500",      Icon: Activity },
+  ];
+
+  const CONSENT_KEY = "vitalis_devices_consent_v1";
+  const SHARE_KEY = "vitalis_devices_share_ai_v1";
+  const CONNECTED_KEY = "vitalis_devices_connected_v1";
+
+  const [landingConnected, setLandingConnected] = useState<Record<string, boolean>>({});
+  const [landingPending, setLandingPending] = useState<string | null>(null);
+  const [landingConsentGiven, setLandingConsentGiven] = useState(false);
+  const [landingShareAI, setLandingShareAI] = useState(true);
+  const [landingConsentOpen, setLandingConsentOpen] = useState(false);
+  const [landingPendingDevice, setLandingPendingDevice] = useState<LandingDevice | null>(null);
+
+  useEffect(() => {
+    try {
+      setLandingConsentGiven(localStorage.getItem(CONSENT_KEY) === "true");
+      setLandingShareAI(localStorage.getItem(SHARE_KEY) !== "false");
+      const raw = localStorage.getItem(CONNECTED_KEY);
+      if (raw) setLandingConnected(JSON.parse(raw));
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => {
+    try { localStorage.setItem(CONNECTED_KEY, JSON.stringify(landingConnected)); } catch {}
+  }, [landingConnected]);
+
+  const persistLandingShare = (v: boolean) => {
+    setLandingShareAI(v);
+    try { localStorage.setItem(SHARE_KEY, String(v)); } catch {}
+    toast.success(v ? "AI can use your device data" : "AI access paused", {
+      description: v
+        ? "Recovery, sleep and HRV will inform your AI answers."
+        : "Your AI Doctor will not read device data until you re-enable.",
+    });
+  };
+
+  const startLandingPair = (d: LandingDevice) => {
+    setLandingPending(d.id);
+    track("landing_device_connect", { device: d.id });
+    setTimeout(() => {
+      setLandingConnected((p) => ({ ...p, [d.id]: true }));
+      setLandingPending(null);
+      toast.success(`${d.name} connected`, { description: "Syncing health data securely." });
+    }, 900);
+  };
+
+  const acceptLandingConsent = () => {
+    try { localStorage.setItem(CONSENT_KEY, "true"); } catch {}
+    setLandingConsentGiven(true);
+    setLandingConsentOpen(false);
+    if (landingPendingDevice) startLandingPair(landingPendingDevice);
+    setLandingPendingDevice(null);
+  };
+
+  const toggleLandingDevice = (d: LandingDevice) => {
+    if (landingConnected[d.id]) {
+      setLandingConnected((p) => ({ ...p, [d.id]: false }));
+      toast.success(`${d.name} disconnected`);
+      return;
+    }
+    if (!landingConsentGiven) {
+      setLandingPendingDevice(d);
+      setLandingConsentOpen(true);
+      return;
+    }
+    startLandingPair(d);
+  };
+
+  // ---- iPhone mock interactive chat ----
+  type ChatMsg = { id: number; role: "user" | "ai"; text: string; quickReplies?: string[]; report?: boolean };
+  const initialChat: ChatMsg[] = [
+    { id: 1, role: "user", text: "My HRV dropped to 38ms last night. Should I rest today?" },
+    { id: 2, role: "ai",   text: "Yes — your HRV is 24% below your 30-day baseline and recovery is 52%. A light mobility day will serve you better than training hard." },
+    { id: 3, role: "ai",   text: "Want me to draft a recovery plan you can download?", quickReplies: ["Yes, draft it", "Show data"] },
+  ];
+  const [chatMessages, setChatMessages] = useState<ChatMsg[]>(initialChat);
+  const [chatTyping, setChatTyping] = useState(false);
+  const [reportReady, setReportReady] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const chatScrollRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+    }
+  }, [chatMessages, chatTyping]);
+
+  const handleQuickReply = (msgId: number, reply: string) => {
+    // remove quickReplies from clicked message + push user reply
+    setChatMessages((prev) => {
+      const cleaned = prev.map((m) => (m.id === msgId ? { ...m, quickReplies: undefined } : m));
+      return [...cleaned, { id: Date.now(), role: "user", text: reply }];
+    });
+    setChatTyping(true);
+    track("landing_chat_quick_reply", { reply });
+
+    setTimeout(() => {
+      setChatTyping(false);
+      if (reply === "Yes, draft it") {
+        setChatMessages((prev) => [
+          ...prev,
+          {
+            id: Date.now() + 1,
+            role: "ai",
+            text: "Done — a 24h recovery plan with sleep, nutrition and gentle movement is ready.",
+            report: true,
+          },
+        ]);
+        setReportReady(true);
+      } else {
+        setChatMessages((prev) => [
+          ...prev,
+          {
+            id: Date.now() + 1,
+            role: "ai",
+            text: "HRV 38ms (baseline 50). Recovery 52%. Sleep 6h12m (-1h vs avg). RHR +6 bpm.",
+            quickReplies: ["Draft recovery plan"],
+          },
+        ]);
+      }
+    }, 900);
+  };
+
+  const handleDownloadDemo = () => {
+    setDownloading(true);
+    track("landing_chat_download_report");
+    const md = `# Vitalis — Recovery Plan (Demo)\n\nGenerated: ${new Date().toLocaleString()}\n\n## Snapshot\n- HRV: 38 ms (24% below 30-day baseline)\n- Recovery: 52%\n- Sleep: 6h12m\n- Resting HR: +6 bpm vs avg\n\n## Recommendation\nLight mobility day. Avoid high-intensity training.\n\n## 24h Plan\n- Morning: 10 min mobility + sunlight exposure\n- Hydration: 2.5–3 L water + electrolytes\n- Nutrition: protein-forward meals, reduce alcohol & late caffeine\n- Evening: device-free 60 min before bed, target 8h sleep\n\n---\n*AI-assisted summary only. Not a medical diagnosis.*\n`;
+    setTimeout(() => {
+      const blob = new Blob([md], { type: "text/markdown" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "vitalis-recovery-plan.md";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setDownloading(false);
+      toast.success("Report downloaded", { description: "Sign up to generate full clinical reports." });
+    }, 600);
+  };
+
+  const resetChatDemo = () => {
+    setChatMessages(initialChat);
+    setReportReady(false);
+  };
+
   const navItems = [
     { label: "Product", href: "#product" },
     { label: "How it works", href: "#how" },
