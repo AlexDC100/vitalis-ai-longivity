@@ -23,7 +23,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 
-export type PaletteScreen = "diagnosis" | "body" | "doctor";
+export type PaletteScreen = "home" | "doctor" | "body" | "insights" | "profile";
 export type PaletteAction =
   | "upload-document"
   | "start-ai-chat"
@@ -50,8 +50,8 @@ type QuickAction = {
 };
 
 const quickActions: QuickAction[] = [
-  { id: "refresh-diagnosis", label: "Run diagnosis re-check", hint: "Re-run analysis on latest data", icon: RefreshCw, screens: ["diagnosis"] },
-  { id: "start-ai-chat", label: "Start AI Doctor chat", hint: "Open chat & ask a question", icon: MessageCircle, screens: ["diagnosis"] },
+  { id: "refresh-diagnosis", label: "Refresh today's insight", hint: "Re-run analysis on latest data", icon: RefreshCw, screens: ["home", "insights"] },
+  { id: "start-ai-chat", label: "Start AI Doctor chat", hint: "Open chat & ask a question", icon: MessageCircle, screens: ["home", "insights"] },
   { id: "extract-biomarkers", label: "Extract biomarkers", hint: "Upload a lab report to auto-fill", icon: FileSearch, screens: ["body"] },
   { id: "upload-document", label: "Upload medical document", hint: "Add a PDF to your record", icon: Upload, screens: ["body"] },
   { id: "continue-chat", label: "Continue AI Doctor chat", hint: "Jump back into the conversation", icon: Activity, screens: ["doctor"] },
