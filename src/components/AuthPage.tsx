@@ -396,8 +396,8 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
           reducedMotion ? "" : "transition-[background-color,border-color,box-shadow] duration-300 ease-out"
         } ${
           scrolled
-            ? "bg-background/85 border-border/60 shadow-[0_4px_20px_-12px_hsl(var(--background)/0.8)]"
-            : "bg-background/60 border-border/30"
+            ? "bg-background/95 border-border/70 shadow-[0_4px_24px_-12px_hsl(var(--background)/0.9)]"
+            : "bg-background/80 border-border/50"
         }`}
       >
         <div
@@ -433,10 +433,10 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
                   key={item.label}
                   href={item.href}
                   aria-current={isActive ? "true" : undefined}
-                  className={`text-[13px] font-medium transition-colors ${
+                  className={`text-[13.5px] font-medium transition-colors ${
                     isActive
-                      ? "text-foreground"
-                      : "text-muted-foreground hover:text-foreground"
+                      ? "text-primary"
+                      : "text-foreground/80 hover:text-foreground"
                   }`}
                 >
                   {item.label}
