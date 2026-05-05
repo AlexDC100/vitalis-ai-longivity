@@ -965,39 +965,69 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
             </p>
           </div>
 
+          {/* Privacy / AI access toggle */}
+          <div className="max-w-2xl mx-auto mb-8 flex items-center gap-3 auth-glass border border-border/60 rounded-2xl p-3.5">
+            <div className="w-10 h-10 rounded-xl bg-primary/10 ring-1 ring-primary/25 flex items-center justify-center shrink-0">
+              <Shield className="w-4.5 h-4.5 text-primary" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[13px] font-semibold text-foreground">Use my device data with AI</p>
+              <p className="text-[11.5px] text-muted-foreground leading-snug">
+                {landingShareAI
+                  ? "AI can reference your recovery, sleep & HRV when answering."
+                  : "AI cannot read device data until you re-enable."}
+              </p>
+            </div>
+            <Switch checked={landingShareAI} onCheckedChange={persistLandingShare} aria-label="Share device data with AI" />
+          </div>
+
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 max-w-5xl mx-auto">
-            {[
-              { name: "Apple Watch", tagline: "Heart · ECG · Activity", accent: "from-zinc-200 to-zinc-400" },
-              { name: "WHOOP",       tagline: "Recovery · Strain · Sleep", accent: "from-amber-300 to-rose-400" },
-              { name: "Oura Ring",   tagline: "Sleep · Readiness", accent: "from-violet-300 to-violet-500" },
-              { name: "Garmin",      tagline: "VO₂ · Training load", accent: "from-sky-300 to-sky-500" },
-            ].map((d) => (
-              <div
-                key={d.name}
-                className="group relative overflow-hidden auth-glass rounded-2xl p-5 ring-1 ring-border/50 hover:ring-primary/40 transition-all"
-              >
-                <div
-                  aria-hidden
-                  className={`pointer-events-none absolute -top-10 -right-10 w-32 h-32 rounded-full bg-gradient-to-br ${d.accent} opacity-[0.10] blur-2xl group-hover:opacity-25 transition-opacity`}
-                />
-                <div className="relative flex items-center justify-between mb-4">
-                  <div className="w-10 h-10 rounded-xl bg-secondary/60 ring-1 ring-border/60 flex items-center justify-center text-foreground">
-                    <Watch className="w-4.5 h-4.5" />
+            {landingDevices.map((d) => {
+              const isOn = !!landingConnected[d.id];
+              const isPending = landingPending === d.id;
+              const Icon = d.Icon;
+              return (
+                <button
+                  key={d.id}
+                  type="button"
+                  onClick={() => toggleLandingDevice(d)}
+                  disabled={isPending}
+                  aria-pressed={isOn}
+                  className={`group relative overflow-hidden text-left auth-glass rounded-2xl p-5 ring-1 transition-all active:scale-[0.985] ${
+                    isOn ? "ring-primary/50 shadow-[0_8px_30px_-12px_hsl(var(--primary)/0.45)]" : "ring-border/50 hover:ring-primary/40"
+                  }`}
+                >
+                  <div
+                    aria-hidden
+                    className={`pointer-events-none absolute -top-10 -right-10 w-32 h-32 rounded-full bg-gradient-to-br ${d.accent} blur-2xl transition-opacity ${
+                      isOn ? "opacity-30" : "opacity-[0.10] group-hover:opacity-25"
+                    }`}
+                  />
+                  <div className="relative flex items-center justify-between mb-4">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ring-1 ${
+                      isOn ? "bg-primary/15 ring-primary/30 text-primary" : "bg-secondary/60 ring-border/60 text-foreground"
+                    }`}>
+                      <Icon className="w-[18px] h-[18px]" />
+                    </div>
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors ${
+                      isOn ? "bg-primary text-primary-foreground" : "bg-primary/10 ring-1 ring-primary/25 text-primary"
+                    }`}>
+                      {isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : isOn ? <Check className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                    </div>
                   </div>
-                  <div className="w-7 h-7 rounded-full bg-primary/15 ring-1 ring-primary/30 flex items-center justify-center text-primary">
-                    <Check className="w-3.5 h-3.5" />
+                  <div className="relative">
+                    <div className="text-[14px] font-semibold text-foreground">{d.name}</div>
+                    <div className="text-[11.5px] text-muted-foreground mt-1">{d.tagline}</div>
                   </div>
-                </div>
-                <div className="relative">
-                  <div className="text-[14px] font-semibold text-foreground">{d.name}</div>
-                  <div className="text-[11.5px] text-muted-foreground mt-1">{d.tagline}</div>
-                </div>
-                <div className="relative mt-4 inline-flex items-center gap-1 text-[10px] uppercase tracking-wider font-semibold text-primary">
-                  Connect
-                  <ChevronRight className="w-3 h-3" />
-                </div>
-              </div>
-            ))}
+                  <div className={`relative mt-4 inline-flex items-center gap-1 text-[10px] uppercase tracking-wider font-semibold ${
+                    isOn ? "text-primary" : "text-foreground/70 group-hover:text-primary"
+                  }`}>
+                    {isPending ? "Pairing…" : isOn ? "Connected" : "Connect"}
+                    {!isPending && <ChevronRight className="w-3 h-3" />}
+                  </div>
+                </button>
+              );
+            })}
           </div>
 
           <div className="mt-10 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-[11px] text-muted-foreground">
