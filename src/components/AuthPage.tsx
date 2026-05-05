@@ -1290,6 +1290,34 @@ export default function AuthPage({ onGuestLogin: _ }: Props) {
         </DialogContent>
       </Dialog>
 
+      {/* DEVICE CONSENT DIALOG */}
+      <Dialog open={landingConsentOpen} onOpenChange={setLandingConsentOpen}>
+        <DialogContent className="max-w-md auth-glass border-border/60">
+          <DialogHeader>
+            <div className="w-10 h-10 rounded-xl bg-primary/10 ring-1 ring-primary/25 flex items-center justify-center mb-2">
+              <Shield className="w-5 h-5 text-primary" />
+            </div>
+            <DialogTitle>Connect {landingPendingDevice?.name ?? "your device"}</DialogTitle>
+            <DialogDescription className="leading-relaxed">
+              We'll read health metrics (heart rate, sleep, recovery, activity) over an encrypted
+              connection. Data stays in your private account. Disconnect or revoke AI access anytime.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 text-[12px] text-muted-foreground">
+            <p className="flex items-start gap-2"><Check className="w-3.5 h-3.5 mt-0.5 text-primary shrink-0" /> End-to-end encrypted in transit and at rest.</p>
+            <p className="flex items-start gap-2"><Check className="w-3.5 h-3.5 mt-0.5 text-primary shrink-0" /> Never sold, never shared with third parties.</p>
+            <p className="flex items-start gap-2"><Check className="w-3.5 h-3.5 mt-0.5 text-primary shrink-0" /> AI access is opt-in and can be paused with one tap.</p>
+            <p className="flex items-start gap-2"><Lock className="w-3.5 h-3.5 mt-0.5 text-primary shrink-0" /> Educational only — not a medical diagnosis.</p>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-2 mt-2">
+            <Button variant="ghost" onClick={() => { setLandingConsentOpen(false); setLandingPendingDevice(null); }}>
+              Cancel
+            </Button>
+            <Button onClick={acceptLandingConsent}>I agree — continue</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 }
